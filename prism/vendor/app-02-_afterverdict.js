@@ -125,6 +125,7 @@ window.PRISM_APP_PARTS.push(() => ({
       group: '뉴스',
       txtTitle: '', txtBody: '', txtUrl: '', txtKey: '',   // txtKey = 발행 키 item_unique_key(선택 · 원문 보존)
       excelFile: null, xlsDrag: false,
+      metaImport: false, metaLabel: '외부',   // 엑셀: 모델 실행 없이 메타째 추가(외부 파이프라인 검증)
       copyMsg: '',
 
       // 설정(키 / 모델 슬롯 / 추론강도 / 추가 지시) · 우측 설정 패널

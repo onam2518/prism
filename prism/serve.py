@@ -2109,16 +2109,19 @@ def _g_board(h, q):
     return board_data(h._req_team(), h._bearer_uid() or "")
 
 
-@_get_route("/template.xlsx")
+@_get_route("/template.xlsx")                         # ?meta=1 → 외부 메타 열까지 붙인 서식
 def _g_template_xlsx(h, q):
-    h._send_file(build_template_xlsx(),
+    meta = (q.get("meta") or [""])[0] in ("1", "true")
+    h._send_file(build_template_xlsx(meta),
                  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                 "prism_template.xlsx")
+                 "prism_template_meta.xlsx" if meta else "prism_template.xlsx")
 
 
 @_get_route("/template.csv")
 def _g_template_csv(h, q):
-    h._send_file(build_template_csv(), "text/csv; charset=utf-8", "prism_template.csv")
+    meta = (q.get("meta") or [""])[0] in ("1", "true")
+    h._send_file(build_template_csv(meta), "text/csv; charset=utf-8",
+                 "prism_template_meta.csv" if meta else "prism_template.csv")
 
 
 @_get_route("/autoreview-status", admin=True)        # AI 초안 판정 진척도·부분 결과 폴링(운영 관리자 · 화이트리스트)
@@ -3046,7 +3049,10 @@ def _p_run(h, body):
             else:
                 result = run_batch(f["bytes"], f.get("filename", "upload.xlsx"),
                                    purpose=str(fields.get("purpose") or ""), team=h._req_team(),
-                                   add_only=add_only)
+                                   add_only=add_only,
+                                   # 모델 실행 없이 외부 파이프라인 메타째 적재(엑셀 한정)
+                                   with_meta=str(fields.get("with_meta") or "") in ("1", "true"),
+                                   model_label=str(fields.get("model_label") or ""))
         elif add_only:                               # STEP 1 = 추가만(모델 미실행)
             result = add_contents([{
                 "displayServiceName": fields.get("displayServiceName", ""),

@@ -176,6 +176,23 @@
               <a href="/template.csv" download class="text-xs text-muted hover:text-ink" style="text-decoration:underline" data-tip="같은 양식의 CSV(UTF-8 BOM)" data-tip-pos="top">CSV</a>
               </span>
             </div>
+            <!-- 외부 파이프라인 결과 검증: 모델을 돌리지 않고 이미 뽑힌 메타를 초안으로 올린다 -->
+            <div class="rounded-lg border border-black/[0.08] px-3 py-2.5 stack-2">
+              <label for="metaImport" class="flex items-center gap-2 text-sm text-body" style="cursor:pointer">
+                <input id="metaImport" type="checkbox" x-model="metaImport">
+                모델 실행 없이 메타째 추가 (외부 파이프라인 결과 검증용)
+              </label>
+              <div x-show="metaImport" x-cloak class="stack-2">
+                <div class="flex flex-wrap items-center gap-2">
+                  <label for="metaLabel" class="text-xs text-muted">출처 · 모델 라벨</label>
+                  <input id="metaLabel" type="text" class="field" style="width:200px" maxlength="40"
+                         x-model="metaLabel" placeholder="외부">
+                  <a href="/template.xlsx?meta=1" download class="text-xs text-muted hover:text-ink" style="text-decoration:underline">메타 포함 엑셀 템플릿</a>
+                  <a href="/template.csv?meta=1" download class="text-xs text-muted hover:text-ink" style="text-decoration:underline">CSV</a>
+                </div>
+                <p class="text-xs text-muted" style="margin:0">추가 열 리드문 · 엔티티 · 인텐트 · 콘텐츠 카테고리 · 등급 · 사유 (여러 값은 가운뎃점·쉼표·세미콜론·파이프로 구분) 인텐트·카테고리는 공통 사전 값만, 등급은 G · R · 빈값만, 사유는 품질 메타 ID 이고 사유가 있으면 등급 R 규칙을 어긴 행은 저장하지 않고 사유를 돌려줍니다 (최대 200행)</p>
+              </div>
+            </div>
             <div>
               <label class="lbl">엑셀 / CSV (제목·본문 컬럼 자동 매핑)</label>
               <label class="dropzone" x-bind:class="xlsDrag ? 'drag' : ''"
@@ -237,6 +254,16 @@
                     </div>
                   </template>
                   <div x-show="!batchStats.intents.length" class="text-xs text-muted">인텐트 데이터 없음</div>
+                </div>
+              </div>
+              <div x-show="batchResult && batchResult.with_meta" x-cloak class="stack-2">
+                <p class="text-xs text-muted" style="margin:0" x-text="batchResult ? ('모델 실행 없이 메타째 추가 · 저장 ' + (batchResult.saved || 0) + '건 · 오류 ' + (batchResult.error_count || 0) + '건' + (batchResult.skipped_done ? ' · 기존 결과가 있어 건너뜀 ' + batchResult.skipped_done + '건' : '') + ' · 라벨 ' + (batchResult.label || '')) : ''"></p>
+                <div x-show="batchResult && (batchResult.errors || []).length" class="overflow-auto" style="max-height:220px">
+                  <table class="ds-table"><thead><tr><th style="width:64px">행</th><th style="width:220px">제목</th><th>저장하지 않은 이유</th></tr></thead><tbody>
+                    <template x-for="e in (batchResult.errors || [])" x-bind:key="e.row">
+                      <tr><td class="tnum" x-text="e.row"></td><td x-text="e.title"></td><td x-text="e.reason"></td></tr>
+                    </template>
+                  </tbody></table>
                 </div>
               </div>
               <p x-show="batchResult && batchResult.mapping" class="text-xs text-muted" style="margin:0" x-text="batchResult && batchResult.mapping ? ('매핑: ' + Object.entries(batchResult.mapping).map(e=>e[0]+'←'+e[1]).join(' · ') + ' · 건별 결과는 아래 추가된 콘텐츠·검수 목록에서 확인합니다') : ''"></p>
