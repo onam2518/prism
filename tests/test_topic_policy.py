@@ -137,6 +137,9 @@ class TestEntityCommonKey(unittest.TestCase):
         self.assertEqual((son["cluster_id"], son["count"]), ("S-e_son", 2))
         other = next(p for p in pools if not p["entity_key"])
         self.assertEqual(other["cluster_id"], "S-손흥민상회")   # 미등재는 종전대로 이름 기준
+        # 옛 식별자(S-<이름>) 를 함께 실어 개별 제외·편입·일시정지 기억이 끊기지 않는다(검토 차단 항목 (나))
+        self.assertTrue(set(son["legacy_ids"]) >= {"S-손흥민"}, son["legacy_ids"])
+        self.assertEqual(other.get("legacy_ids"), [])
 
     def test_canon_keys_never_invents_values(self):
         from prism import entdict as ED

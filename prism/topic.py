@@ -117,7 +117,7 @@ def build_entity_topics(rows, service_names, canon, min_contents=2, ent_keys=Non
     ent_keys(표면 문자열 → 사전 공통키)가 있으면 이표기를 한 묶음으로 모으고 식별자도
     공통키로 낸다(2-6). 미등재 엔티티는 종전대로 이름 기준."""
     keys = ent_keys or {}
-    ent_contents, names = defaultdict(list), {}
+    ent_contents, names, surfaces = defaultdict(list), {}, defaultdict(set)
     for i, r in enumerate(rows):
         if not _eligible(r):
             continue
@@ -127,6 +127,7 @@ def build_entity_topics(rows, service_names, canon, min_contents=2, ent_keys=Non
                 continue
             k = keys.get(e) or e
             names.setdefault(k, e)                      # 표시 이름 = 먼저 나온 표기(순서 고정)
+            surfaces[k].add(e)                          # 이표기 전부 · 옛 식별자(S-<이름>) 이월용
             ent_contents[k].append(i)
     pools = []
     for k, idxs in ent_contents.items():
@@ -135,8 +136,13 @@ def build_entity_topics(rows, service_names, canon, min_contents=2, ent_keys=Non
             continue
         e = names[k]
         cat = tier1_remap(canon.get(e, "Unclassified"))
+        cid = "S-" + (k if keys.get(e) else _slug(e))
+        # 사전 등재 엔티티는 식별자가 S-<이름> → S-<공통키> 로 바뀌었다(2-6). 운영자가 옛 식별자에
+        # 남긴 개별 제외 · 편입 · 일시정지가 끊기지 않게 옛 식별자를 함께 실어 읽기 시 이월한다.
+        # ponytail: 일회성 이관 스크립트 대신 읽기 폴백 · 옛 키가 더 안 쓰이면 정리 스크립트 한 번으로 걷는다
+        legacy = sorted({"S-" + _slug(s) for s in surfaces[k]} - {cid}) if keys.get(e) else []
         pools.append({
-            "type": "single", "cluster_id": "S-" + (k if keys.get(e) else _slug(e)),
+            "type": "single", "cluster_id": cid, "legacy_ids": legacy,
             "name": e, "entity_key": keys.get(e, ""), "category": cat,
             "content_ids": idxs, "count": len(idxs),
             "lifecycle": "영속", "origin": "auto",
@@ -1353,8 +1359,9 @@ def build_topics(results_path: str, max_single: int = 200, max_composite: int = 
     if exmap or incmap:
         hashes = [_row_hash(r) for r in rows]
         for p in single + composite:
-            _apply_inclusion(p, p["cluster_id"], rows, hashes, incmap)
-            _apply_exclusion(p, p["cluster_id"], rows, hashes, exmap)
+            for key in [p["cluster_id"]] + list(p.get("legacy_ids") or []):   # 옛 식별자에 남은 기억도 적용
+                _apply_inclusion(p, key, rows, hashes, incmap)
+                _apply_exclusion(p, key, rows, hashes, exmap)
         for g in custom:
             for b in (g.get("bundles") or []):
                 if b.get("kind") == "core":            # 편입은 핵심 묶음에만(관련 묶음 중복 방지)

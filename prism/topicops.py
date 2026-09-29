@@ -144,6 +144,24 @@ def _topics_compute(team=None) -> dict:
 _TOPIC_SNAP_CAP = 90                                  # 보관 스냅샷 수(시간별 약 4일 · 추이 원천)
 
 
+def _stale_reasons(d: dict, catalog: dict) -> list:
+    """저장 시점 규칙과 지금 규칙이 달라 조용히 0건이 될 수 있는 정의를 짚는다(배포 전 결정 사항 · 검토 지적).
+    (1) 조건 축 0개 정의는 4-15 이후 묶음을 만들지 않는다 (2) 출처 축은 4-37 이후 정확 일치라
+    부분 문자열로 저장된 값('연합' 으로 '연합뉴스' 잡기)은 더 안 걸린다. 화면은 이 목록이 비어 있지 않으면
+    '조건 재확인' 을 보인다 · 값을 고쳐 저장하면 사라진다."""
+    from . import topic as TP
+    reasons = []
+    req, opt = (d.get("req") or {}), (d.get("opt") or {})
+    if not any((req.get(k) or opt.get(k)) for k in TP._DIMS):
+        reasons.append("조건 축이 없어 묶음이 만들어지지 않습니다 · 분야·의도·엔티티·출처 중 하나를 지정하세요")
+    have = {str(x.get("k", "")).strip().lower() for x in (catalog.get("srcs") or []) if isinstance(x, dict)}
+    if have:
+        miss = [v for v in list(req.get("srcs") or []) + list(opt.get("srcs") or []) if str(v).strip().lower() not in have]
+        if miss:
+            reasons.append("출처 조건이 지금 데이터 값과 정확히 일치하지 않습니다(부분 일치는 더 쓰지 않음): " + ", ".join(map(str, miss[:5])))
+    return reasons
+
+
 def _attach_status(out: dict, cfg: dict, rows: list):
     """토픽 행에 운영자 상태 · 변경 기록 · 오늘/7일/신호를 붙이고, 초안 · 보관 정의는 건수 없는 행으로 덧붙인다."""
     from . import topic as TP
@@ -159,6 +177,7 @@ def _attach_status(out: dict, cfg: dict, rows: list):
         core = next((b.get("content_ids") or [] for b in (g.get("bundles") or []) if b.get("kind") == "core"), [])
         g.update(_row_stats(core, rows, now, cfg["settings"]))
         g["sys_status"] = SYS_INACTIVE if (g["status"] == "active" and g["inactive"]) else g["status"]
+        g["review"] = _stale_reasons(d, out.get("catalog") or {})   # 규칙 변경으로 조용히 0건이 될 옛 정의 표시
     seen = {g.get("id") for g in out.get("custom") or []}
     for d in cfg["custom"]:
         if d.get("id") in seen or (d.get("status") or "active") in ("active", "paused"):
@@ -173,7 +192,8 @@ def _attach_status(out: dict, cfg: dict, rows: list):
             "today": 0, "d7": 0, "prev7": 0, "stall_days": 0, "signal": ""})
     for key in ("single", "composite"):
         for t in out.get(key) or []:
-            t["status"] = "paused" if t.get("cluster_id") in paused else "active"
+            ids = [t.get("cluster_id")] + list(t.get("legacy_ids") or [])   # 옛 식별자의 일시정지도 승계
+            t["status"] = "paused" if any(i in paused for i in ids) else "active"
             t.update(_row_stats(t.get("content_ids") or [], rows, now, cfg["settings"]))
             t["sys_status"] = SYS_INACTIVE if (t["status"] == "active" and t["inactive"]) else t["status"]
 
