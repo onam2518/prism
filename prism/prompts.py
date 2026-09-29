@@ -131,8 +131,8 @@ def quality_group_system(group_key: str, active_metas: list, service_group: str)
 def item_system(content, model: str = "") -> str:
     """아이템 메타(4필드 통합) 시스템 프롬프트.
     원천 지시(기본=기준 문서 C1~C4, 스튜디오 override 가능)를 모델 계열별 래퍼(meta_prompts)로 감싼다.
-    사전 주입: 인텐트(범용①·② + 서비스 분기) · IAB Tier1/Tier2 전체."""
-    intents = " / ".join(D.intent_categories_for(content.displayServiceName))
+    사전 주입: 인텐트(전 출처 공통 68개) · IAB Tier1/Tier2 전체."""
+    intents = " / ".join(D.intent_categories())
     iab = MP.iab_dictionary_text()
     core = f"{directive('extract')}\n\n{directive('analyze')}"
     learned = _learned("extract", model) + _learned("analyze", model)
