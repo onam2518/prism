@@ -968,8 +968,13 @@ def learning_batch(team=None, models=None, model: str = "", golden_hashes=None, 
         changed = (PR.LEARNED != prev_learned) or (PR.LEARNED_BY_MODEL != prev_by_model)
         delta = None
         if changed and eval_pre.get("ok"):
-            step("post")
-            evalr = eval_golden(team, model=model, scope=scope, **gopt, **popt("post"))           # 개선 후 점수(같은 셋 · 같은 모델)
+            try:
+                step("post")
+                evalr = eval_golden(team, model=model, scope=scope, **gopt, **popt("post"))       # 개선 후 점수(같은 셋 · 같은 모델)
+            except BaseException:                            # 중지 등으로 후평가가 끊기면 검증 안 된 보정을 되돌리고 올린다
+                PR.LEARNED = prev_learned
+                PR.LEARNED_BY_MODEL = prev_by_model
+                raise
             try:
                 delta = round((evalr.get("grade_accuracy") or 0.0) - (eval_pre.get("grade_accuracy") or 0.0), 4)
             except (TypeError, ValueError):
