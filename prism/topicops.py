@@ -382,7 +382,7 @@ def _sanitize_def(d: dict, existing_ids=None) -> dict:
     # 대화 기록(4-38): 턴마다 문장 원문 · 해석 모델 · 해석 결과(before) · 칩 조정 뒤(after).
     # 파싱 정확도 검토 자료라 화면 표시용이 아니라 정의에 그대로 남긴다.
     turns = []
-    for t in (d.get("turns") or [])[-20:]:
+    for t in (d.get("turns") if isinstance(d.get("turns"), list) else [])[-20:]:
         if isinstance(t, dict) and (t.get("text") or "").strip():
             turns.append({"text": str(t["text"]).strip()[:600], "model": str(t.get("model") or "").strip()[:80],
                           "via": str(t.get("via") or "").strip()[:20],

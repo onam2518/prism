@@ -76,7 +76,7 @@
               <template x-for="c in t.chips" x-bind:key="c.key">
               <button type="button" class="tbchip" x-bind:class="{neg:c.neg, 'new':c.new, req:c.req, dim:c.fixed}" x-bind:disabled="c.fixed || i!==talk.turns.length-1" x-on:click="talkDrop(c)" x-bind:data-tip="c.fixed?'기본 제외 · 해제는 문장으로만 · 예) 광고 포함해도 돼':'누르면 이 조건을 뺍니다'" data-tip-pos="top" x-bind:aria-label="c.k+' '+c.v+(c.fixed?' · 기본 제외 · 해제는 문장으로만':' · 누르면 뺍니다')"><span class="tbchip__k" x-text="c.k"></span> <span x-text="c.v"></span><span class="talk__x" x-show="!c.fixed && i===talk.turns.length-1">×</span></button>
               </template>
-              <span class="tbchip dim" x-show="!t.chips.length">조건을 찾지 못했어요 · 다른 말로 해 보세요</span>
+              <span class="tbchip dim" x-show="!t.chips.filter(c=>!c.fixed).length">조건을 찾지 못했어요 · 다른 말로 해 보세요</span>
               </div>
               <div class="talk__warn" x-show="t.miss" x-text="t.miss"></div>
               <div class="talk__n"><b class="tnum" x-text="t.n"></b><span>건</span><span class="meta tnum" x-show="t.prev!=null" x-text="t.prev+' → '+t.n"></span><span class="meta tnum" x-show="t.neg_n" x-text="'제외로 빠짐 '+t.neg_n"></span><span class="meta tnum" x-show="t.feed_n" x-text="'원천 조건으로 빠짐 '+t.feed_n"></span></div>
@@ -298,7 +298,7 @@
               <!-- 토픽은 조건 재평가 방식(서버 캐시는 쓰기마다 무효화) · 탭을 열어둔 채 추출·검수·사전 보강이 진행되면 화면만 낡음 → 수동 재조회 -->
               <button type="button" class="ds-iconbtn ds-iconbtn--bordered" x-bind:disabled="modBusy" x-on:click="loadTopics()" data-tip="새로고침 · 새 콘텐츠·등급 변경 재매칭" data-tip-pos="bottom" aria-label="토픽 현황 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
             <!-- 알림줄: 상태 스위치는 확인창 없이 즉시 반영하고 여기서 되돌린다(4-42) -->
-            <div class="meta flexrow" style="padding:0 16px 6px;gap:8px;align-items:center" x-show="topicMsg" aria-live="polite"><span x-text="topicMsg"></span>
+            <div class="meta flexrow" style="padding:0 16px 6px;gap:8px;align-items:center" aria-live="polite"><span x-text="topicMsg"></span>
               <button type="button" class="talk__link" x-show="topicUndo" x-on:click="topicUndoDo()" aria-label="상태 변경 되돌리기">되돌리기</button></div>
             <div class="overflow-auto"><table class="ds-table"><thead><tr><th></th><th>구분</th><th>토픽</th><th>구성</th><th>콘텐츠</th><th>오늘</th><th>7일</th><th>신호</th><th style="text-align:right">관리</th></tr></thead>
             <!-- 행마다 tbody 하나: 펼침 행(4-41)이 같은 묶음에 들어간다 -->

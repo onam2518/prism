@@ -511,7 +511,7 @@ def feed_labels(feed) -> list:
     def add(k, v, f, x=None, neg=False):
         out.append({"k": k, "v": v, "neg": neg, "f": f, "x": v if x is None else x})
     # 기본 제외(광고 · 성인 · 선정 · 삭제)는 흐린 칩으로 항상 보인다(2-19).
-    # 걸린 상태의 칩은 fixed(누를 수 없음) — 해제는 문장("광고 포함해도 돼")으로만.
+    # 걸린 상태의 칩은 fixed(누를 수 없음) · 해제는 문장("광고 포함해도 돼")으로만.
     # 풀린 상태의 칩은 눌러서 기본값으로 되돌릴 수 있다(되돌리는 방향은 해제가 아니다).
     if fd.get("base_excl", True):
         out.append({"k": "기본", "v": "광고 · 성인 · 선정 · 삭제 제외", "neg": False,

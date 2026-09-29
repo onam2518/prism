@@ -177,12 +177,11 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       talkExample(text) { this.talk.input = text; return this.talkSend(); },
       topicSwTip(r) { const st = r.status || 'active'; return st === 'active' ? '켜짐 · 누르면 일시정지(건수는 계속 세고 유통만 멈춤)' : st === 'paused' ? '일시정지 · 누르면 켬' : st === 'draft' ? '초안 · 누르면 활성(0건이면 잠김)' : '보관 · 복구 버튼으로'; },
-      logLine(log) { const e = (log || [])[log.length - 1]; if (!e) return ''; return this.fmtTs(e.ts) + (e.who ? ' ' + e.who : '') + ' · ' + e.what; },
       topicToggle(r) { const st = r.status || 'active'; return this.topicStatusSet(r, st === 'active' ? 'paused' : 'active'); },
       async topicStatusSet(r, st, undo) {
         const id = r.id || r.cluster_id; if (!id) return;
         const from = r.status || 'active';
-        this.topicBusy = id; this.topicMsg = '';
+        this.topicBusy = id; this.topicMsg = ''; this.topicUndo = null;
         try {
           const res = await this._studioPost({ action: 'status', id, status: st, reviewer: this.reviewer || '' });
           if (res && !res.error) {
@@ -204,7 +203,7 @@ window.PRISM_APP_PARTS.push(() => ({
       async topicRename(g) {
         const name = (this.topicRenameDraft || '').trim(); const def = this._defOf(g.id);
         if (!name || !def || name === g.name) return;
-        this.topicBusy = g.id; this.topicMsg = '';
+        this.topicBusy = g.id; this.topicMsg = ''; this.topicUndo = null;
         try {
           const r = await this._studioPost({ action: 'save', def: Object.assign({}, def, { name }), reviewer: this.reviewer || '' });
           if (r && r.error) this.topicMsg = '오류: ' + r.error;
@@ -215,7 +214,7 @@ window.PRISM_APP_PARTS.push(() => ({
       async topicMerge(g) {
         const into = this.topicMergeInto; if (!into) return;
         if (!(await this.dsConfirm('「' + g.name + '」 을(를) 다른 토픽으로 합칠까요?\n조건 · 제외 · 개별 제외 목록을 합치고 이 토픽은 보관됩니다', { ok: '합치기' }))) return;
-        this.topicBusy = g.id; this.topicMsg = '';
+        this.topicBusy = g.id; this.topicMsg = ''; this.topicUndo = null;
         try {
           const r = await this._studioPost({ action: 'merge', id: g.id, into, reviewer: this.reviewer || '' });
           if (r && r.error) this.topicMsg = '오류: ' + r.error;

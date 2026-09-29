@@ -74,6 +74,22 @@ class TestTalkRecordContract(unittest.TestCase):
         self.assertNotIn("similar", S.topic_studio_action(
             {"action": "preview", "def": {"name": "x", "cats": ["Business and Finance"]}})["preview"])
 
+    def test_turns_limits(self):
+        """신뢰 경계: 기록은 20턴 · 문장 600자 · 칩 40개에서 잘리고, 목록이 아닌 turns 는 무시한다."""
+        from prism.topicops import _sanitize_def
+        d = _sanitize_def({"name": "상한", "cats": ["Business and Finance"],
+                           "turns": [{"text": "t%d" % i, "model": "m", "via": "llm",
+                                      "before": ["b%d" % j for j in range(60)], "after": []}
+                                     for i in range(30)]
+                           + [{"text": "가" * 900, "model": "M" * 200, "via": "V" * 50}]})
+        self.assertEqual(len(d["turns"]), 20)
+        self.assertEqual(d["turns"][0]["text"], "t11")              # 오래된 턴부터 버린다
+        self.assertEqual(len(d["turns"][0]["before"]), 40)
+        self.assertEqual([len(d["turns"][-1][k]) for k in ("text", "model", "via")], [600, 80, 20])
+        self.assertEqual(_sanitize_def({"turns": [{"text": "  "}]})["turns"], [])
+        for bad in ("abc", {"a": 1}, 5, None):                      # 목록이 아니면 500 이 아니라 빈 기록
+            self.assertEqual(_sanitize_def({"turns": bad})["turns"], [])
+
 
 if __name__ == "__main__":
     unittest.main()
