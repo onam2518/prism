@@ -281,6 +281,10 @@ def eval_run_compare(a_id: int, b_id: int, team=None) -> dict:
 # 종료 = 목표 달성 · 개선 정체(2라운드 연속 향상 없음) · 최대 라운드 · 수동 중지.
 _PILOT_ACTIVE: dict = {}        # run_id → Thread
 _PILOT_STOP: set = set()
+
+
+class PilotStop(Exception):
+    """수동 중지 요청 · 학습 배치의 진척 콜백(청크 경계)에서 던져 라운드를 안에서 끊는다."""
 # ponytail: 라운드 안 진척은 프로세스 메모리 · 재시작하면 런도 같이 죽으므로 영속 불필요
 _PILOT_PROG: dict = {}          # run_id → {round, phase, done, total, seen, ts}
 PILOT_ROUNDS_CAP = 10           # 폭주 방지 상한(Atelier max_versions cap 상응)
@@ -345,7 +349,10 @@ def autopilot_stop(team=None) -> dict:
                             stop_reason="서버 재시작으로 중단", finished=time.time())
         return {"ok": True, "id": rid}
     _PILOT_STOP.add(rid)
-    return {"ok": True, "id": rid}
+    # 요청 사실을 즉시 남긴다 · 라운드(수십 분) 안에서는 진척 콜백이 다음 청크 경계에서 끊고,
+    # 그 전까지 화면은 이 문구로 '요청됨' 을 보인다(종전엔 라운드가 끝날 때까지 아무 표시가 없었다)
+    st.autopilot_update(rid, team=team, stop_reason="중지 요청됨 · 진행 중인 단계를 다음 청크 경계에서 멈춥니다")
+    return {"ok": True, "id": rid, "requested": True}
 
 
 def autopilot_status(team=None) -> dict:
@@ -405,16 +412,24 @@ def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = "",
             st.autopilot_update(rid, team=team, round=rnd, heartbeat=time.time())
 
             def _prog(phase, done=0, total=0, _r=rnd):   # 화면 진척(단계·건수) · seen = 이 라운드에 실제로 돈 단계
+                if rid in _PILOT_STOP and phase != "wrap":   # wrap(스냅샷·회차 기록)은 끊지 않는다 · 반영된 보정에 버전이 붙어야 한다
+                    raise PilotStop()
                 p = _PILOT_PROG.get(rid) or {}
                 seen = list(p.get("seen") or []) if p.get("round") == _r else []
                 if phase not in seen:
                     seen.append(phase)
                 _PILOT_PROG[rid] = {"round": _r, "phase": phase, "done": done, "total": total,
                                     "seen": seen, "ts": time.time()}
-            rep = LO.learning_batch(team, model=model, golden_hashes=golden_hashes, progress=_prog)
-            if rep.get("skipped"):          # 다른 호출자와 배치 겹침 · 잠깐 대기 후 한 번만 재시도
-                time.sleep(2)
+            try:
                 rep = LO.learning_batch(team, model=model, golden_hashes=golden_hashes, progress=_prog)
+                if rep.get("skipped"):          # 다른 호출자와 배치 겹침 · 잠깐 대기 후 한 번만 재시도
+                    time.sleep(2)
+                    rep = LO.learning_batch(team, model=model, golden_hashes=golden_hashes, progress=_prog)
+            except PilotStop:                   # 라운드 안 중단 · learning_batch 가 미검증 보정을 되돌린 뒤 올라온다
+                st.autopilot_update(rid, team=team, status="stopped",
+                                    stop_reason=f"수동 중지 · 라운드 {rnd} 진행 중 중단(이 라운드 보정은 반영하지 않음)",
+                                    history=history, finished=time.time())
+                return
             acc = rep.get("grade_accuracy")
             if acc is None:
                 st.autopilot_update(rid, team=team, status="failed",

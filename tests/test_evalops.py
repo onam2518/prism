@@ -359,6 +359,33 @@ class TestAutopilot(unittest.TestCase):
             time.sleep(0.05)
         self.fail("오토파일럿이 제한 시간 안에 끝나지 않았습니다")
 
+    def test_stop_request_interrupts_round_and_is_visible(self):
+        """중지 요청은 즉시 stop_reason 에 남고(화면 '요청됨'), 배치의 다음 진척 콜백에서 라운드를 끊는다.
+        끊긴 라운드는 이력에 남지 않는다."""
+        import prism.learnops as LO
+        serve, st = self._with_serve()
+        _seed_golden(st, 3)
+        orig = LO.learning_batch
+        seen = {}
+
+        def fake(team=None, models=None, progress=None, **kw):
+            progress("pre", 0, 10)                               # 첫 청크 · 아직 요청 없음
+            r = serve.autopilot_stop(None)                        # 화면의 '중지' 클릭
+            seen["req"] = r
+            seen["mid"] = st.autopilot_latest(None)["stop_reason"]
+            progress("pre", 8, 10)                               # 다음 청크 경계 → 여기서 끊겨야 한다
+            self.fail("중지 요청 뒤 진척 콜백이 라운드를 끊지 않았다")
+        LO.learning_batch = fake
+        self.addCleanup(lambda: setattr(LO, "learning_batch", orig))
+        r = serve.autopilot_start(None, target=0.9, max_rounds=5)
+        self.assertTrue(r.get("ok"), r)
+        run = self._wait(st)
+        self.assertTrue(seen["req"].get("requested"))
+        self.assertIn("중지 요청됨", seen["mid"])                  # 라운드 도중에도 요청이 보인다
+        self.assertEqual(run["status"], "stopped")
+        self.assertIn("진행 중 중단", run["stop_reason"])
+        self.assertEqual(run["history"], [])
+
     def test_target_reached(self):
         serve, st = self._with_serve()
         _seed_golden(st, 3)
