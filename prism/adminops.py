@@ -373,7 +373,7 @@ def admin_ingest(uid, team, endpoint, n, email="") -> dict:
     llm = _SV.make_text_llm(cfg, _SV.Handler.server_mock)
     pairs = []
     for c in contents:
-        out = PIPE.extract(c, llm, legal=cfg.legal_enabled)
+        out = PIPE.extract(c, llm, legal=cfg.legal_enabled, quality=cfg.quality_stage)
         out.setdefault("quality_meta", {})["review"] = "yellow"   # 인입 배치는 전건 검토 대상
         pairs.append((c, out))
     st.sync_contents(pairs, source="자동 인입", team=team)

@@ -98,10 +98,16 @@
         <section class="panel" data-fn><div class="panel-hd"><b>법령 필터</b><span class="meta">추출에 법령 1차 필터 포함 여부 · 팀 전체 공유</span><span class="ds-badge ds-badge--neutral ml-auto">운영 관리자</span></div>
           <div class="panel-bd">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
-              <ul class="ds-bullets" style="margin:0"><li>법령 1차 필터(13종 위반 라우팅·스코어링)를 추출에 포함합니다.</li><li>켜면 다음 추출부터 적용됩니다(추가 호출 · 건당 비용 증가).</li></ul>
+              <ul class="ds-bullets" style="margin:0"><li>법령 1차 필터(13종 위반 라우팅·스코어링)를 추출에 포함합니다.</li><li>켜면 다음 추출부터 적용됩니다(추가 호출 · 건당 비용 증가).</li><li>품질 판정 단계를 끄면 품질 호출을 건너뛰고 등급이 비어 있는 상태(판정 없음)로 남습니다. 빈 등급은 유통 가능(G)으로 취급하지 않습니다.</li></ul>
               <label class="inline-flex cursor-pointer items-center gap-2 text-[13px] text-body">
                 <input type="checkbox" x-model="legalEnabled" x-on:change="toggleLegal()" class="h-4 w-4 rounded border-black/15 bg-canvas text-violet">
                 법령 필터 포함
+              </label>
+              <!-- 품질 판정 단계: 품질 메타는 1차 개발 범위 밖(위키 277118998)이라 끌 수 있어야 한다.
+                   끄면 등급이 빈 값(판정 없음)으로 남는다 · 저장은 같은 /config 경로 -->
+              <label class="inline-flex cursor-pointer items-center gap-2 text-[13px] text-body">
+                <input type="checkbox" x-model="qualityStage" x-on:change="toggleQuality()" class="h-4 w-4 rounded border-black/15 bg-canvas text-violet">
+                품질 판정 단계 포함
               </label>
             </div>
           </div>

@@ -105,6 +105,10 @@ class Config:
     vision_provider: str = "upstage_ie"  # upstage_ie | bizrouter | timely
     vision_model: str = ""              # 라우터일 때 public id
     legal_enabled: bool = False         # 품질 1차 법령 필터 포함 여부(단건/일괄)
+    # 품질 판정 단계 실행 여부(단건/일괄). 기본 켬 = 현재 동작 유지.
+    # 끄면 품질 호출을 건너뛰고 등급을 빈 값('판정 없음')으로 둔다 · 품질 메타는
+    # 벨루가 내 DNM 1차 개발 범위 밖(위키 277118998 · 2026-09-22 수정).
+    quality_stage: bool = True
     golden_min_good: int = 1            # 골든 확정 최소 '정확' 인원(팀 규모에 맞게 상향 가능)
     # 아이템 메타 분리형 4호출(계약 기본). False 면 통합 1콜 폴백.
     meta_four_calls: bool = True

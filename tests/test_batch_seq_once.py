@@ -85,7 +85,7 @@ class TestRerunAllQueriesOnce(BatchSeqBase):
 class TestRunPipelineHonorsInjectedSeq(BatchSeqBase):
     def _fake_extract(self, serve):
         o_ext, o_make = serve.PIPE.extract, serve.make_text_llm
-        serve.PIPE.extract = lambda content, llm, legal=False: {
+        serve.PIPE.extract = lambda content, llm, legal=False, quality=True: {
             "item_meta": {"summary": "s"}, "quality_meta": {"finalGrade": "G"}, "trace": {}}
         serve.make_text_llm = lambda cfg, mock: _FakeLLM("m", mock=True)
         self.addCleanup(lambda: (setattr(serve.PIPE, "extract", o_ext),

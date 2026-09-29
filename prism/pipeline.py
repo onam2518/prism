@@ -13,13 +13,13 @@ __all__ = ["extract", "Methodology"]
 
 
 def extract(content_dict: dict, llm, *,
-            legal: bool = False, quality_split: bool = False,
+            legal: bool = False, quality: bool = True, quality_split: bool = False,
             slim: bool = False, emb=None, embed_categories: bool = True,
             quality_prefilter=None, prefilter_conf: float = 0.72,
             fewshot_pool=None, yellow: bool = False, yellow_low: float = 0.45) -> dict:
     """기존 호출 계약 보존. 선언 손잡이 → Methodology, 런타임 리소스(emb·prefilter·
     fewshot_pool)는 하네스에 주입."""
-    m = Methodology(legal=legal, quality_split=quality_split, slim=slim,
+    m = Methodology(legal=legal, quality=quality, quality_split=quality_split, slim=slim,
                     embed_categories=embed_categories, prefilter_conf=prefilter_conf,
                     yellow=yellow, yellow_low=yellow_low)
     return H.run(content_dict, llm, m, emb=emb,

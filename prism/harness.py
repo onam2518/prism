@@ -34,6 +34,10 @@ class Methodology:
     name: str = "default"
     version: str = "m1"
     legal: bool = False
+    # 품질 판정 단계 실행 여부. 품질 메타는 1차 개발 범위 밖(277118998 · 2026-09-22)이라
+    # 끌 수 있어야 한다. 끄면 품질 호출을 건너뛰고 등급을 빈 값('판정 없음')으로 둔다.
+    # 빈 값을 G 로 바꾸지 않는 fail-closed 원칙은 그대로다(유통은 Green 만).
+    quality: bool = True
     quality_split: bool = False
     embed_categories: bool = True
     yellow: bool = False
@@ -51,6 +55,7 @@ class Methodology:
 
     def to_dict(self) -> dict:
         return {"name": self.name, "version": self.version, "legal": self.legal,
+                "quality": self.quality,
                 "quality_split": self.quality_split, "embed_categories": self.embed_categories,
                 "yellow": self.yellow, "prefilter_conf": self.prefilter_conf,
                 "yellow_low": self.yellow_low, "slim": self.slim,
@@ -116,6 +121,10 @@ def st_quality(ctx: HCtx):
     """품질 메타(+ YELLOW: 저신뢰 → 사람 검수). 임베딩 사전필터 하이브리드 에스컬레이션."""
     m = ctx.methodology
     if ctx.qm is not None:            # 법령 RED 차단 표식이 이미 있다 → 품질 호출 생략
+        return
+    if not m.quality:                 # 품질 단계 off(1차 발행 범위 밖) → 등급 없음
+        ctx.qm = QualityMeta(finalGrade="", reasons=[])
+        ctx.fallbacks.append("quality 단계 off → 등급 판정 없음")
         return
     if ctx.routing.content_track == "image_only":
         ctx.qm = QualityMeta(finalGrade="G", reasons=[])

@@ -141,7 +141,7 @@ window.PRISM_APP_PARTS.push(() => ({
         return set.length ? '등록됨: ' + set.map((k) => nm[k]).join(' · ') : '';
       },
       models: [], modelsMsg: '',
-      reasoning: 'default', legalEnabled: false,
+      reasoning: 'default', legalEnabled: false, qualityStage: true,
       availableModels: [],
       visionCandidates: [],                   // 이미지 탭 시각 슬롯 선택지(/config visionCandidates)
       reasoningOpts: [{ id: 'low', label: 'Low' }, { id: 'default', label: 'Medium' }, { id: 'high', label: 'High' }],

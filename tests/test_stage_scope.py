@@ -85,5 +85,28 @@ class TestLegalRedKeepsItemMeta(unittest.TestCase):
         self.assertEqual(out["quality_meta"]["finalGrade"], "R")
 
 
+class TestQualityStageOff(unittest.TestCase):
+    """3-3: 품질 판정 단계를 끄면 등급은 빈 값('판정 없음') · 기본값은 현재 동작(켬)."""
+
+    def test_default_is_on(self):
+        from prism import harness as H
+        from prism.config import Config
+        self.assertTrue(H.Methodology().quality)
+        self.assertTrue(Config().quality_stage)
+
+    def test_grade_empty_and_no_quality_call(self):
+        from prism import harness as H
+        out = H.run(CONTENT, _mock_llm(), H.Methodology(quality=False))
+        self.assertEqual(out["quality_meta"]["finalGrade"], "")      # 빈 값 = 판정 없음
+        self.assertNotIn("quality", out["trace"]["by_call"])          # 품질 호출 생략
+        self.assertTrue(out["item_meta"]["entities"])                 # 아이템 메타는 그대로
+
+    def test_empty_grade_is_not_green(self):
+        """빈 등급을 G 로 채우는 fail-open 이 없어야 한다(검수·유통 공통 원칙)."""
+        from prism import harness as H
+        out = H.run(CONTENT, _mock_llm(), H.Methodology(quality=False))
+        self.assertNotEqual(out["quality_meta"]["finalGrade"], "G")
+
+
 if __name__ == "__main__":
     unittest.main()

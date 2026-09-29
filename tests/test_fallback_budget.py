@@ -40,7 +40,7 @@ class TestFallbackChain(unittest.TestCase):
         self._isolate_cfg({"fallback_models": ["backup-m"]})
         calls = []
 
-        def fake_extract(content, llm, legal=False):
+        def fake_extract(content, llm, legal=False, quality=True):
             calls.append(getattr(llm, "model", ""))
             if len(calls) == 1:                       # 1차(주 모델): 전량 빈값
                 return {"item_meta": {}, "quality_meta": {}, "trace": {"model": llm.model}}
@@ -66,7 +66,7 @@ class TestFallbackChain(unittest.TestCase):
         self._isolate_cfg({"fallback_models": ["backup-m"]})
         calls = []
 
-        def fake_extract(content, llm, legal=False):
+        def fake_extract(content, llm, legal=False, quality=True):
             calls.append(getattr(llm, "model", ""))
             return {"item_meta": {"summary": "정상"}, "quality_meta": {"finalGrade": "G"}, "trace": {}}
 
