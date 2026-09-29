@@ -307,18 +307,39 @@
           </span>
         </div>
           <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:10px"><li>정답은 <b>검수 '정확' 합의</b>가 학습 반영 때 누적 승격됩니다.</li><li>평가와 어긋나 <b>오류 의심 · 교정 필요</b> 표시된 항목은 확인 후 제거하세요(정답 오류는 모델 순위를 뒤집습니다).</li></ul>
+            <ul class="ds-bullets" style="margin-bottom:10px"><li>정답은 <b>검수 '정확' 합의</b>가 학습 반영 때 누적 승격됩니다.</li><li>평가와 어긋나 <b>오류 의심 · 교정 필요</b> 표시된 항목은 확인 후 제거하세요(정답 오류는 모델 순위를 뒤집습니다).</li><li>인텐트 후보가 <b>전 출처 공통 68개</b>로 바뀌어(2026-09-22) 기존 정답의 인텐트는 <b>재확정 필요</b> 표시가 붙고 확정 전까지 인텐트 측정에서 빠집니다. 폐기된 값이 남은 항목은 <b>재판정(폐기값)</b>으로 먼저 보이며, 행의 <b>인텐트 확정</b>으로 새 후보 기준으로 다시 고르면 측정에 포함됩니다.</li></ul>
+            <div class="flexrow" style="gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px" x-show="goldenList && goldenList.intent_review_counts">
+              <span class="text-xs text-muted tnum" x-text="'인텐트 재확정 · 필요 ' + ((goldenList.intent_review_counts||{}).needed||0) + '건 · 확정 ' + ((goldenList.intent_review_counts||{}).confirmed||0) + '건 · 폐기값 남은 행 ' + ((goldenList.intent_review_counts||{}).retired||0) + '건'"></span>
+              <button type="button" class="srcfilter__chip" x-bind:class="giOnly ? 'sel' : ''" x-bind:aria-pressed="giOnly ? 'true' : 'false'" x-on:click="giOnly = !giOnly">재확정 필요만 보기</button>
+              <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-bind:disabled="giBusy" x-on:click="giMigrate()" data-tip="폐기 인텐트 중 대응이 하나뿐인 값(생활·실용정보 → 실용 정보 · 음악 큐레이션 → 큐레이션·모음 · 차트·랭킹 → 랭킹·리스트)은 치환하고, 후보가 여럿인 값은 재판정 표시만 · 인텐트가 있는 정답 전체에 재확정 필요 표시 · 여러 번 눌러도 같은 결과" data-tip-pos="top" x-text="giBusy ? '정리 중…' : '폐기값 정리·재확정 표시 일괄 적용'"></button>
+              <span class="text-xs text-muted" aria-live="polite" x-text="giMsg"></span>
+            </div>
+            <div class="tile" style="margin-bottom:10px" x-show="giHash" x-cloak>
+              <div class="flexrow" style="gap:8px;align-items:center;flex-wrap:wrap"><b>인텐트 확정</b><span class="text-xs text-muted" x-text="giTitle"></span>
+                <span class="text-xs" style="color:var(--ds-warning-deep)" x-show="giRetired.length" x-text="'폐기값 ' + giRetired.map(v => v + ' → ' + (((dictData||{}).intentRetired||{})[v]||[]).join(' 또는 ')).join(' · ') + ' · 본문을 다시 보고 아래에서 고르세요'"></span></div>
+              <div class="flex flex-wrap gap-1.5" style="margin-top:8px" role="group" aria-label="인텐트 후보(공통 68)">
+                <template x-for="v in giCandidates" x-bind:key="'gi'+v"><button type="button" class="ds-badge" style="cursor:pointer;border:0;font-family:inherit" x-bind:class="giSel.indexOf(v) >= 0 ? 'ds-badge--intent' : 'ds-badge--neutral'" x-bind:aria-pressed="giSel.indexOf(v) >= 0 ? 'true' : 'false'" x-bind:data-tip="termDef('intent', v)" data-tip-pos="top" x-on:click="giToggle(v)" x-text="v"></button></template>
+              </div>
+              <div class="flexrow" style="gap:8px;align-items:center;margin-top:8px">
+                <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-bind:disabled="giBusy" x-on:click="giSave()">확정 저장</button>
+                <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="giHash=''">취소</button>
+                <span class="text-xs text-muted tnum" x-text="'선택 ' + giSel.length + '개 · 대표 값을 첫 번째에'"></span>
+              </div>
+            </div>
             <template x-if="goldenList && goldenList.items && goldenList.items.length">
               <div style="margin-top:12px">
-              <div class="overflow-auto" style="max-height:300px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:56px">등급</th><th>카테고리</th><th style="width:56px">버전</th><th style="width:74px">출처</th><th style="width:60px"></th></tr></thead><tbody>
+              <div class="overflow-auto" style="max-height:300px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:56px">등급</th><th>카테고리</th><th>인텐트</th><th style="width:56px">버전</th><th style="width:74px">출처</th><th style="width:130px"></th></tr></thead><tbody>
                 <template x-for="g in goldenShownList" x-bind:key="g.hash">
                   <tr>
                     <td><span x-text="g.title || '(제목 없음)'"></span> <span class="ds-badge ds-badge--error" style="cursor:help" x-show="g.flagged && !g.fix_needed" data-tip="최근 평가에서 모델과 불일치 · 정답 오류 후보" data-tip-pos="top">오류 의심</span> <span class="ds-badge ds-badge--warning" style="cursor:help" x-show="g.fix_needed" data-tip="평가 판정에서 '모델이 맞음' 합의 · 모델 결과가 맞다고 확정된 정답(제거 후 재등록 또는 검수 재확정 필요)" data-tip-pos="top">교정 필요</span></td>
                     <td><span class="ds-badge" style="cursor:help" x-bind:class="g.grade==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-bind:data-tip="termDef('grade', g.grade)" data-tip-pos="top" x-text="g.grade || '·'"></span></td>
                     <td><template x-for="c in (g.category||[])" x-bind:key="c"><span class="ds-badge ds-badge--category" style="cursor:help;margin:1px" x-bind:data-tip="termDef('category', c)" data-tip-pos="top" x-text="catKo(c)"></span></template></td>
+                    <td><template x-for="v in (g.intent||[])" x-bind:key="'gv'+g.hash+v"><span class="ds-badge" style="cursor:help;margin:1px" x-bind:class="(g.intent_retired||[]).indexOf(v) >= 0 ? 'ds-badge--error' : 'ds-badge--intent'" x-bind:data-tip="termDef('intent', v)" data-tip-pos="top" x-text="v"></span></template>
+                      <span class="ds-badge ds-badge--warning" style="margin:1px" x-show="g.intent_review === 'needed'" x-text="(g.intent_retired||[]).length ? '재판정(폐기값)' : '재확정 필요'"></span>
+                      <span class="ds-badge ds-badge--success" style="margin:1px" x-show="g.intent_review === 'confirmed'">확정</span></td>
                     <td class="tnum" x-text="g.version ? ('v' + g.version) : '·'"></td>
                     <td><span class="ds-badge ds-badge--neutral" x-text="g.source === 'manual' ? '직접' : '검수'"></span></td>
-                    <td><button type="button" class="copybtn" x-on:click="removeGolden(g.hash)">제거</button></td>
+                    <td><span style="display:inline-flex;gap:6px"><button type="button" class="copybtn" x-show="g.intent_review === 'needed'" x-on:click="giEdit(g)">인텐트 확정</button><button type="button" class="copybtn" x-on:click="removeGolden(g.hash)">제거</button></span></td>
                   </tr>
                 </template>
               </tbody></table></div>
