@@ -23,7 +23,7 @@
         <div class="stepline"><span class="stepline__no">STEP 1</span><b>스펙 선언</b><span class="meta">무엇을 원하는지 선언하면 · 계열별 공식 가이드에 맞춘 프롬프트로 컴파일</span></div>
         <section class="panel" data-fn><div class="panel-hd"><b>스펙 선언</b></div>
           <div class="panel-bd">
-            <div class="grid grid-cols-2 gap-4">
+            <div class="layout-grid--two">
               <div><div class="selctl__lbl" style="margin-bottom:4px">과업 (필수)</div><textarea class="field" style="width:100%;min-height:64px" x-model="bSpec.task" placeholder="예: 커머스 콘텐츠에서 리드문·엔티티를 추출하고 품질 등급을 판정한다"></textarea></div>
               <div><div class="selctl__lbl" style="margin-bottom:4px">역할</div><textarea class="field" style="width:100%;min-height:64px" x-model="bSpec.role" placeholder="예: 당신은 콘텐츠 메타 추출 전문가다"></textarea></div>
               <div><div class="selctl__lbl" style="margin-bottom:4px">배경 · 의도</div><textarea class="field" style="width:100%;min-height:64px" x-model="bSpec.background" placeholder="이 프롬프트가 왜 필요한지 · 어떤 데이터에 쓰이는지"></textarea></div>
@@ -36,7 +36,7 @@
         <div class="stepline"><span class="stepline__no">STEP 2</span><b>컴파일 설정 · 실행</b><span class="meta">어떤 두뇌로 설계하고 · 어느 계열용으로 만들지</span></div>
         <section class="panel" data-fn><div class="panel-hd"><b>컴파일 설정 · 실행</b></div>
           <div class="panel-bd">
-            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <div class="control-row">
               <span class="selctl" data-tip="스펙을 읽고 프롬프트를 설계하는 메타 모델 · 비워두면 현재 설정 모델" data-tip-pos="bottom"><span class="selctl__lbl">메타 컴파일러</span>
                 <x-modelpick key="bm" value="bSpec.meta_model" set="bSpec.meta_model=$v" options="availableModels" first-label="현재 설정 모델" first-value="" width="212px"></x-modelpick></span>
               <span class="selctl__lbl">대상 계열</span>
@@ -59,7 +59,7 @@
                   <!-- 테스트 실행: 적용 전 샘플 입력으로 산출 확인(형식 준수 여부가 관찰 대상) -->
                   <div style="margin-top:10px;border:1px solid var(--ds-hairline);border-radius:12px;padding:12px 14px">
                     <div class="selctl__lbl" style="margin-bottom:6px">테스트 실행 · 적용 전 확인</div>
-                    <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap">
+                    <div class="control-row" style="align-items:flex-start">
                       <textarea class="field" style="flex:1;min-width:240px;min-height:56px" x-model="bTestInput" placeholder="샘플 입력(콘텐츠 본문 등)을 붙여넣으세요"></textarea>
                       <span class="selctl" data-tip="컴파일된 프롬프트를 실제로 실행해 볼 모델" data-tip-pos="top"><span class="selctl__lbl">테스트 모델</span>
                         <x-modelpick key="bt" value="bTestModel" set="bTestModel=$v" options="availableModels" first-label="현재 설정 모델" first-value="" width="212px"></x-modelpick></span>
@@ -74,7 +74,7 @@
                     <span class="text-xs text-muted" x-show="bTestMsg" x-text="bTestMsg"></span>
                   </div>
                   <!-- 적용·저장 -->
-                  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
+                  <div class="control-row" style="margin-top:10px">
                     <span class="selctl__lbl">적용 · 저장</span>
                     <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="copyText(bResult.prompts[fam], bFamilyLabel(fam) + ' 프롬프트')">복사</button>
                     <span class="selctl"><span class="selctl__lbl">적용 대상 단계</span>
@@ -100,7 +100,7 @@
               <li>API 키는 <b>발급 순간 1회만</b> 표시됩니다(서버는 해시만 저장) · 유출 시 회수하고 새로 발급하세요.</li>
               <li>호출 예: <code class="tnum" x-text="'curl -H \'Authorization: Bearer pr_live_…\' ' + location.origin + '/api/v1/prompt?slug=<slug>'"></code></li>
             </ul>
-            <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+            <div class="control-row" style="align-items:flex-end">
               <span class="selctl"><span class="selctl__lbl">slug</span><input class="field" style="width:180px" x-model="newDep.slug" placeholder="ex) item-extract"></span>
               <span class="selctl"><span class="selctl__lbl">이름</span><input class="field" style="width:200px" x-model="newDep.name" placeholder="용도 설명"></span>
               <span class="selctl"><span class="selctl__lbl">버전 pin (0=최신)</span><input class="field tnum" style="width:110px" type="number" min="0" x-model="newDep.version"></span>
@@ -123,7 +123,7 @@
             <div class="text-xs text-muted" x-show="!deploys.length">아직 배포가 없습니다 · 위에서 slug 를 만들고 키를 발급하세요</div>
             <template x-for="d in deploys" x-bind:key="'dp'+d.id">
               <div style="border:1px solid var(--ds-hairline);border-radius:12px;padding:12px 14px;margin-bottom:10px">
-                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                <div class="control-row">
                   <b class="tnum" x-text="'/' + d.slug"></b>
                   <span class="text-xs text-muted" x-text="d.name"></span>
                   <span class="ds-badge ds-badge--neutral tnum" x-text="d.version ? ('v' + d.version + ' 고정') : '항상 최신'"></span>
@@ -160,7 +160,7 @@
               <li>빌더 결과·직접 작성한 프롬프트를 <b>패턴으로 저장</b>합니다 · 자주 쓰는 항목은 <b>핀</b>으로 위에 고정.</li>
               <li>항목은 복사해 쓰거나 <b>단계 원천 지시로 적용</b>할 수 있습니다(적용 경로는 사전·정책 · 메타 프롬프트 탭과 동일).</li>
             </ul>
-            <div class="grid grid-cols-2 gap-4">
+            <div class="layout-grid--two">
               <div><div class="selctl__lbl" style="margin-bottom:4px">이름 (필수)</div><input class="field" style="width:100%" x-model="libNew.name" placeholder="예: 커머스 등급 분류 v2"></div>
               <div><div class="selctl__lbl" style="margin-bottom:4px">도메인 · 용도</div><input class="field" style="width:100%" x-model="libNew.domain" placeholder="예: 검수 · 커머스"></div>
             </div>
@@ -178,7 +178,7 @@
             <div class="text-xs text-muted" x-show="!library.length">아직 저장된 패턴이 없습니다</div>
             <template x-for="it in library" x-bind:key="'lib'+it.id">
               <div style="border:1px solid var(--ds-hairline);border-radius:12px;padding:12px 14px;margin-bottom:10px">
-                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <div class="control-row">
                   <button type="button" class="copybtn" x-bind:style="it.pinned ? 'color:var(--ds-primary)' : ''" data-tip="핀 = 목록 상단 고정" data-tip-pos="top" x-on:click="pinLibrary(it)" x-text="it.pinned ? '★' : '☆'"></button>
                   <b x-text="it.name"></b>
                   <span class="ds-badge ds-badge--neutral" x-show="it.domain" x-text="it.domain"></span>

@@ -29,7 +29,7 @@
             <!-- 타이틀은 정적 텍스트 유지(헤드 데코레이터가 b.textContent 를 복사하므로 x-text 는 빈 타이틀이 된다) -->
             <div class="panel-hd"><b>토픽 생성하기</b><span class="meta">문장으로 말하면 조건이 채워집니다</span>
               <span class="ds-badge ds-badge--status" x-show="studio.editId" x-cloak>수정 중</span>
-              <span style="margin-left:auto;display:inline-flex;gap:6px;align-items:center">
+              <span class="panel-hd__controls control-row control-row--compact">
                 <button type="button" class="srcfilter__chip" x-bind:class="topicGenTab==='manual'&&!studioManual?'sel':''" x-on:click="topicGenTab='manual';studioManual=false">말로 만들기</button>
                 <button type="button" class="srcfilter__chip" x-bind:class="topicGenTab==='manual'&&studioManual?'sel':''" x-on:click="topicGenTab='manual';studioManual=true">조건 직접 손보기</button>
                 <button type="button" class="srcfilter__chip" x-bind:class="topicGenTab==='auto'?'sel':''" x-on:click="topicGenTab='auto'">자동 생성</button>
@@ -269,7 +269,7 @@
 
           </div>
           <div x-show="topicPage==='board'" class="space-y-4">
-          <div class="tiles" style="grid-template-columns:repeat(3,1fr)">
+          <div class="tiles tiles--3">
           <div class="tile"><div class="n tnum" x-text="topicData?(topicData.summary.custom||0):0"></div><div class="t">내 토픽(수동)</div></div>
           <div class="tile"><div class="n tnum" x-text="topicData?(topicData.summary.single||0):0"></div><div class="t">엔티티형(자동)</div></div>
           <div class="tile"><div class="n tnum" x-text="topicData?(topicData.summary.composite||0):0"></div><div class="t">사건형(자동)</div></div>
@@ -278,7 +278,7 @@
           <div class="panel"><div class="panel-hd"><b>토픽 현황</b>
               <span class="meta tnum" x-text="((topicData.custom||[]).length)+'개 수동 · '+(((topicData.single||[]).length)+((topicData.composite||[]).length))+'개 자동'"></span>
               <span class="ds-badge ds-badge--neutral tnum" style="cursor:help" x-show="topicData.snapshot && topicData.snapshot.last_ts" x-bind:data-tip="topicSnapTip()" data-tip-pos="bottom" x-text="'자동 리프레시 · ' + fmtTs(topicData.snapshot && topicData.snapshot.last_ts) + (topicData.snapshot && topicData.snapshot.delta && topicData.snapshot.delta.changed_n ? (' · 변화 ' + topicData.snapshot.delta.changed_n + '건') : ' · 변화 없음')"></span>
-              <span style="margin-left:auto;display:inline-flex;gap:6px;align-items:center">
+              <span class="panel-hd__controls control-row control-row--compact">
                 <input class="field" type="search" style="width:200px;padding:4px 10px" x-model="topicQuery" placeholder="이름 · 문장 · 엔티티로 찾기" aria-label="토픽 검색">
                 <button type="button" class="srcfilter__chip" x-bind:class="topicView==='all'?'sel':''" x-on:click="topicView='all'">전체</button>
                 <button type="button" class="srcfilter__chip" x-bind:class="topicView==='talk'?'sel':''" x-on:click="topicView='talk'">말로</button>

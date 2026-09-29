@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="ko" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Prism · 공통 배치 컴포넌트</title>
+  <link rel="stylesheet" href="../../prism/vendor/pretendard.css">
+  <link rel="stylesheet" href="../../prism/vendor/gmarket.css">
+  <link rel="stylesheet" href="../../prism/vendor/ds-theme.css">
+  <link rel="stylesheet" href="../../prism/vendor/ds-components.css">
+  <link rel="stylesheet" href="../../prism/vendor/app.css">
+  <link rel="stylesheet" href="../../prism/vendor/tw.css">
+  <style>
+    .catalog{max-width:1180px;margin:0 auto;padding:24px;display:grid;gap:24px}
+    .catalog__intro{display:grid;gap:8px}
+    .catalog__intro h1{font-size:24px;font-weight:700}
+    .catalog__intro p{color:var(--ds-muted)}
+    .catalog .panel{min-width:0}
+    .catalog__nested{margin-top:16px}
+    .catalog__empty{padding:24px;color:var(--ds-muted);text-align:center}
+    @media(max-width:600px){.catalog{padding:12px;gap:16px}}
+  </style>
+</head>
+<body>
+<main class="catalog">
+  <header class="catalog__intro">
+    <h1>공통 배치 컴포넌트</h1>
+    <p>실제 앱의 스타일을 사용하는 검수 페이지입니다. 창 너비를 바꾸며 외곽 정렬·컨트롤 크기·표 스크롤을 확인합니다.</p>
+    <div class="control-row"><button id="theme-toggle" class="ds-btn ds-btn--secondary" type="button" aria-pressed="false">다크 모드</button><span>표본 데이터 · 저장되지 않습니다</span></div>
+  </header>
+
+  <section class="panel" id="nested-panel">
+    <div class="panel-hd"><b>본문 안의 표</b><span class="meta">검색줄과 표 외곽을 같은 선에 정렬합니다</span></div>
+    <div class="panel-bd">
+      <div class="filterbar control-row" data-align="nested">
+        <input class="field" type="search" aria-label="표본 검색" placeholder="이름·별칭 검색">
+        <select class="field" aria-label="표본 상태" style="width:auto"><option>전체 상태</option><option>검토 중</option></select>
+        <button class="ds-btn ds-btn--primary ds-btn--s-sm" type="button">검색</button>
+        <button class="ds-btn ds-btn--secondary" type="button" disabled>처리 중…</button>
+      </div>
+      <div class="overflow-auto" data-table="nested"><table class="ds-table"><thead><tr><th>항목</th><th>상태</th><th>건수</th></tr></thead><tbody><tr><td>플랫폼 콘텐츠</td><td><span class="ds-badge ds-badge--success">완료</span></td><td class="tnum">1,248</td></tr><tr><td>긴 이름과 여러 단어로 구성한 검수 대상</td><td><span class="ds-badge ds-badge--warning">검토 중</span></td><td class="tnum">37</td></tr></tbody></table></div>
+      <div class="tile catalog__nested"><div class="control-row control-row--compact" data-align="tile"><span>타일 내부 표</span><button type="button" class="ds-btn ds-btn--secondary">새로고침</button></div><div class="overflow-auto" data-table="tile"><table class="ds-table ds-table--compact"><thead><tr><th>항목</th><th>결과</th></tr></thead><tbody><tr><td>중첩 여백</td><td>컨테이너 한 곳에서 관리</td></tr></tbody></table></div></div>
+    </div>
+  </section>
+
+  <section class="panel" id="direct-panel">
+    <div class="panel-hd"><b>패널 직속 표</b><span class="meta">본문이 없는 구조도 같은 외곽 기준을 사용합니다</span></div>
+    <div class="filterbar control-row control-row--compact" data-align="direct"><input class="field" aria-label="직속 표 검색" placeholder="검색"><button class="ds-btn ds-btn--secondary" type="button">조회</button></div>
+    <div class="overflow-auto" data-table="direct"><table class="ds-table ds-table--compact"><thead><tr><th>권한</th><th>조회</th><th>편집</th></tr></thead><tbody><tr><td>팀 관리자</td><td>가능</td><td>가능</td></tr><tr><td>검수자</td><td>가능</td><td>담당 항목</td></tr></tbody></table></div>
+  </section>
+
+  <section class="panel"><div class="panel-hd"><b>반응형 통계</b><span class="meta">최소 가독 폭을 확보하며 열수를 줄입니다</span></div><div class="panel-bd"><div class="tiles tiles--6" id="stats">
+    <div class="tile"><div class="n tnum">12,481</div><div class="t">총 개체</div></div>
+    <div class="tile"><div class="n tnum">87.4%</div><div class="t">등급 일치율</div></div>
+    <div class="tile"><div class="n tnum">1,248</div><div class="t">검수 완료</div></div>
+    <div class="tile"><div class="n tnum">37</div><div class="t">보강 대기</div></div>
+    <div class="tile"><div class="n tnum">2,183</div><div class="t">콘텐츠 링크</div></div>
+    <div class="tile"><div class="n tnum">0.1284</div><div class="t">누적 비용</div></div>
+  </div></div></section>
+
+  <div class="layout-grid--two" id="two-column">
+    <section class="panel"><div class="panel-hd"><b>입력 상태</b></div><div class="panel-bd"><label class="lbl" for="example-name">이름</label><input class="field" id="example-name" value="플랫폼 기획"><label class="lbl" for="example-note" style="margin-top:16px">설명</label><textarea class="field" id="example-note">긴 설명도 줄바꿈하여 표시합니다.</textarea></div></section>
+    <section class="panel"><div class="panel-hd"><b>빈 상태</b></div><div class="panel-bd catalog__empty">아직 등록한 항목이 없습니다.</div></section>
+  </div>
+
+  <section class="panel"><div class="panel-hd"><b>복합 선택 컨트롤</b><span class="meta">테두리까지 포함한 바깥 높이를 맞춥니다</span></div><div class="panel-bd">
+    <div class="control-row" id="compound-controls"><span class="selctl"><span class="selctl__lbl">용도</span><select class="field" aria-label="표본 용도"><option>평가</option><option>학습</option></select></span><button class="srcfilter__chip" type="button">콘텐츠 필터</button><button class="ds-btn ds-btn--secondary" type="button">적용</button></div>
+    <div class="control-row control-row--compact catalog__nested" id="compound-compact"><span class="selctl"><span class="selctl__lbl">상태</span><select class="field" aria-label="축소 표본 상태"><option>완료</option><option>대기</option></select></span><button class="srcfilter__chip" type="button">담당 항목</button><button class="ds-btn ds-btn--secondary" type="button">조회</button></div>
+    <div class="control-row catalog__nested"><input class="ds-field" aria-label="디자인 시스템 기본 입력" placeholder="공용 입력 컴포넌트"><button class="ds-btn ds-btn--secondary" type="button">확인</button></div>
+  </div></section>
+
+  <section class="panel"><div class="panel-hd"><b>모델별 비교</b><span class="meta">모델 열은 같은 너비로 표시하고 표 안에서 가로 스크롤합니다</span></div><div class="panel-bd">
+    <div class="control-row"><label for="model-count">모델 수</label><select id="model-count" class="field" style="width:auto"><option>2</option><option>4</option><option selected>6</option></select></div>
+    <div class="overflow-auto" id="compare-scroll"><table class="ds-table model-compare-table" id="comparison"></table></div>
+  </div></section>
+</main>
+<script>
+  const comparison = document.getElementById('comparison');
+  function renderComparison() {
+    const n = Number(document.getElementById('model-count').value);
+    comparison.style.setProperty('--compare-model-count', n);
+    comparison.innerHTML = '<colgroup><col class="model-compare-label"><col span="' + n + '"></colgroup><thead><tr><th>항목</th>' + Array.from({length:n}, (_,i) => '<th>model-' + (i+1) + '-긴이름-한국어-2026-09</th>').join('') + '</tr></thead><tbody><tr><td>등급 일치율</td>' + Array.from({length:n}, (_,i) => '<td><span class="abbar"><span class="abbar__track"><span class="abbar__fill" style="width:' + (87-i) + '%"></span></span><b class="tnum">' + (87-i) + '%</b></span></td>').join('') + '</tr><tr><td>상태</td>' + Array.from({length:n}, () => '<td><span class="ds-badge ds-badge--success">완료</span></td>').join('') + '</tr></tbody>';
+  }
+  document.getElementById('model-count').addEventListener('change', renderComparison);
+  document.getElementById('theme-toggle').addEventListener('click', function () {
+    const dark = document.documentElement.dataset.theme !== 'dark';
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    this.setAttribute('aria-pressed', String(dark));
+    this.textContent = dark ? '라이트 모드' : '다크 모드';
+  });
+  renderComparison();
+</script>
+</body>
+</html>

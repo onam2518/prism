@@ -48,14 +48,15 @@
     padding:6px 9px;color:var(--ds-body);font-size:12.5px;line-height:1.5;word-break:keep-all;overflow-wrap:break-word}
   .tbox .nm{display:block;font-weight:600;color:var(--ds-ink);margin-bottom:1px}
   .ds-table td{vertical-align:top}
-  /* 패널 내부 표 = 카드 안쪽에 '독립된 둥근 표 블록'으로 분리(카드 레이어와 겹침 방지).
-     사방 여백 + 자체 테두리·라운드 + overflow 클립으로 표 선이 카드 모서리에 닿지 않게. */
-  .panel .overflow-auto:has(> .ds-table){margin:2px var(--ds-pad-inset,16px) var(--ds-pad-inset,16px);border:1px solid var(--ds-hairline);
+  /* 표 외곽은 본문과 같은 선에 둔다. 본문 내부에서는 부모 패딩을 쓰고,
+     패널 직속 표만 패널 좌우 패딩을 margin으로 받는다. */
+  .panel .overflow-auto:has(> .ds-table){margin:2px 0 var(--ds-pad-inset,16px);border:1px solid var(--ds-hairline);
     border-radius:var(--ds-radius-control);overflow:auto;background:var(--ds-surface-white)}
+  .panel > .overflow-auto:has(> .ds-table){margin-left:var(--ds-pad-panel-x,20px);margin-right:var(--ds-pad-panel-x,20px)}
   .panel .overflow-auto:has(> .ds-table) .ds-table th{border-top:0}
   .panel .overflow-auto:has(> .ds-table) .ds-table tbody tr:last-child td{border-bottom:0}
-  .panel .ds-table th:first-child,.panel .ds-table td:first-child{padding-left:14px}
-  .panel .ds-table th:last-child,.panel .ds-table td:last-child{padding-right:var(--ds-space-3)}
+  .panel .ds-table th:first-child,.panel .ds-table td:first-child{padding-left:var(--ds-table-cell-x,14px)}
+  .panel .ds-table th:last-child,.panel .ds-table td:last-child{padding-right:var(--ds-table-cell-x,14px)}
   .panel .ds-table tbody tr{border-radius:var(--ds-radius-sm)}
   /* 표 안에서는 박스 테두리 제거(행 구분선과 이중선으로 겹쳐 보임) → 옅은 배경만으로 값 구분 */
   .ds-table td .tbox{margin:0;border:0;background:var(--ds-surface);border-radius:7px;padding:6px 10px}
@@ -125,10 +126,13 @@
   .abslot{padding:8px 12px 8px 8px;gap:var(--ds-space-2);border-radius:14px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
   .abslot .selctl__tag{height:28px;min-width:28px;border-radius:9px;font-size:13px}
   .abslot .field{height:32px;font-weight:600}
+  /* 그룹 자체가 행 높이를 차지한다. 내부 필드는 테두리를 뺀 높이를 쓴다. */
+  .control-row .selctl{height:var(--control-row-h);box-sizing:border-box;padding-top:0;padding-bottom:0}
+  .control-row .selctl .field:not(textarea){height:calc(var(--control-row-h) - 2px)}
   .abvs{font-size:12px;font-weight:800;color:var(--ds-muted);letter-spacing:.04em}
   .keyline{display:flex;align-items:center;gap:10px;padding:9px 0;flex-wrap:wrap}
   .keyline + .keyline{border-top:1px solid var(--ds-hairline-soft,rgba(0,0,0,.06))}
-  .stepline{display:flex;align-items:center;gap:10px;margin:2px 2px 0;min-height:32px}
+  .stepline{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:2px 2px 0;min-height:32px}
   .stepline__no,.stepcard__no{font-family:var(--ds-font-game);font-size:11px;font-weight:700;color:#fff;
     background:var(--ds-primary);border-radius:var(--ds-radius-chip);padding:4px 11px;letter-spacing:.03em;flex:none}
   .stepline b{font-family:var(--ds-font-game);font-size:15px;font-weight:700;color:var(--ds-ink);letter-spacing:-.01em}
@@ -165,8 +169,10 @@
   .abbar--b .abbar__fill{background:var(--ds-warning)}
   .abwin{font-size:10.5px;font-weight:800;color:var(--ds-success)}
   .filterbar{display:flex;gap:var(--ds-space-2);flex-wrap:wrap;align-items:center;margin-bottom:10px}
-  .panel .filterbar{margin-left:var(--ds-pad-inset,16px);margin-right:var(--ds-pad-inset,16px)}   /* 표 인셋과 좌우 정렬(단일 원천: --ds-pad-inset) */
-  .filterbar .field{height:36px}
+  .panel .filterbar{margin-left:0;margin-right:0}
+  .panel > .filterbar{margin-left:var(--ds-pad-panel-x,20px);margin-right:var(--ds-pad-panel-x,20px)}
+  .filterbar .field{height:var(--ds-control-height,36px)}
+  input.field--compact,select.field--compact{height:var(--ds-control-height-compact,32px)}
   .filterbar input.field{flex:1;min-width:180px}
   .ds-table td{vertical-align:middle}
   .ds-badge[data-tip]{cursor:help}   /* 정의 있는 배지 = help 커서 통일 */
@@ -307,7 +313,11 @@
     transition:transform .16s var(--ds-ease-standard),box-shadow .16s var(--ds-ease-standard)}
   .ds-stat:hover{transform:translateY(-2px);box-shadow:0 10px 22px -12px rgba(0,0,0,.20)}
   .ds-stat__value--accent{text-shadow:0 0 18px color-mix(in srgb,var(--ds-primary) 28%,transparent)}
-  .panel-hd{display:flex;align-items:center;gap:var(--ds-space-3);padding:18px var(--ds-pad-panel-x,20px) 13px;border-bottom:1px solid var(--ds-hairline-soft)}
+  .panel-hd{display:flex;align-items:center;flex-wrap:wrap;gap:var(--ds-space-3);padding:18px var(--ds-pad-panel-x,20px) 13px;border-bottom:1px solid var(--ds-hairline-soft)}
+  .panel-hd>.ds-widget__title,.panel-hd>b,.panel-hd>.meta,.stepline>b,.stepline>.meta{min-width:0;max-width:100%;overflow-wrap:anywhere}
+  .panel-hd>.ds-widget__actions{flex-wrap:wrap;max-width:100%}
+  .panel-hd__controls{display:flex;align-items:center;flex-wrap:wrap;gap:var(--ds-control-gap,8px);margin-left:auto;min-width:0;max-width:100%}
+  .panel-hd>.ds-widget__title span{white-space:normal;overflow:visible}
   .panel-bd{padding-top:var(--ds-space-4)}   /* 헤더 구분선 아래 본문 */
   .panel-hd>b{margin-right:auto}
   /* 콘텐츠 상세 스플릿뷰(공통 컴포넌트) */
@@ -467,7 +477,10 @@
   .stepcard__badge{margin-left:auto}
 
   /* 인포그래픽 · 타일·분포바·도넛 */
-  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  /* 최대 열 수를 유지하되 한 칸이 최소 너비보다 좁아지면 자동으로 다음 행에 배치한다. */
+  .tiles{--ds-tile-cols:4;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,max(var(--ds-stat-min-width,140px),calc((100% - (var(--ds-tile-cols) - 1) * var(--ds-stat-gap,10px)) / var(--ds-tile-cols)))),1fr));gap:var(--ds-stat-gap,10px)}
+  .tiles--3{--ds-tile-cols:3}.tiles--5{--ds-tile-cols:5}.tiles--6{--ds-tile-cols:6}
+  .tiles>.tile{min-width:0;overflow-wrap:anywhere}
   .tile{border-radius:var(--ds-radius-md);padding:15px 16px;background:var(--ds-surface);border:1px solid var(--ds-border-card);box-shadow:0 1px 2px rgba(0,0,0,.04),0 6px 14px -8px rgba(0,0,0,.1)}
   .tile .n{font-size:23px;font-weight:600;color:var(--ds-ink);line-height:1.1;letter-spacing:-.01em}
   .tile .t{margin-top:3px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ds-muted)}
@@ -954,16 +967,18 @@
   .panel-hd>.ds-widget__title{margin-right:auto;font-size:16.5px;font-weight:700;letter-spacing:-.015em}
   .panel-hd>.ds-widget__title span{font-size:inherit;font-weight:inherit}
   .panel-hd>.ds-widget__actions,.ds-widget__head>.ds-widget__actions{margin-left:auto}
-  /* ⑨ 패널 내부 좌측 정렬선 통일(18px) · 타이틀·본문·표·행이 한 선에 정렬
-     패널 직속 표(셀패딩 12)·행(0)은 타이틀(18)보다 왼쪽이라 18로 보정 panel-bd 안은 이미 18. */
-  .panel > .drow{padding-left:18px;padding-right:18px}
-  .panel > .overflow-auto > .ds-table tr > :first-child,
-  .panel > .ds-table tr > :first-child{padding-left:18px}
-  .panel > .overflow-auto > .ds-table tr > :last-child,
-  .panel > .ds-table tr > :last-child{padding-right:18px}
+  /* ⑨ 제목·본문·표 외곽은 패널 패딩에 정렬, 표 셀은 공통 14px 패딩을 쓴다. */
+  .panel > .drow{padding-left:var(--ds-pad-panel-x,20px);padding-right:var(--ds-pad-panel-x,20px)}
+  .panel > .ds-table{width:calc(100% - var(--ds-pad-panel-x,20px) * 2);margin-left:var(--ds-pad-panel-x,20px);margin-right:var(--ds-pad-panel-x,20px)}
   .panel > .overflow-auto, .panel > .ds-table{margin-top:10px}
-  .ds-table th{padding:11px 14px 12px}
-  .ds-table td{padding:12px 14px}
+  .ds-table th{padding:11px var(--ds-table-cell-x,14px) var(--ds-table-cell-y,12px)}
+  .ds-table td{padding:var(--ds-table-cell-y,12px) var(--ds-table-cell-x,14px)}
+  /* Comparison columns share one fixed layout; a narrow viewport scrolls the wrapper. */
+  .model-compare-table{table-layout:fixed;width:100%;min-width:calc(180px + var(--compare-model-count,1) * 200px)}
+  .model-compare-table .model-compare-label{width:180px}
+  .model-compare-table th,.model-compare-table td{box-sizing:border-box;overflow-wrap:anywhere}
+  .model-compare-table tr>:first-child{position:sticky;left:0;z-index:1;background:var(--ds-surface-white)}
+  .model-compare-table thead tr>:first-child{z-index:2}
   .ds-table thead tr{border-bottom:1px solid var(--ds-divider-section, rgba(0,0,0,0.08))}
 
 /* ── 플로팅 버튼 두 개(정책 도움말 ? · 검수 보조 캐릭터) ─────────────────────

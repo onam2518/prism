@@ -43,7 +43,7 @@
                 <li>콘텐츠 정보(그룹·제목·본문)와 이미지를 함께 넣고 <b>시각 이해 방식</b>을 고른 뒤 실행하면, 본문과 이미지 신호를 합쳐 <b>리드문·인텐트·엔티티·IAB</b>를 추출합니다.</li>
                 <li>이미지 여러 장은 하나의 콘텐츠로 통합합니다 · 결과 확인 후 <b>콘텐츠로 등록</b>하면 검수 대상이 됩니다.</li>
               </ul>
-              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+              <div class="control-row" style="align-items:flex-end">
                 <div style="flex:0 0 200px;min-width:160px"><label class="lbl">콘텐츠 그룹</label>
                   <select class="field" x-model="mediaImg.group">
                     <template x-for="g in groups" x-bind:key="g"><option x-bind:value="g" x-text="g"></option></template>
@@ -73,7 +73,7 @@
                   <div class="mediaup__thumb"><img x-bind:src="t" alt=""><button type="button" title="제거" x-on:click="mediaImgDrop(i)">×</button></div>
                 </template>
               </div>
-              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+              <div class="control-row" style="align-items:flex-end">
                 <div style="flex:1;min-width:220px"><label class="lbl">원문 링크 (선택)</label>
                   <input class="field" x-model="mediaImg.url" placeholder="https:// 원문 주소">
                 </div>
@@ -113,7 +113,7 @@
                 <li>영상을 올리면 프레임+오디오를 한 번에 토큰화해 통합 원고를 만들고 <b>리드문·인텐트·엔티티·IAB</b>를 추출합니다 · 결과 확인 후 <b>콘텐츠로 등록</b>하면 검수 대상이 됩니다.</li>
                 <li><b>자막을 붙여넣으면 영상 모델 호출 없이 자막으로 원고를 만듭니다(비용 0).</b></li>
               </ul>
-              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+              <div class="control-row" style="align-items:flex-end">
                 <div style="flex:0 0 200px;min-width:160px"><label class="lbl">콘텐츠 그룹</label>
                   <select class="field" x-model="mediaVid.group">
                     <template x-for="g in groups" x-bind:key="g"><option x-bind:value="g" x-text="g"></option></template>
@@ -126,7 +126,7 @@
                   </div>
                 </div>
               </div>
-              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+              <div class="control-row" style="align-items:flex-end">
                 <div style="flex:1;min-width:200px"><label class="lbl">캡션·설명 (선택)</label>
                   <input class="field" x-model="mediaVid.caption" placeholder="기존 텍스트 메타(제목·설명)와 결합">
                 </div>

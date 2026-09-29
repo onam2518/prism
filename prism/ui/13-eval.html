@@ -3,12 +3,12 @@
         <div class="w-full space-y-4">
           <section class="panel" data-fn><div class="panel-hd"><b>평가 기준</b><span class="meta">어떤 모델·버전을 어떤 콘텐츠로 잴지 먼저 정합니다</span></div>
             <div class="panel-bd">
-              <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+              <div class="control-row">
                 <span class="selctl"><span class="selctl__lbl">기준 모델</span>
                   <x-modelpick key="ev" value="evalModel" set="evalModel=$v" groups="textGroups" first-label="현재 설정 모델" first-value="" width="212px" tip="정답셋과 비교할 대상 모델 · 직접(Solar)·라우터 전체에서 고름 · 비워두면 현재 설정 모델 · 미연결 제공자는 키 등록 후 선택"></x-modelpick></span>
                 <span class="text-xs text-muted" x-show="modelsMsg" x-text="modelsMsg"></span>
                 <span class="selctl" data-tip="프롬프트 버전 = 학습 반영 회차 + 1 · 평가는 항상 현재 버전으로 실행됩니다" data-tip-pos="bottom"><span class="selctl__lbl">프롬프트 버전</span>
-                  <b class="tnum" style="padding:0 8px;font-size:13px;height:30px;display:inline-flex;align-items:center" x-text="verTxt"></b>
+                  <b class="tnum" style="padding:0 8px;font-size:13px;display:inline-flex;align-items:center" x-text="verTxt"></b>
                   <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="downloadPrompt({ model: String(evalModel || '').split('|').pop() })" data-tip="지금 평가에 쓰이는 프롬프트를 호출마다 파일 하나(① ~ ④ + ⑤ 품질) 로 zip 에 담아 내려받습니다 · 기준 모델 기준" data-tip-pos="bottom">내려받기</button></span>
                 <span style="display:flex;gap:6px;align-items:center;margin-left:6px"><span class="selctl__lbl">대상 콘텐츠</span>
                   <button type="button" class="srcfilter__chip" x-bind:class="evalScope==='all' ? 'sel' : ''" x-on:click="evalScope='all'">전체 정답셋</button>
@@ -32,7 +32,7 @@
                 <div>
                   <!-- 결과 카드화: 산개한 숫자·막대를 타일과 박스로 묶어 시선 고정 -->
                   <div class="text-xs text-muted" style="margin-top:12px" x-show="goldenResult.basis">기준: <b class="text-ink" x-text="goldenResult.basis ? (goldenResult.basis.model || '현재 설정 모델') : ''"></b> · <span class="tnum" x-text="goldenResult.basis ? ('v' + goldenResult.basis.version) : ''"></span> · <span x-text="goldenResult.basis && goldenResult.basis.scope === 'eval' ? '평가용 콘텐츠' : '전체 정답셋'"></span></div>
-                  <div class="tiles" style="grid-template-columns:repeat(4,1fr);margin-top:10px">
+                  <div class="tiles" style="margin-top:10px">
                     <div class="tile tile--hero"><div class="n tnum" x-text="Math.round((goldenResult.grade_accuracy||0)*100)+'%'"></div><div class="t">등급 일치율<span class="tnum" x-text="goldenResult.grade_ci ? (' · 신뢰구간 ' + pctTxt(goldenResult.grade_ci.lo) + '~' + pctTxt(goldenResult.grade_ci.hi)) : ''"></span></div></div>
                     <div class="tile"><div class="n tnum" x-text="Math.round((goldenResult.reason_jaccard||0)*100)+'%'"></div><div class="t">사유 일치</div></div>
                     <div class="tile"><div class="n tnum" x-text="goldenResult.harm_miss_rate!=null ? pctTxt(goldenResult.harm_miss_rate) : '·'"></div><div class="t">유해 놓침<span class="tnum" x-text="goldenResult.harm_miss_rate==null ? ' · 측정 불가(기대 R 0건)' : (goldenResult.harm_expected_n ? (' · 기대 R ' + goldenResult.harm_expected_n + '건') : '')"></span></div></div>
@@ -63,7 +63,7 @@
                     <div class="t" style="margin:0 0 8px">루브릭 진단(4축 · LLM 심사) · 낮은 축이 프롬프트 개선 우선순위</div>
                     <template x-if="goldenResult.rubric && goldenResult.rubric.n">
                       <div>
-                        <div class="tiles" style="grid-template-columns:repeat(4,1fr)">
+                        <div class="tiles">
                           <div class="tile"><div class="n tnum" x-text="(goldenResult.rubric.accuracy||0)+'/5'"></div><div class="t" style="cursor:help" data-tip="기대 정답(등급·사유)과 의미가 일치하는가" data-tip-pos="top">정확성</div></div>
                           <div class="tile"><div class="n tnum" x-text="(goldenResult.rubric.format||0)+'/5'"></div><div class="t" style="cursor:help" data-tip="등급 라벨·사유 코드·요약 구조를 지켰는가" data-tip-pos="top">형식</div></div>
                           <div class="tile"><div class="n tnum" x-text="(goldenResult.rubric.policy||0)+'/5'"></div><div class="t" style="cursor:help" data-tip="유해(R) 콘텐츠를 놓치지 않았는가" data-tip-pos="top">정책</div></div>
@@ -86,9 +86,9 @@
                           <td class="text-ink"><span x-text="d.title || '(제목 없음)'"></span><div class="text-xs text-muted" x-show="d.rubric_note" x-text="'심사: ' + d.rubric_note"></div></td>
                           <td><span class="ds-badge" style="cursor:help" x-bind:class="d.expected==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-bind:data-tip="termDef('grade', d.expected)" data-tip-pos="top" x-text="d.expected"></span></td>
                           <td><span class="ds-badge" style="cursor:help" x-bind:class="d.got==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-bind:data-tip="termDef('grade', d.got)" data-tip-pos="top" x-text="d.got"></span></td>
-                          <td><span style="display:inline-flex;gap:6px">
-                            <button type="button" class="verdictbtn verdictbtn--good" style="height:26px;padding:0 10px;font-size:11px" x-bind:class="myEvalVote(d)==='adopt' ? 'is-on' : ''" data-tip="모델 결과가 맞아요 · 정답을 고칠 후보로 올립니다" data-tip-pos="top" x-on:click="evalJudge(d, 'adopt')">모델이 맞음</button>
-                            <button type="button" class="verdictbtn verdictbtn--bad" style="height:26px;padding:0 10px;font-size:11px" x-bind:class="myEvalVote(d)==='reject' ? 'is-on' : ''" data-tip="기존 정답이 맞아요 · 모델 오답으로 확정합니다" data-tip-pos="top" x-on:click="evalJudge(d, 'reject')">정답 유지</button>
+                          <td><span class="control-row control-row--compact">
+                            <button type="button" class="verdictbtn verdictbtn--good"  x-bind:class="myEvalVote(d)==='adopt' ? 'is-on' : ''" data-tip="모델 결과가 맞아요 · 정답을 고칠 후보로 올립니다" data-tip-pos="top" x-on:click="evalJudge(d, 'adopt')">모델이 맞음</button>
+                            <button type="button" class="verdictbtn verdictbtn--bad"  x-bind:class="myEvalVote(d)==='reject' ? 'is-on' : ''" data-tip="기존 정답이 맞아요 · 모델 오답으로 확정합니다" data-tip-pos="top" x-on:click="evalJudge(d, 'reject')">정답 유지</button>
                           </span></td>
                           <td><span class="text-xs text-muted tnum" x-text="'모델이 맞음 ' + ((d.judge&&d.judge.adopt)||0) + ' · 정답 유지 ' + ((d.judge&&d.judge.reject)||0)"></span>
                             <span class="ds-badge ds-badge--warning" style="cursor:help;margin-left:6px" x-show="evalConsensus(d)==='adopt'" data-tip="'모델이 맞음' 합의 · 정답 교정 필요(정답셋 관리 · 정답셋 목록에 '교정 필요'로 표시)" data-tip-pos="top">교정 필요</span>
@@ -124,7 +124,7 @@
                       </td>
                       <td class="tnum" x-text="r.grade_accuracy != null ? Math.round(r.grade_accuracy*100)+'%' : '·'"></td>
                       <td>
-                        <template x-if="r.kind==='eval'"><span style="display:inline-flex;gap:6px">
+                        <template x-if="r.kind==='eval'"><span class="control-row control-row--compact">
                           <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="openEvalRun(r.id)">보기</button>
                           <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" data-tip="이 런이 시작 시점에 실제로 쓴 프롬프트(zip · 호출별 파일) · 기록 기능 이전 런은 없음" data-tip-pos="top" x-on:click="downloadPrompt({ run: r.id })">프롬프트</button>
                           <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="r.status==='running' && !r.stalled" x-on:click="cancelEvalRun(r.id)">중단</button>
@@ -132,11 +132,11 @@
                           <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="r.status==='done'" x-bind:class="cmpRunA===r.id ? 'is-on' : ''" data-tip="이 런을 비교 기준(개선 전)으로 지정합니다" data-tip-pos="top" x-on:click="setCmpBase(r.id)" x-text="cmpRunA===r.id ? '기준 ✓' : '기준'"></button>
                           <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-show="r.status==='done' && cmpRunA && cmpRunA!==r.id" x-bind:disabled="evalCmpBusy" data-tip="기준 런 대비 이 런의 개선/회귀를 판정합니다" data-tip-pos="top" x-on:click="compareRuns(r.id)">비교</button>
                         </span></template>
-                        <template x-if="r.kind==='pilot'"><span style="display:inline-flex;gap:6px">
+                        <template x-if="r.kind==='pilot'"><span class="control-row control-row--compact">
                           <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="r.version" data-tip="이 라운드가 만든 프롬프트(zip · 호출별 파일) 내려받기" data-tip-pos="top" x-on:click="downloadPrompt({ v: r.version })" x-text="'프롬프트 v' + r.version"></button>
                           <span class="text-xs text-muted" x-show="!r.version">프롬프트 기록 없음</span>
                         </span></template>
-                        <template x-if="r.kind==='compare'"><span style="display:inline-flex;gap:6px">
+                        <template x-if="r.kind==='compare'"><span class="control-row control-row--compact">
                           <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" data-tip="아래 모델별 비교 표에서 이 회차를 다시 봅니다" data-tip-pos="top" x-on:click="cmpHistKey=r.key; cmpResult=null; loadCompareLast(r.key)">보기</button>
                           <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="r.version" data-tip="비교 시작 시점 프롬프트(zip · 호출별 파일) 내려받기" data-tip-pos="top" x-on:click="downloadPrompt({ v: r.version })" x-text="'프롬프트 v' + r.version"></button>
                         </span></template>
@@ -177,7 +177,7 @@
                 <li>한 라운드 = <b>학습 반영</b>(검수 피드백 → 프롬프트 보정) 후 같은 정답셋으로 <b>재평가</b> · 점수가 나빠지면 그 라운드 보정은 반영하지 않습니다(자동 원복).</li>
                 <li>종료 조건: <b>목표 달성</b> · <b>개선 정체</b>(2라운드 연속 향상 없음) · <b>최대 라운드</b> · 수동 중지 · 라운드마다 실모델 호출 비용이 듭니다.</li>
               </ul>
-              <div x-show="!(pilot && pilot.status==='running' && !pilot.stalled)" class="flexrow" style="gap:10px;align-items:center;flex-wrap:wrap">
+              <div x-show="!(pilot && pilot.status==='running' && !pilot.stalled)" class="control-row">
                 <span class="selctl"><span class="selctl__lbl">평가 모델</span>
                   <x-modelpick key="ap" value="pilotModel" set="pilotModel=$v" groups="textGroups" first-label="기본 설정 모델" first-value="" width="212px" tip="라운드마다 이 모델로 정답셋을 재평가합니다 · 비워두면 기본 텍스트 슬롯(설정) · 미연결 제공자는 키 등록 후 선택"></x-modelpick></span>
                 <span class="selctl"><span class="selctl__lbl">목표 일치율</span>
@@ -203,7 +203,7 @@
                       <div class="ds-progress__track" role="progressbar"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="pilotStep.total ? ('width:' + Math.max(Math.round(pilotStep.done / pilotStep.total * 100), 2) + '%') : ''"></div></div>
                     </div>
                   </template>
-                  <div class="tiles" x-show="pilot.start_accuracy!=null || pilot.last_accuracy!=null" style="grid-template-columns:repeat(3,1fr);margin-top:10px">
+                  <div class="tiles tiles--3" x-show="pilot.start_accuracy!=null || pilot.last_accuracy!=null" style="margin-top:10px">
                     <div class="tile"><div class="n tnum" x-text="pilot.start_accuracy!=null ? Math.round(pilot.start_accuracy*100)+'%' : '·'"></div><div class="t">시작 일치율</div></div>
                     <div class="tile"><div class="n tnum" x-text="pilot.last_accuracy!=null ? Math.round(pilot.last_accuracy*100)+'%' : '·'"></div><div class="t">현재 일치율</div></div>
                     <div class="tile tile--hero"><div class="n tnum" x-text="pilot.best_accuracy!=null ? Math.round(pilot.best_accuracy*100)+'%' : '·'"></div><div class="t">최고 일치율</div></div>
@@ -264,7 +264,7 @@
           <!-- 모델별 비교: 같은 정답셋을 여러 모델(최대 6개)에 동시 실호출 → 지표표 · 건별 비교표 · 최종 모델 선정 -->
           <section class="panel"><div class="panel-hd"><b>모델별 비교</b><span class="meta">같은 정답셋으로 여러 모델을 동시에 실호출 · 나란히 보고 최종 모델을 고릅니다</span></div>
             <div class="panel-bd">
-              <div class="filterbar" style="margin:0 0 12px;flex-wrap:wrap;gap:8px">
+              <div class="filterbar control-row" style="margin-bottom:12px">
                 <template x-for="(slot, si) in cmpModels" x-bind:key="'cs'+si">
                   <span class="selctl abslot"><span class="selctl__tag" x-bind:style="'background:' + cmpColor(si)" x-text="cmpTag(si)"></span><span class="selctl__lbl">모델</span>
                     <x-modelpick key="cm" value="cmpModels[si]" set="cmpModels[si]=$v" groups="textGroups" first-label="선택…" first-value="" width="212px" tip="직접(Solar)·라우터 전체에서 고름 · 미연결 제공자는 키 등록 후 선택 · 목록이 오래됐으면 '모델 새로고침'"></x-modelpick>
@@ -279,12 +279,12 @@
                   <template x-for="hh in cmpHist" x-bind:key="hh.key"><option x-bind:value="hh.key" x-text="fmtTs(hh.ts) + ' · ' + (hh.models||[]).join(', ') + ' · ★' + (hh.best||'')"></option></template>
                 </select>
                 <span class="text-xs text-muted" x-show="cmpResult && !cmpResult.ok" x-text="cmpResult ? cmpResult.error : ''"></span>
-                <span class="text-xs text-muted" x-show="cmpResult && cmpResult.ok && cmpResult.ts" x-text="'마지막 비교 ' + fmtTs(cmpResult.ts) + ' · 정답 ' + cmpResult.golden_n + '건'"></span>
-                <button type="button" class="copybtn tnum" x-show="cmpResult && cmpResult.ok && cmpResult.prompt_snapshot_version" x-on:click="downloadPrompt({ v: cmpResult.prompt_snapshot_version })" x-text="'프롬프트 v' + cmpResult.prompt_snapshot_version + ' 내려받기'" data-tip="비교 시작 시점 프롬프트 버전(zip · 호출별 파일) · 도중에 학습이 반영되면 결과가 다른 버전 기준일 수 있어요" data-tip-pos="top"></button>
+                <span class="text-xs text-muted" x-show="cmpResult && cmpResult.ok && cmpResult.ts" x-text="cmpResult ? ('마지막 비교 ' + fmtTs(cmpResult.ts) + ' · 정답 ' + cmpResult.golden_n + '건') : ''"></span>
+                <button type="button" class="copybtn tnum" x-show="cmpResult && cmpResult.ok && cmpResult.prompt_snapshot_version" x-on:click="downloadPrompt({ v: cmpResult.prompt_snapshot_version })" x-text="cmpResult ? ('프롬프트 v' + cmpResult.prompt_snapshot_version + ' 내려받기') : ''" data-tip="비교 시작 시점 프롬프트 버전(zip · 호출별 파일) · 도중에 학습이 반영되면 결과가 다른 버전 기준일 수 있어요" data-tip-pos="top"></button>
               </div>
               <template x-if="cmpResult && cmpResult.ok && cmpCols.length">
                 <div>
-                  <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:150px">항목</th>
+                  <div class="overflow-auto"><table class="ds-table model-compare-table" x-bind:style="'--compare-model-count:' + cmpCols.length"><colgroup><col class="model-compare-label"><col x-bind:span="cmpCols.length"></colgroup><thead><tr><th>항목</th>
                     <template x-for="(m,mi) in cmpCols" x-bind:key="'ch'+mi"><th><span class="selctl__tag" x-bind:style="'background:' + cmpColor(mi)" x-text="cmpTag(mi)"></span> <span x-text="m.model"></span> <span class="ds-badge ds-badge--success" x-show="m.model===cmpResult.best">★ best</span> <span class="ds-badge ds-badge--intent" style="cursor:help" x-show="m.model===cmpResult.cheapest_passing" x-bind:data-tip="'등급 일치율 ' + pctTxt(cmpResult.eval_gate) + ' 이상 합격 모델 중 비용이 가장 낮아요'" data-tip-pos="top">합격 최저 비용</span></th></template>
                   </tr></thead><tbody>
                     <tr><td class="text-ink">호출</td><template x-for="(m,mi) in cmpCols" x-bind:key="'cr'+mi"><td><span class="ds-badge" x-bind:class="m.real ? 'ds-badge--neutral' : 'ds-badge--warning'" x-bind:data-tip="m.real ? '실제 API 호출 결과' : '모의 응답 · API 키를 설정하면 실호출됩니다'" data-tip-pos="top" style="cursor:help" x-text="m.real ? (m.route||'실호출') : 'mock'"></span></td></template></tr>
