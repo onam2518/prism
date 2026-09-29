@@ -2,6 +2,8 @@
    로더(app.js)가 파일명 순으로 디스크립터 병합(게터 보존) · 조각 간 this 공유. */
 window.PRISM_APP_PARTS = window.PRISM_APP_PARTS || [];
 window.PRISM_APP_PARTS.push(() => ({
+      _entityNames(values) { return (values || []).map(v => typeof v === 'string' ? v : (v && v.name) || '').filter(v => typeof v === 'string' && v); },
+      _categoryPaths(values) { return (values || []).map(v => typeof v === 'string' ? v : [v && v.tier1, v && v.tier2].filter(Boolean).join(' / ')).filter(Boolean); },
       // 분배 결과 요약: {reviewer_id: n} → "이름 n건 · 이름 n건"
       bulkPerTxt(per) {
         return Object.entries(per || {}).map(([id, n]) => ((this.assignMembers.find((m) => m.id === id) || {}).name || id) + ' ' + n + '건').join(' · ');
@@ -86,9 +88,9 @@ window.PRISM_APP_PARTS.push(() => ({
         const pick = (d) => ({
           '등급': (d.quality_meta||{}).finalGrade || '·',
           '품질 사유': ((d.quality_meta||{}).reasons||[]).join(' · ') || '·',
-          '카테고리': ((d.item_meta||{}).content_category||[]).join(' · ') || '·',
+          '카테고리': this._categoryPaths((d.item_meta||{}).content_category).join(' · ') || '·',
           '인텐트': ((d.item_meta||{}).intent||[]).join(' · ') || '·',
-          '엔티티': ((d.item_meta||{}).entities||[]).join(' · ') || '·',
+          '엔티티': this._entityNames((d.item_meta||{}).entities).join(' · ') || '·',
           '리드문': (d.item_meta||{}).summary || '·',
         });
         const L = pick(p.l), R = pick(p.r);

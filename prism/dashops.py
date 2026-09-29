@@ -6,6 +6,7 @@
 컴포지션: 스토어·결과 뷰·집계 캐시는 serve 가 `_SV` 로 주입(learnops 관례).
 """
 from __future__ import annotations
+from . import meta_contract as MC
 
 import json
 import os
@@ -282,10 +283,10 @@ def _dashboard_compute(team=None) -> dict:
         for t in dict.fromkeys(im.get("intent") or []):
             intent_c[t] = intent_c.get(t, 0) + 1
         for top in dict.fromkeys((v or "").split("/")[0].strip()
-                                 for v in (im.get("content_category") or [])):
+                                 for v in (MC.category_paths(im.get("content_category")) or [])):
             if top:
                 cat_c[top] = cat_c.get(top, 0) + 1
-        ent_total += len(im.get("entities") or [])
+        ent_total += len(MC.entity_names(im.get("entities")) or [])
         s = im.get("summary") or ""
         if s:
             lead_sum += len(s); lead_n += 1
@@ -338,7 +339,7 @@ def drill_contents(kind: str, value: str, team=None, reviewer: str = "") -> dict
             hit = value in (im.get("intent") or [])
         elif kind == "category":
             hit = any((v or "").split("/")[0].strip() == value or (v or "").strip() == value
-                      for v in (im.get("content_category") or []))
+                      for v in (MC.category_paths(im.get("content_category")) or []))
         elif kind == "reason":
             hit = value in (qm.get("reasons") or [])
         else:
@@ -386,10 +387,10 @@ def build_results_csv(team=None) -> bytes:
         im = r.get("item_meta") or {}
         qm = r.get("quality_meta") or {}
         c = r.get("content_ref") or {}
-        cat = " · ".join(im.get("content_category") or [])
+        cat = " · ".join(MC.category_paths(im.get("content_category")) or [])
         out.append(",".join(esc(x) for x in [
             c.get("title", ""), c.get("displayServiceName", ""), im.get("summary", ""),
-            " · ".join(im.get("entities") or []), " · ".join(im.get("intent") or []),
+            " · ".join(MC.entity_names(im.get("entities")) or []), " · ".join(im.get("intent") or []),
             cat, qm.get("finalGrade", ""), " · ".join(qm.get("reasons") or []),
             "제한" if qm.get("ops_hold") else "",
             c.get("item_unique_key"), source_prefix(c.get("item_unique_key")),

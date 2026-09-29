@@ -75,6 +75,7 @@
 앞단은 `serve.py` 의 `/assist`(gate=team) 하나. 팀은 세션에서 해석한 값만 들어온다.
 """
 from __future__ import annotations
+from . import meta_contract as MC
 
 from . import dictionaries as D
 from . import feedback_loop as FL      # 교정 요소 id·한글 라벨 단일 원천(검수 화면과 같은 사전)
@@ -295,8 +296,8 @@ def _values(row: dict) -> dict:
         "review_reason": str(qm.get("review_reason", "") or ""),
         "confidence": qm.get("confidence"),
         "intent": _names(im.get("intent")),
-        "content_category": _names(im.get("content_category")),
-        "entities": _names(im.get("entities")),
+        "content_category": _names(MC.category_paths(im.get("content_category"))),
+        "entities": _names(MC.entity_names(im.get("entities"))),
         "summary": str(im.get("summary", "") or ""),
         "topic": str(im.get("topic", "") or ""),
     }

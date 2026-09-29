@@ -55,7 +55,7 @@ class TestBaseExclusion(unittest.TestCase):
         blocked, _ = TP._feed_blocked(TP._content_dims(rows, set()), {})
         self.assertEqual(blocked, {1, 2, 4, 5})                 # 3(모름)은 통과 · 유료광고 포함도 제외
         off, _ = TP._feed_blocked(TP._content_dims(rows, set()), {"base_excl": False})
-        self.assertEqual(off, set())                            # 문장으로만 해제
+        self.assertEqual(off, {1})                             # 삭제는 운영자 옵션으로 해제 불가
 
 
 class TestNegMarks(unittest.TestCase):

@@ -1,5 +1,6 @@
 """Verifier: 정합성·스키마·사전 화이트리스트 강제 (결정론, LLM 불필요)."""
 from . import dictionaries as D
+from . import meta_contract as MC
 
 
 def verify_quality(qm, active_metas: list) -> list:
@@ -43,7 +44,7 @@ def verify_item(im, content) -> list:
         return notes
 
     # entities: 상한 없음 · 핵심만(2026-07-08 정책 전환 · 프롬프트가 통제) — 빈 값만 정제
-    im.entities = [e for e in im.entities if isinstance(e, str) and e.strip()]
+    im.entities = MC.clean_entities(im.entities)
 
     # intent(분류값): 공통 68개 화이트리스트(2026-09-22 · 출처로 후보를 자르지 않는다)
     valid_intents = set(D.intent_categories())
@@ -58,7 +59,7 @@ def verify_item(im, content) -> list:
     # content_category: 콘텐츠 단위 N개(1312). Tier1 화이트리스트 강제·중복 제거
     clean_ec = []
     for cat in (im.content_category or []):
-        tier1 = str(cat).split("/")[0].strip()
+        tier1 = MC.category_path(cat).split("/")[0].strip()
         if tier1 in D.IAB_TIER1:
             if cat not in clean_ec:
                 clean_ec.append(cat)

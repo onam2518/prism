@@ -196,6 +196,29 @@ def source_prefix(item_unique_key) -> str:
     return k.split("-", 1)[0] if "-" in k else ""
 
 
+def source_key_status(value) -> str:
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return "missing"
+    if not isinstance(value, str) or value != value.strip() or "-" not in value:
+        return "invalid"
+    prefix, suffix = value.split("-", 1)
+    if not prefix or not suffix.strip():
+        return "invalid"
+    return "recognized" if prefix in SOURCE_PREFIXES else "unregistered"
+
+
+def input_auxiliary(d):
+    if isinstance(d.get("input_aux"), dict):
+        return d["input_aux"]
+    if "image_count" in d:
+        return {"image_count": {"provided": True, "value": d["image_count"]}}
+    key = "image_urls" if "image_urls" in d else "images" if "images" in d else None
+    if key:
+        return {"image_count": {"provided": True,
+                               "value": None if d[key] is None else len(normalize_image_urls(d[key]))}}
+    return {"image_count": {"provided": False}}
+
+
 @dataclass
 class Content:
     """입력 4필드 고정. 4필드 외는 받지도 추론하지도 않는다.
@@ -214,6 +237,8 @@ class Content:
     # ponytail: 부재와 null 을 모두 None 으로 합친다 · 둘을 갈라야 하면 ref() 에서 부재 키를 빼는 쪽으로.
     item_unique_key: str | None = None
     service_code: str | None = None      # 'unknown' 도 원문 그대로(프리픽스에서 역추론 금지)
+    input_aux: dict | None = None
+    source_fields: dict | None = None  # 원천 필드의 미제공/null/빈 문자열과 원문을 보존
     cp_type: str | None = None
 
     @classmethod
@@ -231,6 +256,9 @@ class Content:
             item_unique_key=_raw_key(d.get("item_unique_key")),
             service_code=_raw_key(d.get("service_code")),
             cp_type=_raw_key(d.get("cp_type")),
+            input_aux=input_auxiliary(d),
+            source_fields=(dict(d["source_fields"]) if isinstance(d.get("source_fields"), dict) else
+                           {k: d[k] for k in ("item_unique_key", "service_code", "cp_type", "displayServiceName") if k in d}),
         )
 
     def body_hash(self) -> str:
@@ -248,6 +276,10 @@ class Content:
             "item_unique_key": self.item_unique_key,
             "service_code": self.service_code,
             "cp_type": self.cp_type,
+            "source_key_status": source_key_status((self.source_fields or {}).get("item_unique_key", self.item_unique_key)),
+            "input_aux": self.input_aux,
+            "source_fields": self.source_fields if self.source_fields is not None else {
+                k: getattr(self, k) for k in ("item_unique_key", "service_code", "cp_type")},
         }
 
 
@@ -303,6 +335,10 @@ class ItemMeta:
     # 별개 상태다 — 품질 Yellow 는 콘텐츠 자체 판정이고 입력 필요는 추출 재료 부족(2026-09-08 정책).
     # 검수 큐 라우팅이 이 값을 직접 보고, 검수자가 채우면 항목이 빠진다.
     hold_fields: list = field(default_factory=list)
+    meta_status: dict = field(default_factory=dict)
+    input_revision: str = ""
+    response_schema_version: str = "common-meta-v2"
+    run_manifest: dict = field(default_factory=dict)
 
 
 @dataclass

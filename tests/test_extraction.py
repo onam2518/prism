@@ -118,7 +118,7 @@ class TestFourCallExtraction(unittest.TestCase):
                          "item_intent": {"intent": ["속보·단신"]},
                          "item_category": {"content_category": ["Business and Finance / Economy"]}})
         AG.META_CFG = {"four_calls": True, "call_models": {}}
-        im, _ = AG.run_item(llm, self._content(title="", body=""), parallel=True)
+        im, _ = AG.run_item(llm, self._content(title="단문", body=""), parallel=True)
         self.assertEqual((im.summary, im.entities, im.intent), ("", ["개체"], ["속보·단신"]))
         self.assertEqual(im.content_category, ["Business and Finance / Economy"])
 
@@ -129,7 +129,7 @@ class TestFourCallExtraction(unittest.TestCase):
                          "item_intent": {"intent": ["속보·단신"]},
                          "item_category": {"content_category": ["Business and Finance / Economy"]}})
         AG.META_CFG = {"four_calls": True, "call_models": {}}
-        im, _ = AG.run_item(llm, self._content(title="", body=""))
+        im, _ = AG.run_item(llm, self._content(title="단문", body=""))
         self.assertEqual(llm.calls, ["item_summary", "item_entities", "item_intent", "item_category"])
         self.assertEqual((im.summary, im.entities, im.intent), ("", ["개체"], ["속보·단신"]))
         self.assertEqual(im.hold_fields, [])                        # 빈 문자열 = 정당한 신호 · 보류 아님

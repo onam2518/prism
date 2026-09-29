@@ -468,9 +468,9 @@ class TestFormatRetryPolicy(LLMFakeBase):
             raise L.urllib.error.HTTPError("u", 503, "busy", {}, None)
         slept = self._patch_http(fake)
         _obj, res = llm.complete_json("sys", "user", tag="quality")
-        self.assertEqual(state["n"], 5)                # 최초 + max_retries(4)
-        self.assertEqual(len(slept), 4)
-        self.assertEqual(res.retries, 4)
+        self.assertEqual(state["n"], 3)                # 최초 + max_retries(2)
+        self.assertEqual(len(slept), 2)
+        self.assertEqual(res.retries, 2)
 
 
 # ── [L7] 유해 미탐률 분모 ───────────────────────────────────────────────────
@@ -748,7 +748,7 @@ class TestGoldExamplesCache(unittest.TestCase):
     def test_content_matches_gold_constant(self):
         from prism import meta_prompts as MP
         txt = MP.gold_examples("entities")
-        self.assertIn(MP.GOLD[0]["entities"][0], txt)
+        self.assertIn(MP.GOLD[0]["entities"][0]["name"], txt)
 
 
 if __name__ == "__main__":

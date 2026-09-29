@@ -82,13 +82,12 @@ LLM_FOR_CALL = None
 
 def _call_llm(main_llm, call: str):
     mid = ((META_CFG.get("call_models") or {}).get(call) or "").strip()
-    if mid and LLM_FOR_CALL is not None:
-        try:
+    if mid:
+        if LLM_FOR_CALL is not None:
             alt = LLM_FOR_CALL(mid)
             if alt is not None:
                 return alt
-        except Exception:
-            pass
+        raise ValueError("configured call model is unavailable")
     return main_llm
 
 
@@ -126,6 +125,7 @@ def _run_item_calls(llm, content, parallel: bool = False) -> tuple[ItemMeta, lis
     parallel=True(방법론 옵션): 네 호출 동시 실행 · 트레이스는 ①②③④ 순으로 적재해 결정론 유지."""
     import re as _re
     from . import dictionaries as D
+    from . import meta_contract as MC
 
     def _aslist(v):                                # 규칙 보정: 문자열 단일값 → 리스트(재요청 절감)
         if isinstance(v, str) and v.strip():
@@ -135,13 +135,50 @@ def _run_item_calls(llm, content, parallel: bool = False) -> tuple[ItemMeta, lis
     def _canon(x):                                 # 규칙 보정: '속보 · 단신' 등 공백 변형 흡수
         return _re.sub(r"\s*·\s*", "·", str(x).strip())
 
+    if not (content.title.strip() or content.body.strip()):
+        return ItemMeta(hold_fields=list(MC.FIELDS),
+                        meta_status={k: "insufficient_input" for k in MC.FIELDS}), []
+    import hashlib
+    import json
+    input_snapshot = {c: P.call_user(c, content) for c in CALL_ORDER}
+    input_snapshot["input_aux"] = content.input_aux
+    revision = hashlib.sha256(json.dumps(input_snapshot, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+    manifest = {"input_revision": revision, "input_aux": content.input_aux,
+                "response_schema_version": "common-meta-v2", "calls": {}}
+    statuses = {}
+    routes, systems, config_errors = {}, {}, set()
+    for call in CALL_ORDER:
+        try:
+            routes[call] = _call_llm(llm, call)
+            systems[call] = P.call_system(content, call, getattr(routes[call], "model", "") or "")
+        except Exception:
+            config_errors.add(call)
     sinks = {c: [] for c in CALL_ORDER}            # 호출별 트레이스(병렬이어도 적재 순서는 고정)
 
     def ask(call: str, tag: str, extra: str = "", require: str = "") -> dict:
         out = sinks[call]
-        c_llm = _call_llm(llm, call)
-        sysp = P.call_system(content, call, getattr(c_llm, "model", "") or "")
-        obj, res = c_llm.complete_json(sysp, P.call_user(call, content) + extra, tag=tag)
+        if call in config_errors:
+            statuses["content_category" if call == "category" else call] = "configuration_error"
+            out.append({"agent": f"ItemAgent:{call}", "fail": "configuration_error"})
+            return {"_fail": "configuration_error"}
+        c_llm = routes[call]
+        sysp = systems[call]
+        call_manifest = manifest["calls"].setdefault(call, {
+            "model": getattr(c_llm, "model", "") or "",
+            "prompt_sha256": hashlib.sha256(sysp.encode()).hexdigest(), "attempts": 0})
+        remaining = 3 - call_manifest["attempts"]
+        if remaining <= 0:
+            statuses["content_category" if call == "category" else call] = "invalid_output"
+            return {"_fail": "attempt_limit"}
+        # 네트워크/형식 재시도와 사전 보정 재요청에 같은 호출 예산을 적용한다.
+        if hasattr(c_llm, "cfg"):
+            import copy
+            c_llm = copy.copy(c_llm)
+            c_llm.cfg = copy.copy(c_llm.cfg)
+            c_llm.cfg.retry = copy.copy(c_llm.cfg.retry)
+            c_llm.cfg.retry.max_retries = min(c_llm.cfg.retry.max_retries, remaining - 1)
+        obj, res = c_llm.complete_json(sysp, input_snapshot[call] + extra, tag=tag)
+        call_manifest["attempts"] += 1 + int(getattr(res, "retries", 0) or 0)
         # 계약 키 부재를 실패로 승격: 파싱은 됐지만 계약을 안 지킨 응답(래핑·이름 변형)은
         # fail_kind 가 없어 하네스의 yellow 가드를 그대로 빠져나갔다 — 빈 메타가 review=auto 로
         # 유통되던 사각지대(2026-07-28 사고와 결과 동일). 빈 값(정당한 신호)과는 구분한다.
@@ -150,6 +187,9 @@ def _run_item_calls(llm, content, parallel: bool = False) -> tuple[ItemMeta, lis
             res.fail_kind = getattr(res, "fail_kind", None) or "contract_miss"
             if not getattr(res, "fail_detail", ""):
                 res.fail_detail = f"응답에 '{require}' 키 없음: {str(obj)[:120]}"
+        key = "content_category" if call == "category" else call
+        statuses[key] = ("call_failed" if obj.get("_fail") else "invalid_output" if miss
+                         else "success" if obj.get(require) else "no_value")
         out.append(res)
         out.append({"agent": f"ItemAgent:{call}", "model": getattr(c_llm, "model", "") or "",
                     "fail": obj.get("_fail") or (f"계약 키 없음: {require}" if miss else None)})
@@ -162,12 +202,19 @@ def _run_item_calls(llm, content, parallel: bool = False) -> tuple[ItemMeta, lis
     def call_summary():
         o = ask("summary", "item_summary", require="summary")
         s = o.get("summary")
-        return (s.strip() if isinstance(s, str) else ""), _failed(o, "summary")
+        if not isinstance(s, str) and not _failed(o, "summary"):
+            statuses["summary"] = "invalid_output"
+        return (s.strip() if isinstance(s, str) else ""), _failed(o, "summary") or not isinstance(s, str)
 
     # ② 엔티티(핵심만 · 개수 상한 없음 · 2026-07-08 수량 정책 전환)
     def call_entities():
         o = ask("entities", "item_entities", require="entities")
-        return [str(x).strip() for x in _aslist(o.get("entities")) if str(x).strip()], _failed(o, "entities")
+        raw = o.get("entities")
+        ents = MC.clean_entities(_aslist(raw))
+        bad = not isinstance(raw, list) or len(ents) < len(raw)
+        if bad and not _failed(o, "entities"):
+            statuses["entities"] = "invalid_output"
+        return ents, _failed(o, "entities") or bad
 
     # ③ 인텐트: 사전 표기 정확 일치만 통과, 전량 드롭이면 1회 재요청
     def call_intent():
@@ -199,29 +246,35 @@ def _run_item_calls(llm, content, parallel: bool = False) -> tuple[ItemMeta, lis
                                                 + (" (전량 드롭 → 재요청 1회)" if retried else ""),
                                     "drop": {"call": "intent", "values": dropped[:10],
                                              "service": content.displayServiceName, "retried": retried}})
-        return intent, _failed(o, "intent")
+        bad = bool(raw and not intent) or not isinstance(o.get("intent"), (list, str))
+        if bad and not _failed(o, "intent"):
+            statuses["intent"] = "invalid_output"
+        return intent, _failed(o, "intent") or bad
 
     # ④ 콘텐츠 카테고리: 사전 경로 정규화(스냅), 전량 드롭이면 1회 재요청
     def call_category():
         o = ask("category", "item_category", require="content_category")
-        raw = [str(x) for x in _aslist(o.get("content_category")) if str(x).strip()]
-        cats = D.normalize_category_list(raw)
+        raw = _aslist(o.get("content_category"))
+        cats = MC.clean_categories(raw)
         retried = False
         if raw and not cats:
             retried = True
             o = ask("category", "item_category", require="content_category",
                     extra=_retry_hint("직전 응답의 콘텐츠 카테고리", raw,
                                       [f"{t1} / …" for t1 in sorted(D.IAB_TIER1)]))
-            raw = [str(x) for x in _aslist(o.get("content_category")) if str(x).strip()]
-            cats = D.normalize_category_list(raw)
-        dropped = [x for x in raw if not D.normalize_category_list([x])]
+            raw = _aslist(o.get("content_category"))
+            cats = MC.clean_categories(raw)
+        dropped = [str(x) for x in raw if not MC.clean_categories([x])]
         if dropped:
             sinks["category"].append({"agent": "Verifier:category", "fail": None,
                                       "evidence": f"사전 스냅 실패 드롭 {len(dropped)}건: " + " · ".join(dropped[:5])
                                                   + (" (전량 드롭 → 재요청 1회)" if retried else ""),
                                       "drop": {"call": "category", "values": dropped[:10],
                                                "service": content.displayServiceName, "retried": retried}})
-        return cats, _failed(o, "content_category")
+        bad = bool(raw and not cats) or not isinstance(o.get("content_category"), (list, str))
+        if bad and not _failed(o, "content_category"):
+            statuses["content_category"] = "invalid_output"
+        return cats, _failed(o, "content_category") or bad
 
     runners = {"summary": call_summary, "entities": call_entities,
                "intent": call_intent, "category": call_category}
@@ -253,7 +306,7 @@ def _run_item_calls(llm, content, parallel: bool = False) -> tuple[ItemMeta, lis
     hold = [k for k, f in (("summary", f_sum), ("entities", f_ent),
                            ("intent", f_int), ("content_category", f_cat)) if f]
     return ItemMeta(summary=summary, entities=ents, intent=intent, content_category=cats,
-                    hold_fields=hold), results
+                    hold_fields=hold, meta_status=statuses, input_revision=revision, run_manifest=manifest), results
 
 
 def _num(v):

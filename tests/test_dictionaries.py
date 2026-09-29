@@ -37,7 +37,7 @@ class TestIngest(unittest.TestCase):
     def test_required_missing_raises(self):
         from prism.ingest import to_contents_rows
         with self.assertRaises(ValueError):
-            to_contents_rows([{"제목": "T"}])                          # body 없음
+            to_contents_rows([{"알수없음": "T"}])                       # 제목·본문 모두 없음
 
 
 class TestSchema(unittest.TestCase):

@@ -57,6 +57,7 @@ CALL_RULES = {
    판단 기준: "이 콘텐츠가 X에 관한 것인가, X를 인용한 것인가?"
 4. 남은 후보 중 대표성 없는 것을 제거하고 핵심 엔티티만 남긴다.
    개수 상한은 없다(콘텐츠가 요구하는 만큼) · 대표성 높은 순으로 정렬한다.
+- name은 원문에 근거한 대표 표기, type은 PS(사람)·OG(조직)·LC(장소)·AF(인공물)·EV(사건)·TM(용어) 중 하나다. 근거가 부족하면 type=null로 둔다.
 - 동명이인은 고려하지 않는다. 표기 정규화·개체 연결은 적재 단계 소관.""",
     "intent": """# 절차
 1. 제목·본문이 나타내는 소비 맥락을 아래 공통 사전의 분류값에 매핑한다.
@@ -99,8 +100,8 @@ CALL_RULES = {
     핵심 전달 수단이면 그쪽만, 촬영 사진이 핵심이고 그래픽이 보조면 '포토·영상 중심'만 부여한다.
   · '인터뷰'와는 병기 가능하되, 직접 촬영으로 읽히는 사진이 함께 전달의 축일 때만 병기한다.
     제공 사진·자료 사진만 붙은 인터뷰는 '인터뷰'만 부여한다.
-- 보도자료·공식발표: 공식 채널의 발표·보도자료는 광고성으로 엄격히 보지 말고 '보도자료·공식발표'를
-  우선 부여한다(260715 회의 · 광고성 판정은 검수 단계 소관).
+- 보도자료·공식발표는 공식 발표를 전달하는 형식으로 판별한다. 공식 출처라는 이유로 광고성을
+  배제하거나 우선순위를 바꾸지 않는다. 상업적 구매·가입 유도 여부를 별도로 판단한다.
 - 칼럼은 사설을 포함한다(사설·칼럼 통합 운영 · 260715 회의). 화자 관점이 강한 해설·주장은 '칼럼'으로 부여.
 - 사설/칼럼은 '의견·논쟁'(관점이 뚜렷하면 '반박·비판' 또는 '옹호·지지')을 우선 부여하고,
   본문이 사설·칼럼 형식이면 '칼럼'을 함께 부여한다(출처와 무관하게 본문 형식으로 판정).
@@ -136,9 +137,9 @@ CALL_ROLES = {
 
 CALL_SCHEMAS = {
     "summary": '{"summary": string}  (생성 불가 시 빈 문자열)',
-    "entities": '{"entities": string[]}  (핵심만 · 대표 첫 번째)',
+    "entities": '{"entities": [{"name": string, "type": "PS"|"OG"|"LC"|"AF"|"EV"|"TM"|null}]}  (핵심만 · 대표 첫 번째)',
     "intent": '{"intent": string[]}  (대표 첫 번째 · 목록 외 값 금지)',
-    "category": '{"content_category": string[]}  ("Tier 1 / Tier 2" 표기만 · 대표 첫 번째)',
+    "category": '{"content_category": [{"tier1": string, "tier2": string|null}]}  (사전 표기 · 대표 첫 번째)',
 }
 
 CALL_SELF_CHECK = {
@@ -152,38 +153,52 @@ CALL_SELF_CHECK = {
 # 예시 입력은 title·body 만 적는다(2026-09-22 · 511247058 '입력·출력 예시' · 371131847 호출 ②·④ 예시).
 # 종전에는 displayServiceName="뉴스" 로 시작해, 규칙에서 서비스 분기를 걷어내도 예시가 서비스명을
 # 판정 근거처럼 다시 보여 줬다. 예시 내용·기대 출력은 그대로 두고 입력 표기만 바꿨다.
-GOLD = [
-    {"in": 'title="\'나는 유로파의 제왕이 아니다\'… \'UEL 통산 4회 우승\' 에메리 감독의 겸손, \'빌라와 함께 우승한다\'"',
-     "summary": "아스톤 빌라의 우나이 에메리 감독이 UEFA 유로파리그 결승전을 앞두고 과거 통산 4회 우승의 '유로파리그 왕' 별명을 부인하며, 빌라와 함께 프라이부르크를 꺾고 30년 만의 메이저 트로피를 차지하겠다는 각오를 기자회견을 통해 밝힌 내용을 전한다.",
-     "entities": ["우나이 에메리", "아스톤 빌라", "유로파리그"],
-     "intent": ["인터뷰", "경기 프리뷰"],
-     "category": ["Sports / Soccer (International)"],
-     "note": "감독 인터뷰는 범용② '인터뷰' · 해외 감독·대회 → Soccer (International)"},
-    {"in": 'title="삼성전자 노사 협상 끝내 결렬, 노조 21일부터 총파업" · body="중앙노동위원회 2차 사후조정 최종회의에서 노사가 합의에 이르지 못하고 협상이 결렬됐다. 노동조합은 다음 날인 21일부터 총파업에 돌입하기로 결정했다."',
-     "summary": "삼성전자 노사가 중앙노동위원회 2차 사후조정 최종회의에서 끝내 합의에 이르지 못하고 협상이 결렬됨에 따라, 노동조합이 다음 날인 21일부터 총파업에 돌입하기로 결정한 사실을 속보로 전한다.",
-     "entities": ["삼성전자", "총파업", "중앙노동위원회"],
-     "intent": ["속보·단신", "노동·사회 이슈"],
-     "category": ["Business and Finance / Industries", "News and Politics / Society"],
-     "note": "엔티티 후보 8개 중 정제(협상·결렬=행위어, 노사·사후조정=일반어) · 기업 엔티티의 노사 맥락 → Industries 대표"},
-    {"in": 'title="고령운전자 급가속 사고 막는다…페달 오조작 방지장치 2차 보급 본격화"',
-     "summary": "경찰청·손해보험협회·한국교통안전공단이 고령운전자 페달 오조작 사고 예방을 위해 전국 7개 광역시 759명을 대상으로 방지장치 설치를 완료하고, 오는 6월부터 주행 데이터 기반 효과 검증에 돌입하는 2차 보급사업의 추진 현황과 정책 배경을 전한다.",
-     "entities": ["페달 오조작 방지장치", "고령운전자", "손해보험협회"],
-     "intent": ["정책·행정", "노동·사회 이슈"],
-     "category": ["News and Politics / Politics", "News and Politics / Society"],
-     "note": "자동차 안전 '정책·보급사업' → Politics 대표(Automotive 아님) · 고령운전자=인구 그룹 → Society 부가"},
-    {"in": 'title="Z세대 \'집보다 새 차가 더 현실적\'…자동차 관심 없다는 통념 깨져"',
-     "summary": "마쓰다 설문조사 결과를 바탕으로 Z세대가 주택 구매보다 신차 구매를 우선시하며, 첨단 안전 사양·직관적 기술·프리미엄 오디오 시스템을 핵심 평가 기준으로 삼아 차량을 디지털 라이프스타일이 결합된 공간으로 인식하는 세대별 소비 트렌드를 분석한다.",
-     "entities": ["Z세대", "마쓰다", "신차"],
-     "intent": ["심층 분석", "트렌드·시장 분석"],
-     "category": ["Automotive / Auto Type"],
-     "note": "설문 인용 기관(마쓰다)이지만 조사 주체·소재로 본문 핵심 → 포함 · 차종·신차 맥락 대표 → Auto Type"},
-    {"in": 'title="성폭행 의혹 제기 美 의원, 캘리포니아 주지사 출마 포기(종합)"',
-     "summary": "성폭행 의혹이 제기된 미국 민주당 하원의원 에릭 스월웰이 캘리포니아 주지사 선거 출마를 포기한 사실과 당내 파장을 전한다.",
-     "entities": ["에릭 스월웰", "캘리포니아", "민주당"],
-     "intent": ["속보·사건 추적", "사건 경과 보도"],
-     "category": ["News and Politics / Politics", "News and Politics / Crime"],
-     "note": "모호 엔티티(의혹·선거)는 본문 맥락으로 분기 · 주지사 선거 대표 → Politics, 성폭행 의혹 → Crime 부가"},
-]
+GOLD = [{'in': 'title="\'나는 유로파의 제왕이 아니다\'… \'UEL 통산 4회 우승\' 에메리 감독의 겸손, \'빌라와 함께 우승한다\'"',
+  'summary': "아스톤 빌라의 우나이 에메리 감독이 UEFA 유로파리그 결승전을 앞두고 과거 통산 4회 우승의 '유로파리그 왕' 별명을 부인하며, 빌라와 함께 프라이부르크를 꺾고 30년 "
+             '만의 메이저 트로피를 차지하겠다는 각오를 기자회견을 통해 밝힌 내용을 전한다.',
+  'entities': [{'name': '우나이 에메리', 'type': 'PS'},
+               {'name': '아스톤 빌라', 'type': 'OG'},
+               {'name': '유로파리그', 'type': 'EV'}],
+  'intent': ['인터뷰', '경기 프리뷰'],
+  'category': [{'tier1': 'Sports', 'tier2': 'Soccer (International)'}],
+  'note': "감독 인터뷰는 범용② '인터뷰' · 해외 감독·대회 → Soccer (International)"},
+ {'in': 'title="삼성전자 노사 협상 끝내 결렬, 노조 21일부터 총파업" · body="중앙노동위원회 2차 사후조정 최종회의에서 노사가 합의에 이르지 못하고 협상이 결렬됐다. '
+        '노동조합은 다음 날인 21일부터 총파업에 돌입하기로 결정했다."',
+  'summary': '삼성전자 노사가 중앙노동위원회 2차 사후조정 최종회의에서 끝내 합의에 이르지 못하고 협상이 결렬됨에 따라, 노동조합이 다음 날인 21일부터 총파업에 돌입하기로 결정한 '
+             '사실을 속보로 전한다.',
+  'entities': [{'name': '삼성전자', 'type': 'OG'},
+               {'name': '총파업', 'type': None},
+               {'name': '중앙노동위원회', 'type': 'OG'}],
+  'intent': ['속보·단신', '노동·사회 이슈'],
+  'category': [{'tier1': 'Business and Finance', 'tier2': 'Industries'},
+               {'tier1': 'News and Politics', 'tier2': 'Society'}],
+  'note': '엔티티 후보 8개 중 정제(협상·결렬=행위어, 노사·사후조정=일반어) · 기업 엔티티의 노사 맥락 → Industries 대표'},
+ {'in': 'title="고령운전자 급가속 사고 막는다…페달 오조작 방지장치 2차 보급 본격화"',
+  'summary': '경찰청·손해보험협회·한국교통안전공단이 고령운전자 페달 오조작 사고 예방을 위해 전국 7개 광역시 759명을 대상으로 방지장치 설치를 완료하고, 오는 6월부터 주행 데이터 '
+             '기반 효과 검증에 돌입하는 2차 보급사업의 추진 현황과 정책 배경을 전한다.',
+  'entities': [{'name': '페달 오조작 방지장치', 'type': None},
+               {'name': '고령운전자', 'type': None},
+               {'name': '손해보험협회', 'type': 'OG'}],
+  'intent': ['정책·행정', '노동·사회 이슈'],
+  'category': [{'tier1': 'News and Politics', 'tier2': 'Politics'},
+               {'tier1': 'News and Politics', 'tier2': 'Society'}],
+  'note': "자동차 안전 '정책·보급사업' → Politics 대표(Automotive 아님) · 고령운전자=인구 그룹 → Society 부가"},
+ {'in': 'title="Z세대 \'집보다 새 차가 더 현실적\'…자동차 관심 없다는 통념 깨져"',
+  'summary': '마쓰다 설문조사 결과를 바탕으로 Z세대가 주택 구매보다 신차 구매를 우선시하며, 첨단 안전 사양·직관적 기술·프리미엄 오디오 시스템을 핵심 평가 기준으로 삼아 차량을 '
+             '디지털 라이프스타일이 결합된 공간으로 인식하는 세대별 소비 트렌드를 분석한다.',
+  'entities': [{'name': 'Z세대', 'type': None}, {'name': '마쓰다', 'type': 'OG'}, {'name': '신차', 'type': None}],
+  'intent': ['심층 분석', '트렌드·시장 분석'],
+  'category': [{'tier1': 'Automotive', 'tier2': 'Auto Type'}],
+  'note': '설문 인용 기관(마쓰다)이지만 조사 주체·소재로 본문 핵심 → 포함 · 차종·신차 맥락 대표 → Auto Type'},
+ {'in': 'title="성폭행 의혹 제기 美 의원, 캘리포니아 주지사 출마 포기(종합)"',
+  'summary': '성폭행 의혹이 제기된 미국 민주당 하원의원 에릭 스월웰이 캘리포니아 주지사 선거 출마를 포기한 사실과 당내 파장을 전한다.',
+  'entities': [{'name': '에릭 스월웰', 'type': 'PS'},
+               {'name': '캘리포니아', 'type': 'LC'},
+               {'name': '민주당', 'type': 'OG'}],
+  'intent': ['속보·사건 추적', '사건 경과 보도'],
+  'category': [{'tier1': 'News and Politics', 'tier2': 'International News'},
+               {'tier1': 'News and Politics', 'tier2': 'Crime'}],
+  'note': '모호 엔티티(의혹·선거)는 본문 맥락으로 분기 · 해외 선거 대표 → International News, 성폭행 의혹 → Crime 부가'}]
 
 _FIELD_KEY = {"summary": "summary", "entities": "entities", "intent": "intent", "category": "content_category"}
 
@@ -489,6 +504,10 @@ def _intent_image_line(content) -> str:
     원천은 content.image_urls(참조 필드). 운영 인입은 아직 이 필드를 채우지 않아 대부분 빈 목록이므로,
     비어 있을 때 '0장'이라고 단정하면 모델이 '사진 없음'으로 오판한다 → '정보 없음'으로 명시 구분한다.
     (정보 없음 ≠ 0장. 인입이 image_urls 를 채우기 시작하면 값이 그대로 신호가 된다.)"""
+    aux = getattr(content, "input_aux", None)
+    if isinstance(aux, dict):
+        count = (aux.get("image_count") or {}).get("value")
+        return f"이미지 수: {count}" if type(count) is int and count >= 0 else _IMG_UNKNOWN
     urls = getattr(content, "image_urls", None)
     if not isinstance(urls, (list, tuple)):
         return _IMG_UNKNOWN
@@ -510,8 +529,8 @@ def call_user(call: str, content) -> str:
     return f"title: {title}\nbody: {body}"
 
 
-MERGED_SCHEMA = ('{"summary": string, "entities": string[] (핵심만 · 개수 상한 없음, 대표 첫 번째), '
-                 '"intent": string[], "content_category": string[] ("Tier 1 / Tier 2" 표기)}')
+MERGED_SCHEMA = ('{"summary": string, "entities": [{"name": string, "type": "PS"|"OG"|"LC"|"AF"|"EV"|"TM"|null}] (핵심만 · 대표 첫 번째), '
+                 '"intent": string[], "content_category": [{"tier1": string, "tier2": string|null}]}')
 MERGED_SELF_CHECK = ("1. summary 가 정확히 1문장 평서형이고 과장·추측이 없는가\n"
                      "2. entities 가 정제 규칙 1→2→3→4를 거쳐 핵심만 남았는가(개수 상한 없음 · 대표성 높은 순)\n"
                      "3. intent·content_category 의 모든 값이 사전 내 표기와 정확히 일치하는가 (CRITICAL)\n"

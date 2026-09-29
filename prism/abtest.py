@@ -104,7 +104,7 @@ def intent_tally(acc: dict, exp: dict, out) -> None:
         acc["intent_unconfirmed"] = acc.get("intent_unconfirmed", 0) + 1
         return
     want = intent_expected(exp)
-    if not want:
+    if not want and (exp.get("meta_status") or {}).get("intent") != "no_value":
         acc["intent_skipped"] = acc.get("intent_skipped", 0) + 1
         return
     got = intent_got(out)
@@ -113,8 +113,8 @@ def intent_tally(acc: dict, exp: dict, out) -> None:
     acc["intent_exact"] = acc.get("intent_exact", 0) + int(sw == sg)
     u = sw | sg
     acc["intent_jac_sum"] = acc.get("intent_jac_sum", 0.0) + ((len(sw & sg) / len(u)) if u else 1.0)
-    acc["intent_f1_sum"] = acc.get("intent_f1_sum", 0.0) + (2 * len(sw & sg) / (len(sw) + len(sg)))   # 샘플 기준 F1
-    acc["intent_top1"] = acc.get("intent_top1", 0) + int(bool(got) and got[0] == want[0])
+    acc["intent_f1_sum"] = acc.get("intent_f1_sum", 0.0) + (2 * len(sw & sg) / (len(sw) + len(sg)) if sw or sg else 1.0)   # 샘플 기준 F1
+    acc["intent_top1"] = acc.get("intent_top1", 0) + int(bool(got) and bool(want) and got[0] == want[0])
     per = acc.setdefault("per_intent", {})
     for v in sw | sg:
         d = per.setdefault(v, {"n": 0, "tp": 0, "fp": 0, "fn": 0})
@@ -173,6 +173,7 @@ def score(rows: list, outs: list) -> dict:
     """골든셋 정답(rows[i].expected)과 산출(outs[i])을 비교해 지표 산출.
     cli.cmd_eval 과 동일 지표 · 채점 로직 단일 소스."""
     grade_hit = reason_exact = fn_block = empties = 0
+    grade_n = sum((r.get("expected") or {}).get("finalGrade") in ("G", "R") for r in rows)
     harm_n = 0                                   # 기대 R 행 수 = 유해 미탐률의 분모
     jac = cost = 0.0
     tin = tout = 0
@@ -208,6 +209,8 @@ def score(rows: list, outs: list) -> dict:
             empties += 1
         # 주의: fail/unparse 행도 아래 등급·이유 채점에 그대로 포함된다(empty_rate 와 비배타).
         #       구 cli eval 동작을 보존한 것 · 실패 산출을 '오답'으로 계수.
+        if exp.get("finalGrade") not in ("G", "R"):
+            continue
         grade_ok = qm["finalGrade"] == exp.get("finalGrade")
         grade_hit += int(grade_ok)
         if qm.get("review") == "yellow":
@@ -234,9 +237,10 @@ def score(rows: list, outs: list) -> dict:
         **intent_report(iacc),                   # 순수 추가: 기존 키 의미·이름·값 불변
         **ME.meta_report(iacc),
         "n": n,
-        "grade_accuracy": round(grade_hit / n, 4) if n else 0,
-        "reason_exact_match": round(reason_exact / n, 4) if n else 0,
-        "reason_jaccard": round(jac / n, 4) if n else 0,
+        "grade_n": grade_n,
+        "grade_accuracy": round(grade_hit / grade_n, 4) if grade_n else None,
+        "reason_exact_match": round(reason_exact / grade_n, 4) if grade_n else None,
+        "reason_jaccard": round(jac / grade_n, 4) if grade_n else None,
         # 유해 미탐률 = 기대 R 중 자동 G 로 흘린 비율(=1-recall(R)). 종전 분모는 '전체 행'이라
         # R 유병률만큼 축소된 값이었고, 골든에 정상 건만 늘려도 '개선'으로 보였다(2026-08-11).
         # 기대 R 행이 0이면 정의되지 않음(None) — 0% 로 표기하면 '완벽'으로 오독된다.

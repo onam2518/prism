@@ -379,6 +379,8 @@ def _sanitize_def(d: dict, existing_ids=None) -> dict:
     req = {k: [v for v in _strlist(rq.get(k)) if v in sel[k]] for k in TP._DIMS}
     status = d.get("status") if d.get("status") in TOPIC_STATUS else "active"
     feed = TP.sanitize_feed(d.get("feed"))
+    from .topic_conditions import sanitize
+    expr = sanitize(d["condition_expr"]) if d.get("condition_expr") is not None else None
     # 대화 기록(4-38): 턴마다 문장 원문 · 해석 모델 · 해석 결과(before) · 칩 조정 뒤(after).
     # 파싱 정확도 검토 자료라 화면 표시용이 아니라 정의에 그대로 남긴다.
     turns = []
@@ -398,6 +400,8 @@ def _sanitize_def(d: dict, existing_ids=None) -> dict:
     return {"id": cid, "name": name or "(무제 토픽)", "prompt": prompt,
             "cats": cats, "intents": intents, "keywords": keywords, "srcs": srcs, "eattrs": eattrs,
             "req": req, "neg": neg, "feed": feed, "status": status,
+            **({"condition_expr": expr, "condition_schema_version": 1} if expr is not None else {}),
+            "aliases": _strlist(d.get("aliases")),
             "via": "talk" if d.get("via") == "talk" else "manual",   # 만든 방식: 말로 · 직접
             "turns": turns,
             # 해석 모델(4-45): 화면에 모델 선택이 없으니 마지막 턴이 쓴 모델을 기록값으로 삼는다
@@ -538,7 +542,10 @@ def topic_studio_action(data: dict, mock: bool = False, team=None, who: str = ""
     svc = TP._service_names(rows) if rows else set()
 
     if action == "preview":
-        d = _sanitize_def(data.get("def") or {})
+        try:
+            d = _sanitize_def(data.get("def") or {})
+        except (TypeError, ValueError) as exc:
+            return {"ok": False, "error": str(exc)}
         # 개체 속성 조건이 없으면 인덱스 자체가 필요 없다(_content_dims 가 ent_index=None 이면
         # 빈 속성 목록을 쓴다) — 타이핑 중 대부분의 미리보기가 사전 조회를 아예 건너뛴다.
         eidx = _ent_index() if d.get("eattrs") else None
@@ -561,6 +568,10 @@ def topic_studio_action(data: dict, mock: bool = False, team=None, who: str = ""
 
     if action == "suggest":
         text = data.get("text") or ""
+        import re
+        if re.search(r"(더|덜)\s*(보여|노출|추천)", text):
+            return {"ok": False, "needs_confirmation": True,
+                    "error": "노출 비중 조절은 지원하지 않습니다. 이 요청을 포함 조건으로 바꾸려면 범위를 확인해 주세요"}
         if not rows:
             return {"ok": True, "via": "none",
                     "suggest": {"cats": [], "intents": [], "keywords": [], "srcs": [], "eattrs": [],
@@ -596,8 +607,11 @@ def topic_studio_action(data: dict, mock: bool = False, team=None, who: str = ""
         if not isinstance(data.get("def"), dict) or not data["def"]:
             # def 누락(키 오타 포함)이 조용히 '(무제 토픽)' 을 만드는 것 방지 — 명시 에러로 반환
             return {"ok": False, "error": "토픽 정의(def)가 필요합니다"}
-        d = _sanitize_def(data.get("def") or {}, existing_ids=[c.get("id") for c in custom])
-        if not any(d[k] for k in TP._DIMS):
+        try:
+            d = _sanitize_def(data.get("def") or {}, existing_ids=[c.get("id") for c in custom])
+        except (TypeError, ValueError) as exc:
+            return {"ok": False, "error": str(exc)}
+        if not any(d[k] for k in TP._DIMS) and not d.get("condition_expr"):
             # 4축 중 하나도 없으면 토픽이 성립하지 않는다(유통 가능 전건을 묶는 토픽 금지 · 4-15).
             # 개체 속성은 보조 축이라 단독으로는 성립시키지 않는다(4-17).
             return {"ok": False, "error": "조건을 하나 이상 지정해야 합니다(분야 · 의도 · 엔티티 · 출처)"}
@@ -615,7 +629,7 @@ def topic_studio_action(data: dict, mock: bool = False, team=None, who: str = ""
             d["talk_model"] = d["talk_model"] or Config.load().model    # 기록이 빈 문자열이 되지 않게(4-45)
         # 활성 잠금: 지금 데이터에 0건이면 활성으로 저장하지 않는다(초안) · 일시정지·보관 요청은 그대로
         locked = False
-        if d["status"] == "active" and rows:
+        if d["status"] == "active":
             pv = TP.preview_definition(rows, svc, d, sample=0, ent_index=_ent_index(),
                                        ent_keys=_ent_keys(rows, team))
             if not any(b.get("count") for b in pv["bundles"] if b.get("kind") == "core"):
@@ -651,7 +665,7 @@ def topic_studio_action(data: dict, mock: bool = False, team=None, who: str = ""
             return dict(_SV.topics_data(team), ok=True, saved={"id": cid, "status": st, "locked": False})
         d = dict(custom[idx])
         locked = False
-        if st == "active" and rows:
+        if st == "active":
             pv = TP.preview_definition(rows, svc, d, sample=0, ent_index=_ent_index(),
                                        ent_keys=_ent_keys(rows, team))
             if not any(b.get("count") for b in pv["bundles"] if b.get("kind") == "core"):
@@ -683,6 +697,14 @@ def topic_studio_action(data: dict, mock: bool = False, team=None, who: str = ""
         if cid == into or i_src < 0 or i_dst < 0:
             return {"ok": False, "error": "합칠 토픽 두 개(id · into)가 필요합니다"}
         src, dst = custom[i_src], dict(custom[i_dst])
+        # 서로 다른 기간·원천 조건은 무손실 합병 규칙이 없으므로 저장 전에 보류한다.
+        if (TP.sanitize_feed(src.get("feed")) != TP.sanitize_feed(dst.get("feed"))
+                or src.get("condition_expr") != dst.get("condition_expr")):
+            return {"ok": False, "needs_confirmation": True,
+                    "error": "기간·원천·조건식이 다릅니다. 두 토픽의 전체 조건을 검토한 뒤 맞춰 주세요"}
+        dst["status"] = "draft"
+        dst["aliases"] = list(dict.fromkeys(list(dst.get("aliases") or []) + [cid]
+                                            + list(src.get("aliases") or [])))
 
         def _union(a, b):
             return list(dict.fromkeys(list(a or []) + list(b or [])))

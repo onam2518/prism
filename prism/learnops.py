@@ -8,6 +8,7 @@
 serve 인스턴스가 이중 생성되는 문제를 피하기 위한 구조 · 순환 import 없음.
 """
 from __future__ import annotations
+from . import meta_contract as MC
 import json
 import threading
 import time
@@ -133,8 +134,9 @@ def eval_golden(team=None, model: str = "", scope: str = "all", hashes=None, pro
     m["detail"] = detail
     m["min_good"] = int(getattr(cfg, "golden_min_good", 1) or 1)
     from . import quality as Q
-    lo, hi = Q.binomial_ci(m.get("grade_accuracy") or 0.0, len(sample))
-    m["grade_ci"] = {"lo": lo, "hi": hi, "n": len(sample)}   # 95% CI(Miller 2024)
+    grade_n = m.get("grade_n", len(sample))
+    lo, hi = Q.binomial_ci(m.get("grade_accuracy") or 0.0, grade_n)
+    m["grade_ci"] = {"lo": lo, "hi": hi, "n": grade_n}   # 95% CI(Miller 2024)
     m["ok"] = True
     m["evaluated"] = len(sample)
     try:                                         # 평가 기준(어떤 모델·버전으로 쟀는지) 명시
@@ -185,9 +187,8 @@ def _clean_intent(vals) -> tuple:
 
 def register_golden(uid, team, rows, email="", merge=False) -> dict:
     """관리자가 팀 골든셋 등록. merge=True 면 기존에 병합(upsert), False 면 전체 교체.
-    등록 전 검증·정규화: finalGrade G|R 강제, content_category 사전 스냅, title 필수,
+    등록 전 검증·정규화: 등급을 제공하면 G|R, 공통 메타만 있는 정답은 등급 생략 가능,
     intent 사전 화이트리스트 정제(사전 밖 값은 드롭 + 경고 · 행 자체는 살린다)."""
-    from . import dictionaries as D
     st = _SV.get_store()
     if _SV._supa() and not _SV.is_admin_user(uid, team, email):   # 로컬(sqlite)은 개방(타 관리자 라우트와 동일 게이트)
         return {"ok": False, "error": "관리자 전용입니다"}
@@ -199,23 +200,38 @@ def register_golden(uid, team, rows, email="", merge=False) -> dict:
             continue
         content, exp = r["content"], dict(r["expected"])
         grade = str(exp.get("finalGrade", "")).strip().upper()
-        if not content.get("title") or grade not in ("G", "R"):
+        common = any(exp.get(k) for k in MC.FIELDS)
+        if not (content.get("title") or content.get("body")) or (grade not in ("G", "R") and (grade or not common)):
             skipped += 1
             continue
-        exp["finalGrade"] = grade
-        exp["content_category"] = D.normalize_category_list(exp.get("content_category") or [])
+        if grade:
+            exp["finalGrade"] = grade
+        else:
+            exp.pop("finalGrade", None)
+            exp.pop("reasons", None)
+        exp["content_category"] = MC.clean_categories(exp.get("content_category") or [])
         exp["reasons"] = [str(x) for x in (exp.get("reasons") or []) if x]
         ents = exp.get("entities") or []
         ents = ents if isinstance(ents, (list, tuple)) else [ents]
-        exp["entities"] = list(dict.fromkeys(
-            s for s in (str(x).strip() for x in ents if x is not None) if s))
+        exp["entities"] = MC.clean_entities(ents)
         if "intent" in exp:                       # 키가 없으면 그대로 없음(측정 표본 제외 유지)
             kept, bad = _clean_intent(exp.get("intent"))
             exp["intent"] = kept
             if bad:
                 intent_dropped += len(bad)
                 intent_samples.extend(bad)
+        if "summary" in exp:
+            if not isinstance(exp["summary"], str):
+                exp.pop("summary")
+            else:
+                exp["summary"] = exp["summary"].strip()
+        if not grade and not any(exp.get(k) for k in MC.FIELDS):
+            skipped += 1
+            continue
         valid.append({"content": content, "expected": exp})
+    if not valid:
+        return {"ok": False, "error": "유효한 정답 행이 없습니다. 기존 정답셋은 유지됩니다",
+                "count": 0, "skipped": skipped}
     n = st.register_golden(team, valid, replace=not merge, source="manual")
     _SV._agg_bump()
     out = {"ok": True, "count": n, "skipped": skipped, "merged": bool(merge)}
@@ -301,6 +317,7 @@ def golden_intent_confirm(content_hash: str, intents, team=None, by: str = "") -
     exp = dict(row.get("expected") or {})
     exp["intent"] = vals
     exp["intent_review"] = "confirmed"
+    exp["intent_dictionary_version"] = "intent-common-68-2026-09-29"
     exp["intent_confirmed_at"] = time.time()
     exp["intent_confirmed_by"] = (by or "")[:80]
     exp.pop("intent_retired", None)
@@ -1391,12 +1408,28 @@ def learn_spec_md(team=None, d=None) -> str:
     L.append("전체 서지·설계 근거: LEARNING_DESIGN.md")
     return "\n".join(L)
 
+def _training_expected(exp: dict) -> dict:
+    """학습 가능한 정답 축만 전달하고 검수·이관 표식은 출력 계약에서 제외한다."""
+    from . import dictionaries as D
+    allowed = ("summary", "entities", "intent", "content_category", "finalGrade", "reasons")
+    out = {k: exp[k] for k in allowed if k in exp}
+    if (exp.get("intent_review") == "needed"
+            or any(x not in D.intent_categories() for x in out.get("intent", []))):
+        out.pop("intent", None)
+    for k, status in (exp.get("meta_status") or {}).items():
+        if status not in ("success", "no_value"):
+            out.pop(k, None)
+    for k in exp.get("hold_fields") or []:
+        out.pop(k, None)
+    return out
+
+
 def _sft_system() -> str:
     """SFT 시스템 프롬프트: 분류 기준(taxonomy)을 지시문으로 외재화(Llama Guard 방식 →
     카테고리 개편 시 재학습 불필요)."""
     from . import dictionaries as D
     return ("주어진 콘텐츠의 메타를 JSON 객체 하나로만 출력하라. 필드: summary(리드문 1문장), "
-            "entities(핵심 개체 1~3), intent(속성 분류 1~2), content_category(사전 값만: "
+            "entities(핵심 개체, 수량 상한 없음), intent(공통 사전의 핵심 분류, 수량 상한 없음), content_category(사전 값만: "
             + ", ".join(D.IAB_TIER1) + " 또는 'Tier1 / Tier2' 경로), finalGrade(G|R), reasons(문제 사유 목록).")
 
 def learn_export(kind: str, team=None):
@@ -1410,7 +1443,10 @@ def learn_export(kind: str, team=None):
         sys_p = _sft_system()
         for g in (st.get_golden(team) if hasattr(st, "get_golden") else []):
             content, exp = g.get("content") or {}, g.get("expected") or {}
-            if not content.get("title"):
+            if not (content.get("title") or content.get("body")):
+                continue
+            exp = _training_expected(exp)
+            if not exp:
                 continue
             lines.append(json.dumps({"messages": [
                 {"role": "system", "content": sys_p},

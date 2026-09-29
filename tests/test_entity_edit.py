@@ -64,7 +64,7 @@ class TestEntityPatchRoundtrip(EntityEditBase):
         r = serve.patch_content_meta(ch, {"entities": [" 손흥민 ", "", "손흥민", 123, None, "토트넘"]},
                                      reviewer="복실")
         self.assertTrue(r["ok"])
-        self.assertEqual(st.get_item_meta(ch).get("entities"), ["손흥민", "123", "토트넘"])
+        self.assertEqual(st.get_item_meta(ch).get("entities"), ["손흥민", "토트넘"])
 
     def test_patch_non_list_coerced(self):
         serve, st = self._with_store()

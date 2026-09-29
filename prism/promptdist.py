@@ -358,7 +358,15 @@ def _as_list(field: str, raw) -> tuple:
                            "배열이어야 합니다(받은 형식: %s)" % type(raw).__name__)]
     vals, bad = [], []
     for x in raw:
-        (vals if isinstance(x, str) else bad).append(x)
+        if isinstance(x, dict) and field in ("entities", "content_category"):
+            from . import meta_contract as MC
+            clean = MC.clean_entities([x]) if field == "entities" else MC.clean_categories([x])
+            if clean:
+                vals.append(MC.entity_name(x) if field == "entities" else MC.category_path(x))
+            else:
+                bad.append(x)
+        else:
+            (vals if isinstance(x, str) else bad).append(x)
     out = [_issue("wrong_type", "violation", field, x, "배열 원소는 문자열이어야 합니다") for x in bad]
     seen = set()
     for v in vals:
@@ -414,9 +422,7 @@ def validate_result(result=None, service: str = "", team=None) -> dict:
         checked.append("content_category")
         vals, bad = _as_list("content_category", result.get("content_category"))
         items += bad + _check_category(vals)
-        if not bad and not vals:
-            items.append(_issue("category_empty", "violation", "content_category", vals,
-                                "최소 1개(대표 도메인)는 부여해야 합니다", CATEGORY_MIN_RULE))
+        # 빈 배열은 no_value이며 실패나 미판정과는 실행 상태로 구분한다.
 
     from . import prismtools as PT               # 봉투 규칙 단일 원천(순환 회피: 함수 안 import)
     return PT.envelope(items, ISSUE_LIMIT, service=svc,

@@ -1,5 +1,6 @@
 """대시보드 생성: 결과(results.jsonl)로 메타 현황·관계도 HTML 출력."""
 from __future__ import annotations
+from . import meta_contract as MC
 import json
 import html
 
@@ -211,12 +212,12 @@ def _aggregate(rows):
         im = r.get("item_meta") or {}
         for c in im.get("intent", []):
             intents[c] = intents.get(c, 0) + 1
-        for e in im.get("entities", []):
+        for e in MC.entity_names(im.get("entities", [])):
             ents.add(e)
         # 콘텐츠 단위 N개 · 계수도 콘텐츠 단위다(같은 Tier1 의 하위 분류가 여럿 붙어도 1건).
         # 그래프 경로(_graph)가 이미 집합으로 세고 있어, 태그 단위로 세면 같은 리포트 안에서
         # 카테고리 막대만 하위 분류를 잘게 쪼갠 쪽으로 부풀었다.
-        for t1 in dict.fromkeys(tier1_remap(cat) for cat in (im.get("content_category") or [])):
+        for t1 in dict.fromkeys(tier1_remap(cat) for cat in (MC.category_paths(im.get("content_category")) or [])):
             if t1 and t1 != "Unclassified":      # 미분류는 분포에서 제외
                 ecats[t1] = ecats.get(t1, 0) + 1
         svc = r.get("content_ref", {}).get("displayServiceName", "?")
@@ -262,11 +263,11 @@ def _canonical_entity_categories(rows, service_names):
     votes = {}
     for r in rows:
         im = r.get("item_meta") or {}
-        cats = [tier1_remap(c) for c in (im.get("content_category") or [])]
+        cats = [tier1_remap(c) for c in (MC.category_paths(im.get("content_category")) or [])]
         cats = [t for t in cats if t and t != "Unclassified"]
         if not cats:
             continue
-        for e in im.get("entities", []):
+        for e in MC.entity_names(im.get("entities", [])):
             if _is_junk_entity(e, service_names):
                 continue
             for t1 in cats:
@@ -305,9 +306,9 @@ def _graph(rows, max_nodes: int = 900, top_entities: int = 260):
         nodes[idx[cid]]["grade"] = decision   # 그래프 등급 필터용
         im = r.get("item_meta") or {}
         # 콘텐츠 단위 카테고리(1312·N개): 콘텐츠에 직접 매핑
-        content_cats = {tier1_remap(c) for c in (im.get("content_category") or [])}
+        content_cats = {tier1_remap(c) for c in (MC.category_paths(im.get("content_category")) or [])}
         content_cats = {t for t in content_cats if t and t != "Unclassified"}
-        for e in im.get("entities", []):
+        for e in MC.entity_names(im.get("entities", [])):
             if _is_junk_entity(e, service_names):
                 continue
             eid = f"e:{e}"
@@ -420,9 +421,9 @@ def _table_rows(rows):
             "decision": "YELLOW" if qm.get("review") == "yellow" else qm.get("finalGrade", ""),
             "reasons": qm.get("reasons", []),
             "intent": im.get("summary", ""),
-            "entities": im.get("entities", []),
+            "entities": MC.entity_names(im.get("entities", [])),
             "intent_categories": im.get("intent", []),
-            "entity_categories": im.get("content_category", []),   # 콘텐츠 단위 N개
+            "entity_categories": MC.category_paths(im.get("content_category", [])),   # 콘텐츠 단위 N개
         })
     return out
 

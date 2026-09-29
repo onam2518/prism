@@ -41,6 +41,7 @@
 표기 정규화·개체 연결은 적재 단계 소관(추출 계약)이라 여기서는 하지 않는다.
 """
 from __future__ import annotations
+from . import meta_contract as MC
 
 import re
 import unicodedata
@@ -89,7 +90,7 @@ def entity_confidence(entity: str, content_ref: dict, item_meta: dict) -> float:
             score += W_FREQ * min(freq, FREQ_CAP) / float(FREQ_CAP)
         if e in body[:int(len(body) * FIRST_RATIO)]:
             score += W_FIRST
-    names = [_norm(x) for x in (im.get("entities") or [])]
+    names = [_norm(x) for x in (MC.entity_names(im.get("entities")) or [])]
     rank = names.index(e) if e in names else len(names)
     decay = max(RANK_FLOOR, 1.0 - RANK_STEP * rank)
     return round(min(1.0, score) * decay, 3)
@@ -102,7 +103,7 @@ def scored_entities(item_meta: dict, content_ref: dict) -> list:
     별도 키(entities_scored)로 병행 노출한다(_detail_row · raw_rows)."""
     im = item_meta or {}
     out = []
-    for e in (im.get("entities") or []):
+    for e in (MC.entity_names(im.get("entities")) or []):
         name = str(e)
         out.append({"name": name, "conf": entity_confidence(name, content_ref, im)})
     return out
