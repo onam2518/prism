@@ -105,7 +105,7 @@ def mark_retired_intents(text: str) -> str:
     out = []
     for ln in (text or "").splitlines():
         hits = [v for v in D.INTENT_RETIRED if v in ln]
-        if hits:
+        if hits and "재확인 필요" not in ln:      # 두 번 돈다(route_feedback 저장분 → meta_compile)
             ln = ln + "  " + _RETIRED_MARK % "·".join(hits)
         out.append(ln)
     return "\n".join(out)

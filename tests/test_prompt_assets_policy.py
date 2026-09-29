@@ -204,6 +204,11 @@ class TestRetiredIntentsAreMarkedNotRenamed(unittest.TestCase):
         self.assertIn("재확인 필요", out)
         self.assertIn("재판정", out)
 
+    def test_marking_twice_does_not_stack(self):
+        # route_feedback 이 표식을 붙여 저장한 지시를 meta_compile 이 다시 읽는다.
+        once = FL.mark_retired_intents("- 음악 기사에는 신곡·앨범 발매 를 붙여라")
+        self.assertEqual(FL.mark_retired_intents(once), once)
+
     def test_clean_line_is_untouched(self):
         txt = "- 속보성 기사에는 속보·사건 추적 을 붙여라"
         self.assertEqual(FL.mark_retired_intents(txt), txt)
