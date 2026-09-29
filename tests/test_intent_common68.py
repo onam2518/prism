@@ -120,6 +120,21 @@ class TestRevisedDefinitions(unittest.TestCase):
         self.assertEqual(len(D.intent_categories()) - len(REVISED_DEFS), 58)
 
 
+class TestPromptVersionMarksTheTransition(unittest.TestCase):
+    """사전이 통째로 바뀌면 버전 태그도 올라가야 한다(정책: 배포 사전·프롬프트·평가 정답의 버전 일치).
+
+    이 태그는 외부 배포 응답(promptdist)과 런 기록(trace.prompt_version)에 그대로 실린다.
+    올리지 않으면 파트너와 평가 런이 24~28개 후보 시절 프롬프트와 68개 프롬프트를 같은
+    버전으로 읽는다."""
+
+    def test_version_is_at_least_v20(self):
+        import re
+        from prism import prompts as P
+        m = re.match(r"imeta@v(\d+)", P.IMETA_VERSION)
+        self.assertIsNotNone(m, P.IMETA_VERSION)
+        self.assertGreaterEqual(int(m.group(1)), 20, P.IMETA_VERSION)
+
+
 class TestEditOverrideStillWorks(unittest.TestCase):
     """사전 편집 오버라이드가 새 키(intent_common)에서도 병합·툼스톤 규약을 지키는지."""
 

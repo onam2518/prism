@@ -1,6 +1,6 @@
 /* Prism 앱 조각 10 · 하이브리드 선택형 입력(최종 검수 수정 · 시안 3).
    추천 칩 상시 + 검색 드롭다운 병행 · 정답 확정 팝업(05-review)과 엔티티 수정(20-ingest-policy) 공용.
-   후보 원천 = /dict(dictData · 인텐트 범용①②+서비스 분기 · IAB Tier1/Tier2 · 한글 표시명)
+   후보 원천 = /dict(dictData · 인텐트 전 출처 공통 68개 · IAB Tier1/Tier2 · 한글 표시명)
    + /entdict(등재 개체 · 검색·추천용 캐시). 저장 계약 불변(카테고리=영문 경로 배열 · 인텐트=사전 표기 배열). */
 window.PRISM_APP_PARTS = window.PRISM_APP_PARTS || [];
 window.PRISM_APP_PARTS.push(() => ({
@@ -142,7 +142,7 @@ window.PRISM_APP_PARTS.push(() => ({
       get faFields() {
         return [
           { id: 'cat', key: 'cats', kind: 'category', label: '분류', pol: '사전 한정 · 표시는 한글, 저장은 영문 경로', free: false, ph: '카테고리 검색 · 한글·영문 모두 · 예) 야구, base' },
-          { id: 'int', key: 'intent', kind: 'intent', label: '의도', pol: '사전 한정 · 범용①+②+서비스 분기', free: false, ph: '인텐트 검색 · 예) 경기, 리뷰' },
+          { id: 'int', key: 'intent', kind: 'intent', label: '의도', pol: '사전 한정 · 전 출처 공통 68개', free: false, ph: '인텐트 검색 · 예) 경기, 리뷰' },
           // 소속 기준은 게시판 #16 확정(2026-08-13): 콘텐츠가 다루는 시점의 소속을 부여(현재 소속으로 바꾸지 않음)
           { id: 'ent', key: 'entities', kind: 'entity', label: '엔티티', pol: '사전 추천 + 새 엔티티 자유 입력 · 소속팀·소속사는 콘텐츠가 다루는 당시 기준', free: true, ph: '엔티티 검색 · 사전에 없으면 Enter = 새 엔티티로 추가' },
         ];

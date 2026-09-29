@@ -61,7 +61,7 @@
                     </template>
                     <span class="text-xs text-muted" x-show="!fa[fld.key].length">값 없음</span>
                   </div>
-                  <!-- 추천 칩(점선 + ＋): 탭 1회 추가 · 추가된 값은 자동 제외 · 사유(서비스 분기·리드문 매칭·기존 라벨 하위) 소형 표기 -->
+                  <!-- 추천 칩(점선 + ＋): 탭 1회 추가 · 추가된 값은 자동 제외 · 사유(리드문 매칭·기존 라벨 하위) 소형 표기 -->
                   <div class="flex flex-wrap gap-1 items-center" style="margin-top:8px" x-show="hybReco(fld.kind, fa.row, fa[fld.key]).length">
                     <span class="text-xs" style="color:var(--ds-placeholder)">추천</span>
                     <template x-for="rc in hybReco(fld.kind, fa.row, fa[fld.key])" x-bind:key="'far'+fld.id+rc.v">
