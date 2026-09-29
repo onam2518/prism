@@ -268,8 +268,8 @@ window.PRISM_APP_PARTS.push(() => ({
           return { t1, rule: (d.categoryCriteria || {})[t1] || '', rows };
         }).filter((g) => g.rows.length);
       },
-      // 인텐트 탭: 범용①·②/서비스 분기 소속이 보이도록 그룹 렌더 · 값·정의는 /dict 단일 원천 그대로
-      // (게시판 #13·#15: 서비스 전용 값을 다른 서비스에 부여하는 혼동 방지 · 후보 전량이 세 그룹에 1:1 소속)
+      // 인텐트 탭: 세 묶음으로 나눠 렌더 · 값·정의는 /dict 단일 원천 그대로.
+      // 2026-09-22 전환: 묶음은 읽기 편의용 표시일 뿐 후보 범위가 아니다(68개 전부가 전 출처 공통).
       polIntentGroups() {
         const d = this.dictData || {};
         const defs = d.intentDefs || {};
@@ -277,14 +277,15 @@ window.PRISM_APP_PARTS.push(() => ({
         const q = (this.polQ || '').trim().toLowerCase();
         const mk = (k) => ({ k, t: k, d: defs[k] || '', ex: ex[k] || '' });
         const hit = (r) => !q || (r.t + ' ' + (r.d || '') + ' ' + (r.ex || '')).toLowerCase().indexOf(q) >= 0;
-        const uniNote = '전 서비스 공통' + (d.intentRefNote ? ' · ' + d.intentRefNote : '');   // 괄호 값 읽는 법(게시판 #17)
+        const note = '전 출처 공통' + (d.intentRefNote ? ' · ' + d.intentRefNote : '');   // 괄호 값 읽는 법(게시판 #17)
         const out = [
-          { label: '범용① 소비 방식', note: uniNote, rows: (d.intentUniversal || []).map(mk).filter(hit) },
-          { label: '범용② 형식·전달', note: uniNote, rows: (d.intentForm || []).map(mk).filter(hit) },
+          { label: '① 소비 방식', note: note, rows: (d.intentUniversal || []).map(mk).filter(hit) },
+          { label: '② 형식·전달', note: note, rows: (d.intentForm || []).map(mk).filter(hit) },
+          { label: '③ 세부 종류·속성', note: note, rows: (d.intentCommon || []).map(mk).filter(hit) },
         ];
-        Object.keys(d.intentByService || {}).forEach((svc) => {
-          out.push({ label: '서비스 분기 · ' + svc, note: '이 서비스 콘텐츠에만 부여', rows: ((d.intentByService || {})[svc] || []).map(mk).filter(hit) });
-        });
+        const ret = Object.keys(d.intentRetired || {})
+          .map((k) => ({ k: k, t: k, d: '폐기된 분류값 · 원문을 다시 보고 ' + ((d.intentRetired || {})[k] || []).join(' 또는 ') + ' 중에서 재판정', ex: '' })).filter(hit);
+        if (ret.length) out.push({ label: '폐기 · 재판정 대상', note: '2026-09-22 통합 · 새 판정에는 쓰지 않습니다', rows: ret });
         return out.filter((g) => g.rows.length);
       },
       polRows() {                                       // 품질·등급 탭 → 표 행 [{k,t,d,ex}] · 인텐트 탭은 polIntentGroups

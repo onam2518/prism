@@ -53,16 +53,13 @@ window.PRISM_APP_PARTS.push(() => ({
       hybGroups(kind, service) {
         const d = this.dictData;
         if (!d) { if (!this._dictReq) { this._dictReq = true; this.loadDict(); } return []; }
-        if (kind === 'intent') {
-          const key = (d.serviceKeyMap || {})[service] || service || '';
+        if (kind === 'intent') {               // 2026-09-22: 출처와 무관한 공통 68개 · 묶음은 표시용
           const mk = (v) => ({ v: v, ko: '', def: (d.intentDefs || {})[v] || '', tag: '' });
-          const out = [
-            { label: '범용① 소비 방식', items: (d.intentUniversal || []).map(mk) },
-            { label: '범용② 형식·전달', items: (d.intentForm || []).map(mk) },
+          return [
+            { label: '① 소비 방식', items: (d.intentUniversal || []).map(mk) },
+            { label: '② 형식·전달', items: (d.intentForm || []).map(mk) },
+            { label: '③ 세부 종류·속성', items: (d.intentCommon || []).map(mk) },
           ];
-          const own = (d.intentByService || {})[key] || [];
-          if (own.length) out.push({ label: '서비스 분기 · ' + key, items: own.map(mk) });
-          return out;
         }
         if (kind === 'category') {                 // 그룹 = Tier1(한글·영문 병기) · 항목 = Tier1 단독 + Tier1/Tier2 경로
           return (d.iabTier1 || []).map((t1) => ({
@@ -107,12 +104,8 @@ window.PRISM_APP_PARTS.push(() => ({
         const lead = ((ctx.title || '') + ' ' + (ctx.summary || '')).toLowerCase();
         const out = [];
         const push = (v, why) => { if (!(sel || []).includes(v) && !out.some((r) => r.v === v)) out.push({ v: v, why: why }); };
-        if (kind === 'intent') {                   // 서비스 분기 전량 + 리드문·제목 토큰 매칭 범용값 · 최대 8
-          const key = (d.serviceKeyMap || {})[ctx.service] || ctx.service || '';
-          const own = (d.intentByService || {})[key] || [];
-          own.filter((v) => this._hybHit(v, lead)).forEach((v) => push(v, '리드문 매칭'));
-          own.forEach((v) => push(v, '서비스 분기'));
-          [].concat(d.intentUniversal || [], d.intentForm || [])
+        if (kind === 'intent') {                   // 리드문·제목 토큰이 걸리는 값만 · 최대 8
+          [].concat(d.intentUniversal || [], d.intentForm || [], d.intentCommon || [])
             .filter((v) => this._hybHit(v, lead)).forEach((v) => push(v, '리드문 매칭'));
           return out.slice(0, 8);
         }

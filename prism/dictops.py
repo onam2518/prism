@@ -27,8 +27,8 @@ def dict_data() -> dict:
         "serviceGroups": list(D.SERVICE_GROUP.keys()),
         "intentUniversal": list(D.INTENT_CATEGORIES_UNIVERSAL),
         "intentForm": list(getattr(D, "INTENT_FORM_UNIVERSAL", [])),
-        "intentByService": {k: list(v) for k, v in D.INTENT_CATEGORIES_BY_SERVICE.items()},
-        "serviceKeyMap": dict(getattr(D, "_SERVICE_NAME_MAP", {})),   # displayServiceName → 서비스 카테고리 키(검수 인텐트 불일치 경고용)
+        "intentCommon": list(getattr(D, "INTENT_CATEGORIES_COMMON", [])),   # 세부 종류·속성 50종(전 출처 공통)
+        "intentRetired": {k: list(v) for k, v in (getattr(D, "INTENT_RETIRED", {}) or {}).items()},   # 폐기 값 → 재판정 후보(표시 전용 · 자동 치환 금지)
         "iabTier1": list(D.IAB_TIER1),
         "tier2": {k: list(v) for k, v in getattr(D, "CONTENT_CATEGORY_TIER2", {}).items()},
         "tier1Ko": dict(getattr(D, "IAB_TIER1_KO", {})),   # 한글 표시명(UI 전용 · 공식 표기는 영문)
@@ -336,7 +336,7 @@ def edit_dict(data: dict) -> dict:
     """사전·정책 편집(사용자 직접 수정). target(+key) 에 value 를 덮어쓰고 영속화·적용."""
     from . import dictionaries as D
     target = (data.get("target") or "").strip()
-    allowed = {"intent_universal", "intent_by_service", "iab_tier1", "tier2",
+    allowed = {"intent_universal", "intent_common", "iab_tier1", "tier2",
                "quality_metas", "legal_types", "domain_groups", "category_iab_map", "intake_policy"}
     if target not in allowed:
         return {"error": f"편집 불가 target: {target}"}
@@ -349,8 +349,7 @@ def edit_dict(data: dict) -> dict:
     if key is not None:
         if not isinstance(ov.get(target), dict):
             # 베이스 dict 를 복사해 시작(부분 키 편집이 다른 키를 지우지 않도록)
-            base = getattr(D, {"intent_by_service": "INTENT_CATEGORIES_BY_SERVICE",
-                               "tier2": "CONTENT_CATEGORY_TIER2", "quality_metas": "QUALITY_METAS",
+            base = getattr(D, {"tier2": "CONTENT_CATEGORY_TIER2", "quality_metas": "QUALITY_METAS",
                                "legal_types": "LEGAL_HARM_TYPES", "domain_groups": "DOMAIN_GROUP_MAP",
                                "category_iab_map": "CATEGORY_IAB_MAP",
                                "intake_policy": "INTAKE_POLICY"}.get(target, ""), {})
