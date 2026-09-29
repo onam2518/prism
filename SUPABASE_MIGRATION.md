@@ -58,6 +58,13 @@ public.prism_events(id, team_id, reviewer_id, kind, day, bonus, meta,
 ```
 신규 3 테이블은 RLS enable + 정책 없음 = service_role(서버) 전용.
 
+**골든 교체·병합 원자성(2026-09-06 · 운영 미적용)**:
+
+- 새 앱의 모든 골든 쓰기는 `scripts/migrate_golden_atomic.sql`의 `prism_write_golden` RPC를 사용한다. 함수 미설치·실패 시 업로드를 거절하며 DELETE/POST로 재시도하지 않는다.
+- 적용 전 `prism_golden`의 `team_id uuid`, `content_hash text`, `content/expected jsonb`, `source text`, `created_at`과 service_role 테이블 권한을 확인한다. `(team_id, content_hash)` 중복이 있으면 SQL 전체가 실패하며 임의로 데이터를 삭제하지 않는다.
+- 구버전 골든 쓰기 중단 → SQL 파일 전체 설치 → PostgREST 재적재 확인 → 신규 코드 배포 → 시험 팀 교체·병합 확인 순서로 진행한다. SQL의 함수 생성·권한 제한은 한 트랜잭션이며, 같은 팀 쓰기는 DB 잠금으로 직렬화한다.
+- 앱을 롤백해도 RPC는 유지하고 구버전의 분리 DELETE/POST 쓰기는 재개하지 않는다. 로컬 PostgreSQL의 롤백·동시 교체·권한 테스트 통과는 운영 설치 확인을 대신하지 않는다.
+
 **콘텐츠별 검수 담당 배정(`prism_assignments`, 2026-07-14 · 적용됨 · 운영 DB 존재 확인 2026-07-28)**:
 ```sql
 create table if not exists public.prism_assignments (
@@ -481,4 +488,3 @@ alter table public.prism_mq_stage enable row level security;   -- 정책 없음 
 
 > 적용: 미적용(2026-09-02 기준). 표가 없으면 조회 화면이 "스테이징 조회 실패 · 표 생성 여부 확인" 안내를 띄우고
 > 다른 기능은 영향 없다.
-
