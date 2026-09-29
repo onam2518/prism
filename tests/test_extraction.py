@@ -60,7 +60,7 @@ class TestMetaPromptBaseline(unittest.TestCase):
 
 
 class TestFourCallExtraction(unittest.TestCase):
-    """분리형 4호출 계약: 순차 산출 · 단락 차단 · 사전 기계 검증 · 콜별 모델 라우팅."""
+    """독립 4호출 계약(2026-09-22 · 371131847): 호출 독립 · 사전 기계 검증 · 콜별 모델 라우팅."""
     def _llm(self, answers):
         class L:
             model = "solar-pro3-260323"
@@ -92,7 +92,7 @@ class TestFourCallExtraction(unittest.TestCase):
         self.assertEqual(im.content_category, ["Business and Finance / Economy"])
 
     def test_parallel_calls_output_parity(self):
-        """parallel_calls A/B 옵션: 산출(ItemMeta)이 순차와 동일하고 트레이스 순서도 ①→② 결정론."""
+        """parallel_calls 옵션: 산출(ItemMeta)이 순차와 동일하고 트레이스 순서도 ①②③④ 결정론."""
         from prism import agents as AG
         answers = {
             "item_summary": {"summary": "한국은행이 기준금리를 동결한 사실을 전한다."},
@@ -106,28 +106,33 @@ class TestFourCallExtraction(unittest.TestCase):
         par_im, par_res = AG.run_item(llm_p, self._content(), parallel=True)
         self.assertEqual((par_im.summary, par_im.entities, par_im.intent, par_im.content_category),
                          (seq_im.summary, seq_im.entities, seq_im.intent, seq_im.content_category))
-        self.assertEqual(sorted(llm_p.calls[:2]), ["item_entities", "item_summary"])
-        self.assertEqual(llm_p.calls[2:], ["item_intent", "item_category"])
+        self.assertEqual(sorted(llm_p.calls),                       # 네 호출 동시 · 순서는 자유
+                         ["item_category", "item_entities", "item_intent", "item_summary"])
         tags = [r.get("tag") for r in par_res if isinstance(r, dict) and r.get("tag")]
         self.assertEqual(tags, [r.get("tag") for r in seq_res if isinstance(r, dict) and r.get("tag")])
 
-    def test_parallel_empty_summary_still_blocks(self):
-        """parallel 모드 단락 차단 파리티: ① 빈값이면 ②는 실행됐어도 산출은 전부 빈 값."""
+    def test_parallel_empty_summary_keeps_the_other_three(self):
+        """2026-09-22 정책: ① 이 비어도 ②③④ 는 실행되고 결과가 남는다(종전 단락 차단 폐지)."""
         from prism import agents as AG
-        llm = self._llm({"item_summary": {"summary": ""}, "item_entities": {"entities": ["개체"]}})
+        llm = self._llm({"item_summary": {"summary": ""}, "item_entities": {"entities": ["개체"]},
+                         "item_intent": {"intent": ["속보·단신"]},
+                         "item_category": {"content_category": ["Business and Finance / Economy"]}})
         AG.META_CFG = {"four_calls": True, "call_models": {}}
         im, _ = AG.run_item(llm, self._content(title="", body=""), parallel=True)
-        self.assertEqual((im.summary, im.entities, im.intent, im.content_category), ("", [], [], []))
-        self.assertNotIn("item_intent", llm.calls)              # ③④는 여전히 생략
+        self.assertEqual((im.summary, im.entities, im.intent), ("", ["개체"], ["속보·단신"]))
+        self.assertEqual(im.content_category, ["Business and Finance / Economy"])
 
-    def test_empty_summary_short_circuits(self):
+    def test_empty_summary_does_not_skip_the_rest(self):
+        """① 빈 문자열은 '생성 불가' 신호일 뿐 · 나머지 세 호출을 그대로 부른다."""
         from prism import agents as AG
-        llm = self._llm({"item_summary": {"summary": ""}})
+        llm = self._llm({"item_summary": {"summary": ""}, "item_entities": {"entities": ["개체"]},
+                         "item_intent": {"intent": ["속보·단신"]},
+                         "item_category": {"content_category": ["Business and Finance / Economy"]}})
         AG.META_CFG = {"four_calls": True, "call_models": {}}
         im, _ = AG.run_item(llm, self._content(title="", body=""))
-        self.assertEqual(llm.calls, ["item_summary"])               # 후속 호출 생략
-        self.assertEqual((im.summary, im.entities, im.intent), ("", [], []))
-        self.assertEqual(im.hold_fields, [])                        # 빈 문자열 = 정당한 차단 신호 · 보류 아님
+        self.assertEqual(llm.calls, ["item_summary", "item_entities", "item_intent", "item_category"])
+        self.assertEqual((im.summary, im.entities, im.intent), ("", ["개체"], ["속보·단신"]))
+        self.assertEqual(im.hold_fields, [])                        # 빈 문자열 = 정당한 신호 · 보류 아님
 
     def test_rule_fixes_rescue_before_drop(self):
         """규칙 보정: 공백 변형 인텐트 구제 + 문자열 단일값 코어션(재요청·드롭 절감)."""
