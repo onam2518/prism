@@ -107,7 +107,10 @@ window.PRISM_APP_PARTS.push(() => ({
       studio: { name: '', prompt: '', cats: [], intents: [], keywords: [], srcs: [], eattrs: [], feed: {}, kwInput: '', eaKey: 'gender', eaVal: '', editId: null, auto: { cats: [], intents: [], keywords: [] }, req: { cats: [], intents: [], keywords: [], srcs: [] }, neg: { cats: [], intents: [], keywords: [], srcs: [] } },
       // 말로 만들기(기본 화면): 대화 턴(문장 · 해석 칩 · 건수 · 표본) · 뺀 칩은 다음 해석에서 되살리지 않는다
       talk: { turns: [], input: '', busy: false, dropped: [], help: false }, studioManual: false,
-      topicStatus: 'all',                   // 현황 상태 필터: all(활성 · 정지 · 초안) | warn(정체 · 급감) | archived(보관)
+      topicStatus: [],                      // 현황 상태 칩(개별 선택 · 다섯 가지): active · paused · draft · archived · warn(정체 · 급감) · 빈 배열이면 보관만 숨김
+      topicOpen: '',                        // 현황 펼침(한 번에 한 행): 토픽 id
+      topicUndo: null,                      // 상태 스위치 되돌리기: {id, name, from}
+      topicRenameDraft: '', topicMergeInto: '',   // 펼침 동작: 이름 바꾸기 · 병합 대상
       topicPage: 'create',                  // 토픽 하위 탭: create(만들기 · 기본) | board(현황 · 대시보드)
       topicQuery: '',                       // 현황 검색: 이름 · 문장 · 엔티티 · 묶음 ID
       talkExamples: ['스포츠 경기 리뷰랑 전술 분석 위주로. 팬 응원은 빼고, 브런치 글도 빼줘. 최근 2주.',
