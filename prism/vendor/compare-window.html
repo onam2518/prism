@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ko"><head><meta charset="utf-8"><title>모델 비교 · 백그라운드 큐</title>
+<html lang="ko"><head><meta charset="utf-8"><title>백그라운드 큐 · 진척</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="stylesheet" href="/vendor/app-bundle.css">
 <link rel="icon" href="/vendor/prism-favicon.svg">
@@ -17,15 +17,16 @@
 </style></head><body>
 <div class="cw-wrap">
   <div class="cw-top">
-    <span class="ds-badge ds-badge--intent">백그라운드 큐</span><b style="font-size:16px">모델 비교 진척</b>
-    <span class="meta text-xs text-muted" id="hint">이 창은 닫아도 비교는 계속 돕니다 · 2초마다 갱신</span>
+    <span class="ds-badge ds-badge--intent">백그라운드 큐</span><b style="font-size:16px">오토파일럿 · 모델 비교 진척</b>
+    <span class="meta text-xs text-muted" id="hint">이 창은 닫아도 작업은 계속 돕니다 · 2초마다 갱신</span>
   </div>
+  <div id="pilot"></div>
   <div id="list"><div class="panel"><div class="panel-bd cw-empty text-muted">불러오는 중…</div></div></div>
 </div>
 <script>
 (function () {
   var focusId = parseInt(new URLSearchParams(location.search).get('id') || '0', 10);
-  var opened = {}, results = {}, lastRunning = null;
+  var opened = {}, results = {}, lastRunning = null, pilotOn = false, pilotRun = false;
   function tok() { try { return localStorage.getItem('prism_token') || ''; } catch (e) { return ''; } }
   function get(p) { return fetch(p, { headers: tok() ? { Authorization: 'Bearer ' + tok() } : {} }).then(function (r) { return r.json(); }); }
   function pct(v) { return v == null ? '·' : Math.round(v * 100) + '%'; }
@@ -50,9 +51,42 @@
       + (r.cheapest_passing ? ' · 합격 최저 비용 <b>' + esc(r.cheapest_passing) + '</b>' : '') + ' · 건별 비교표와 개선 루프는 메인 화면에서 봅니다</div>';
     return h;
   }
+  var PHASES = [['pre', '보정 전 평가'], ['improve', '프롬프트 보정'], ['post', '보정 후 재평가'], ['wrap', '기록 · 미확정분 재실행']];
+  function renderPilot(run) {                  // 오토파일럿 최신 런: 진행 중 라운드의 단계 막대 + 끝난 라운드 표
+    var el = document.getElementById('pilot');
+    if (!run) { el.innerHTML = ''; return; }
+    var st = run.status === 'stopped' ? 'queued' : run.status, p = run.status === 'running' ? run.progress : null;
+    var h = '<section class="panel"><div class="panel-hd"><b>오토파일럿 #' + run.id + '</b><span class="ds-badge ' + stBadge(st) + '">' + ({ running: '라운드 ' + run.round + '/' + run.max_rounds + ' 진행 중', done: '완료', stopped: '중지', failed: '실패' }[run.status] || esc(run.status)) + '</span>'
+      + '<span class="meta">' + when(run.ts) + ' · 목표 등급 ' + pct(run.target) + (run.meta_target != null ? ' · 메타 ' + pct(run.meta_target) : '') + (run.golden_n ? ' · 고정 정답셋 ' + run.golden_n + '건' : '') + ' · ' + (run.status === 'running' ? '경과 ' : '소요 ') + dur(run.ts, run.finished) + '</span></div><div class="panel-bd">';
+    if (run.status === 'running') {
+      var cur = p ? PHASES.map(function (x) { return x[0]; }).indexOf(p.phase) : -1;
+      PHASES.forEach(function (x, i) {
+        var s = i === cur ? 'running' : (i < cur ? ((p.seen || []).indexOf(x[0]) >= 0 ? 'done' : 'skip') : 'queued');
+        var w = s === 'done' ? 100 : (s === 'running' && p.total ? Math.max(p.done / p.total * 100, 2) : 0);
+        h += '<div class="cw-row"><span><b>' + (i + 1) + '. ' + x[1] + '</b></span>'
+          + '<div class="ds-progress' + (s === 'running' && !p.total ? ' ds-progress--indeterminate' : '') + '"><div class="ds-progress__track"><div class="ds-progress__fill ' + fillCls(s) + '" style="' + (s === 'running' && !p.total ? '' : 'width:' + w + '%') + '"></div></div></div>'
+          + '<span class="tnum" style="text-align:right">' + (s === 'running' && p.total ? p.done + ' / ' + p.total : '') + '</span><span class="ds-badge ' + stBadge(s) + '">' + (s === 'skip' ? '건너뜀' : stName(s)) + '</span></div>';
+      });
+      h += '<div class="text-xs text-muted" style="margin-top:6px">보정 후 재평가는 프롬프트가 바뀐 라운드에만 돕니다 · 중지는 메인 화면 › 평가 › 오토파일럿</div>';
+    }
+    if (run.stop_reason || run.error) h += '<div class="text-xs text-muted" style="margin-top:6px">' + esc(run.error || run.stop_reason) + '</div>';
+    if ((run.history || []).length) {
+      h += '<div class="cw-res overflow-auto"><table class="ds-table"><thead><tr><th>라운드</th><th>버전</th><th>종합</th><th>게이트</th><th>등급 일치율</th><th>비용($)</th><th>반영</th></tr></thead><tbody>';
+      run.history.forEach(function (r) {
+        var m = r.metrics || {};
+        h += '<tr><td class="tnum">' + r.round + '</td><td class="tnum">' + (r.version ? 'v' + r.version : '·') + '</td><td class="tnum"><b>' + pct(m.overall) + '</b></td>'
+          + '<td><span class="ds-badge ' + (m.passed ? 'ds-badge--success' : 'ds-badge--warning') + '">' + (m.passed ? '통과' : '미달 ' + (m.gate_fails || []).length) + '</span></td>'
+          + '<td class="tnum">' + pct(r.pre) + ' → <b>' + pct(r.accuracy) + '</b></td>'
+          + '<td class="tnum">' + (m.cost_usd != null ? ('$' + Math.round(m.cost_usd * 10000) / 10000) : '·') + '</td>'
+          + '<td><span class="ds-badge ' + (r.reverted ? 'ds-badge--warning' : 'ds-badge--success') + '">' + (r.reverted ? '원복' : '반영') + '</span></td></tr>';
+      });
+      h += '</tbody></table></div>';
+    }
+    el.innerHTML = h + '</div></section>';
+  }
   function render(jobs) {
     var el = document.getElementById('list');
-    if (!jobs.length) { el.innerHTML = '<div class="panel"><div class="panel-bd cw-empty text-muted">진행 중이거나 최근에 끝난 비교가 없습니다 · 메인 화면 › 평가 › 모델별 비교에서 시작합니다</div></div>'; return; }
+    if (!jobs.length) { el.innerHTML = pilotOn ? '' : '<div class="panel"><div class="panel-bd cw-empty text-muted">진행 중이거나 최근에 끝난 작업이 없습니다 · 메인 화면 › 평가 › 모델별 비교에서 시작합니다</div></div>'; return; }
     el.innerHTML = jobs.map(function (j) {
       var ms = Object.keys(j.models);
       var doneN = ms.filter(function (m) { return j.models[m].status === 'done'; }).length;
@@ -79,7 +113,7 @@
   }
   function load(id) { return get('/compare-status?id=' + id).then(function (r) { if (r.ok && r.job && r.job.result) results[id] = r.job.result; }); }
   function tick() {
-    get('/compare-jobs').then(function (r) {
+    get('/autopilot-status').then(function (r) { if (r.ok) { pilotOn = !!r.run; pilotRun = !!(r.run && r.run.status === 'running'); renderPilot(r.run); } }).catch(function () {}).then(function () { return get('/compare-jobs'); }).then(function (r) {
       if (!r.ok) { document.getElementById('list').innerHTML = '<div class="panel"><div class="panel-bd cw-empty text-muted">' + esc(r.error || '불러오지 못했습니다 · 메인 화면에 로그인돼 있어야 합니다') + '</div></div>'; return; }
       var jobs = r.jobs || [];
       var running = jobs.some(function (j) { return j.status === 'running'; });
@@ -88,7 +122,7 @@
       var pending = jobs.filter(function (j) { return j.status === 'done' && opened[j.id] && !results[j.id]; }).map(function (j) { return load(j.id); });
       Promise.all(pending).then(function () { render(jobs); });
       lastRunning = running;
-      document.getElementById('hint').textContent = running ? '이 창은 닫아도 비교는 계속 돕니다 · 2초마다 갱신 · 막대는 8건마다 움직입니다' : '진행 중인 비교 없음 · 새 비교는 메인 화면에서 시작합니다';
+      document.getElementById('hint').textContent = (running || pilotRun) ? '이 창은 닫아도 작업은 계속 돕니다 · 2초마다 갱신 · 막대는 8건마다 움직입니다' : '진행 중인 작업 없음 · 새 작업은 메인 화면 › 평가에서 시작합니다';
     }).catch(function () {});
   }
   tick(); setInterval(tick, 2000);

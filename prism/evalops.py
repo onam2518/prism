@@ -281,6 +281,8 @@ def eval_run_compare(a_id: int, b_id: int, team=None) -> dict:
 # 종료 = 목표 달성 · 개선 정체(2라운드 연속 향상 없음) · 최대 라운드 · 수동 중지.
 _PILOT_ACTIVE: dict = {}        # run_id → Thread
 _PILOT_STOP: set = set()
+# ponytail: 라운드 안 진척은 프로세스 메모리 · 재시작하면 런도 같이 죽으므로 영속 불필요
+_PILOT_PROG: dict = {}          # run_id → {round, phase, done, total, seen, ts}
 PILOT_ROUNDS_CAP = 10           # 폭주 방지 상한(Atelier max_versions cap 상응)
 PILOT_STALL_ROUNDS = 2          # 연속 무향상 허용 라운드(초과 시 정체 종료)
 
@@ -363,6 +365,8 @@ def autopilot_status(team=None) -> dict:
                 run["status"], run["stop_reason"] = "stopped", "서버 재시작으로 중단 · 다시 시작하세요"
             except Exception:
                 pass
+        if run.get("status") == "running":
+            run["progress"] = _PILOT_PROG.get(run["id"])
         run["golden_n"] = len(run.pop("golden_hashes", None) or [])   # 화면엔 건수만(해시 목록은 응답에서 뺀다)
     return {"ok": True, "run": run}
 
@@ -399,10 +403,18 @@ def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = "",
                                     finished=time.time())
                 return
             st.autopilot_update(rid, team=team, round=rnd, heartbeat=time.time())
-            rep = LO.learning_batch(team, model=model, golden_hashes=golden_hashes)
+
+            def _prog(phase, done=0, total=0, _r=rnd):   # 화면 진척(단계·건수) · seen = 이 라운드에 실제로 돈 단계
+                p = _PILOT_PROG.get(rid) or {}
+                seen = list(p.get("seen") or []) if p.get("round") == _r else []
+                if phase not in seen:
+                    seen.append(phase)
+                _PILOT_PROG[rid] = {"round": _r, "phase": phase, "done": done, "total": total,
+                                    "seen": seen, "ts": time.time()}
+            rep = LO.learning_batch(team, model=model, golden_hashes=golden_hashes, progress=_prog)
             if rep.get("skipped"):          # 다른 호출자와 배치 겹침 · 잠깐 대기 후 한 번만 재시도
                 time.sleep(2)
-                rep = LO.learning_batch(team, model=model, golden_hashes=golden_hashes)
+                rep = LO.learning_batch(team, model=model, golden_hashes=golden_hashes, progress=_prog)
             acc = rep.get("grade_accuracy")
             if acc is None:
                 st.autopilot_update(rid, team=team, status="failed",
@@ -469,6 +481,7 @@ def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = "",
         with _LOCK:
             _PILOT_ACTIVE.pop(rid, None)
         _PILOT_STOP.discard(rid)
+        _PILOT_PROG.pop(rid, None)
 
 
 # ── 루브릭 저지(4축 · Atelier rubric-judge 이식) ────────────────────────────

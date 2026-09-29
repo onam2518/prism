@@ -376,6 +376,11 @@ window.PRISM_APP_PARTS.push(() => ({
       async loadLearnTrend() {
         try { const r = await (await this._afetch('/learn-reports', { headers: this._authHeaders() })).json(); if (r && r.ok) this.learnTrend = r.items || []; } catch (e) {}
       },
+      get pilotStep() {                        // 진행 중 라운드의 현재 단계(서버 progress · 첫 단계 전이면 null)
+        const p = this.pilot && this.pilot.status === 'running' && !this.pilot.stalled && this.pilot.progress; if (!p) return null;
+        const ks = ['pre', 'improve', 'post', 'wrap'];
+        return { label: '라운드 ' + p.round + ' · ' + (ks.indexOf(p.phase) + 1) + '/4 ' + ({ pre: '보정 전 평가', improve: '프롬프트 보정', post: '보정 후 재평가', wrap: '기록 · 미확정분 재실행' }[p.phase] || p.phase), done: p.done || 0, total: p.total || 0 };
+      },
       pilotBusy: false, pilotMsg: '', _pilotPollT: null,
       async loadPilot() {
         try {
