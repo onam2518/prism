@@ -11,6 +11,7 @@ POC 보강: 공개 NER 모델 대신 Wikidata(무키·stdlib urllib) 조회로 �
 수동 확정(source=manual·status=confirmed)된 필드는 재보강이 덮어쓰지 않는다.
 """
 from __future__ import annotations
+from . import meta_contract as MC
 
 import hashlib
 import html as _html
@@ -248,7 +249,7 @@ def ingest_pairs(store, pairs, team="") -> dict:
     from .store import content_hash
     items = []
     for content, out in pairs:
-        ents = ((out or {}).get("item_meta") or {}).get("entities") or []
+        ents = MC.entity_names(((out or {}).get("item_meta") or {}).get("entities"))
         if ents:
             items.append((content_hash(content), ents))
     return ingest_meta(store, items, team=team)
@@ -261,7 +262,7 @@ def ingest_rows(store, rows, team="") -> dict:
     for r in rows:
         im = r.get("item_meta") or {}
         ref = r.get("content_ref") or {}
-        ents = im.get("entities") or []
+        ents = MC.entity_names(im.get("entities")) or []
         title = ref.get("title", "") or r.get("title", "")
         if not ents or not title:
             continue

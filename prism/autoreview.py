@@ -21,6 +21,7 @@ start() 가 잡을 띄우고 id·total 을 주면, status(id) 를 폴링해 done
 컴포지션: 스토어·LLM 라우팅·결과 뷰는 serve 가 _SV 로 주입(learnops 관례).
 """
 from __future__ import annotations
+from . import meta_contract as MC
 
 import json
 import threading
@@ -145,8 +146,8 @@ def _judge_one(llm, r: dict) -> dict:
     payload = {
         "제목": ref.get("title", ""), "서비스": ref.get("displayServiceName", ""),
         "본문": _clip(ref.get("body", ""), 2000),
-        "리드문": im.get("summary", ""), "엔티티": im.get("entities", []) or [],
-        "인텐트": im.get("intent", []) or [], "카테고리": im.get("content_category", []) or [],
+        "리드문": im.get("summary", ""), "엔티티": MC.entity_names(im.get("entities", [])) or [],
+        "인텐트": im.get("intent", []) or [], "카테고리": MC.category_paths(im.get("content_category", [])) or [],
         "등급": qm.get("finalGrade", ""), "사유": qm.get("reasons", []) or [],
     }
     obj, _res = llm.complete_json(_JUDGE_SYSTEM, json.dumps(payload, ensure_ascii=False), tag="autoreview")

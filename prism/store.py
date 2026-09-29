@@ -1,5 +1,6 @@
 """SQLite 영속성 (운영 하드닝). 결과·usage·검수 피드백을 파일 DB에 적재."""
 from __future__ import annotations
+from . import meta_contract as MC
 import json
 import os
 import sqlite3
@@ -9,6 +10,20 @@ import hashlib
 
 _local = threading.local()
 _EVENT_ONCE_LOCK = threading.Lock()   # log_event_once 의 check-then-insert 직렬화(미션 보상 이중 지급 방지)
+
+
+def _atomic_content_write(fn):
+    """수동값을 읽고 자동 산출을 쓰는 동안 다른 SQLite 작성자를 직렬화한다."""
+    from functools import wraps
+
+    @wraps(fn)
+    def write(self, *args, **kwargs):
+        c = self._conn()
+        with c:
+            if not c.in_transaction:
+                c.execute("BEGIN IMMEDIATE")
+            return fn(self, *args, **kwargs)
+    return write
 
 
 def content_hash(content: dict) -> str:
@@ -37,6 +52,8 @@ def _keep_ops_flags(payload: dict, flags: dict) -> dict:
     if not flags:
         return payload
     p = dict(payload)
+    if flags.get("item_meta"):
+        p["item_meta"] = MC.preserve_manual(flags["item_meta"], p.get("item_meta"))
     if "ops_hold" in flags:
         qm = dict(p.get("quality_meta") or {})
         if "ops_hold" not in qm:
@@ -171,6 +188,17 @@ class Store:
         -- 골든셋: 검수(정확) 확정 콘텐츠 = 정답셋. content_hash 로 upsert.
         CREATE TABLE IF NOT EXISTS golden(
           content_hash TEXT PRIMARY KEY, content TEXT, expected TEXT, ts REAL);
+        CREATE TABLE IF NOT EXISTS golden_history(
+          id INTEGER PRIMARY KEY AUTOINCREMENT, content_hash TEXT, content TEXT, expected TEXT, ts REAL);
+        CREATE TRIGGER IF NOT EXISTS archive_golden_update AFTER UPDATE OF content,expected ON golden
+        WHEN OLD.content != NEW.content OR OLD.expected != NEW.expected BEGIN
+          INSERT INTO golden_history(content_hash,content,expected,ts)
+          VALUES(OLD.content_hash,OLD.content,OLD.expected,strftime('%s','now'));
+        END;
+        CREATE TRIGGER IF NOT EXISTS archive_golden_delete BEFORE DELETE ON golden BEGIN
+          INSERT INTO golden_history(content_hash,content,expected,ts)
+          VALUES(OLD.content_hash,OLD.content,OLD.expected,strftime('%s','now'));
+        END;
         -- 교정 로그(append-only): patch 전/후 보존 → 선호쌍(DPO) 데이터 원천.
         CREATE TABLE IF NOT EXISTS patch_log(
           id INTEGER PRIMARY KEY AUTOINCREMENT, content_hash TEXT, reviewer TEXT,
@@ -457,6 +485,7 @@ class Store:
         c.commit()
         return True
 
+    @_atomic_content_write
     def save_result(self, content: dict, out: dict, run_id: str):
         # CLI 단건 경로. source 컬럼은 아예 쓰지 않는다(인입 채널 개념이 없는 경로) →
         # 기존 행의 인입 경로 라벨을 건드리지 않고, 신규 행은 다음 저장에서 백필된다.
@@ -471,6 +500,7 @@ class Store:
                 fail_kind = "api"
                 break
         c = self._conn()
+        payload = _keep_ops_flags(_payload_with_identity(content, out), self._kept_flags(c, [ch]).get(ch))
         c.execute("""INSERT INTO results
           (content_hash,run_id,service,title,final_grade,reasons,item_meta,payload,cost_usd,fail_kind,created_at)
           VALUES(?,?,?,?,?,?,?,?,?,?,?)
@@ -481,8 +511,8 @@ class Store:
             fail_kind=excluded.fail_kind, created_at=excluded.created_at""",
           (ch, run_id, content.get("displayServiceName", ""), content.get("title", ""),
            qm.get("finalGrade", ""), json.dumps(qm.get("reasons", []), ensure_ascii=False),
-           json.dumps(out.get("item_meta"), ensure_ascii=False),
-           json.dumps(_payload_with_identity(content, out), ensure_ascii=False), tr.get("cost_usd", 0.0),
+           json.dumps(payload.get("item_meta"), ensure_ascii=False),
+           json.dumps(payload, ensure_ascii=False), tr.get("cost_usd", 0.0),
            fail_kind, time.time()))
         c.commit()
 
@@ -519,7 +549,7 @@ class Store:
                     continue
                 qm = pl.get("quality_meta") or {}
                 ref = pl.get("content_ref") or {}
-                flags = {}
+                flags = {"item_meta": pl.get("item_meta") or {}}
                 if "ops_hold" in qm:
                     flags["ops_hold"] = qm["ops_hold"]
                 if "source_status" in ref:
@@ -529,6 +559,7 @@ class Store:
         return out
 
     # ── 배치 저장(단일 트랜잭션) + UI 조회/집계 ──
+    @_atomic_content_write
     def save_many(self, pairs, run_id: str, source: str = "", team=None, include_all: bool = False):
         """pairs: [(content, out), …] 를 단일 트랜잭션으로 upsert(멱등). 반환: 건수.
         source: 최초 인입 경로(단건·엑셀·배치·자동 인입 등) · 기존 행에는 덮어쓰지 않는다(_SRC_KEEP_FIRST).
@@ -549,7 +580,7 @@ class Store:
             payload = _keep_ops_flags(_payload_with_identity(content, out), kept.get(ch))
             rows.append((ch, run_id, content.get("displayServiceName", ""), content.get("title", ""),
                          qm.get("finalGrade", ""), json.dumps(qm.get("reasons", []), ensure_ascii=False),
-                         json.dumps(out.get("item_meta"), ensure_ascii=False),
+                         json.dumps(payload.get("item_meta"), ensure_ascii=False),
                          json.dumps(payload, ensure_ascii=False), tr.get("cost_usd", 0.0),
                          fail_kind, time.time(), source))
         if not rows:
@@ -564,6 +595,7 @@ class Store:
         c.commit()
         return len(rows)
 
+    @_atomic_content_write
     def save_dedup(self, pairs, run_id: str, source: str = "", team=None) -> dict:
         """적재 정책: content_hash 기준 멱등.
         · 신규 → insert  · 기존인데 메타(등급·item_meta·reasons) 변경 → update
@@ -601,6 +633,7 @@ class Store:
                 upd += 1
                 try:                              # 기존 payload 의 운영 플래그 승계 준비
                     pl = json.loads(cur[3]) if cur[3] else {}
+                    flags["item_meta"] = pl.get("item_meta") or {}
                     pqm = pl.get("quality_meta") or {}
                     pref = pl.get("content_ref") or {}
                     if "ops_hold" in pqm:
@@ -619,7 +652,7 @@ class Store:
             payload = _keep_ops_flags(_payload_with_identity(content, out), flags)
             rows.append((ch, run_id, content.get("displayServiceName", ""), content.get("title", ""),
                          new_gr, json.dumps(qm.get("reasons", []), ensure_ascii=False),
-                         json.dumps(out.get("item_meta"), ensure_ascii=False),
+                         json.dumps(payload.get("item_meta"), ensure_ascii=False),
                          json.dumps(payload, ensure_ascii=False), tr.get("cost_usd", 0.0),
                          fail_kind, time.time(), source))
         if rows:
@@ -681,7 +714,7 @@ class Store:
                 sstat = (pl.get("content_ref") or {}).get("source_status") or {}
             except Exception:
                 pass
-            cat = " · ".join((imd or {}).get("content_category") or [])
+            cat = " · ".join(MC.category_paths((imd or {}).get("content_category")))
             rows.append({"hash": ch, "service": svc or "", "title": ti or "",
                          "grade": grade or "", "summary": (imd or {}).get("summary", ""),
                          "category": cat, "source": src or "단건", "model": model, "version": version,
@@ -2257,6 +2290,7 @@ class Store:
         c = self._conn()
         c.execute("DELETE FROM feedback"); c.commit()
 
+    @_atomic_content_write
     def update_item_meta(self, content_hash, patch: dict, team=None) -> bool:
         """검수자 구조화 교정: item_meta 패치(예: 빈 content_category 채우기).
         recent() 가 payload 를 읽으므로 item_meta 컬럼 + payload.item_meta 둘 다 갱신.
@@ -2368,7 +2402,7 @@ class Store:
             except Exception:
                 continue
             out.append({"hash": ch, "title": ct.get("title", ""), "service": ct.get("displayServiceName", ""),
-                        "grade": ex.get("finalGrade", ""), "category": ex.get("content_category", []) or [],
+                        "grade": ex.get("finalGrade", ""), "category": MC.category_paths(ex.get("content_category")),
                         "intent": ex.get("intent") or [], "intent_review": ex.get("intent_review") or "",
                         "intent_retired": ex.get("intent_retired") or [],
                         "source": src or "review", "ts": ts})

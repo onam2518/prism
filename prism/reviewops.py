@@ -12,6 +12,7 @@ serve 가 기동 시 `_SV`(자기 모듈 객체)로 주입(learnops 관례 · �
 그 이름들의 호출은 이동 후에도 `_SV.` 경유가 계약이다.
 """
 from __future__ import annotations
+from . import meta_contract as MC
 
 import heapq
 import threading
@@ -178,7 +179,7 @@ def final_review_queue(team=None, reviewer: str = "") -> dict:
         bw = sum(weights.get(v.get("reviewer_id") or v.get("reviewer"), 1.0)
                  for v in fb.get("verdicts", []) if v.get("verdict") == "bad")
         im = r.get("item_meta") or {}
-        cats = [c for c in (im.get("content_category") or []) if c and c != "Unclassified"]
+        cats = [c for c in (MC.category_paths(im.get("content_category")) or []) if c and c != "Unclassified"]
         agreed = fb.get("good", 0) >= min_good and gw > bw
         # 승격 게이트(build_golden_from_reviews)와 동일 판정: 등급(G/R)과 분류가 모두 있어야
         # '다음 학습 반영 때 승격'이 성립한다. 등급 공백(judge 실패·보류)을 승격 예정으로
@@ -286,7 +287,7 @@ def _inject_gold_final(items: list, reviewer: str, team=None) -> list:
     rng = _rd.Random(int(_hl.sha1(f"goldf:{reviewer}:{day}".encode()).hexdigest()[:8], 16))
     h, content, exp, om, shown, flip = cands[rng.randrange(len(cands))]
     out = list(items)
-    _gent = exp.get("entities", []) or []
+    _gent = MC.entity_names(exp.get("entities", [])) or []
     out.insert(rng.randint(0, len(out)), {
         "hash": f"goldf:{'bad' if flip else 'ok'}:{h}",
         "title": content.get("title", ""), "subtitle": content.get("subtitle", ""),
@@ -738,21 +739,35 @@ def patch_content_meta(content_hash, patch, team=None, reviewer="") -> dict:
     ch = (content_hash or "").strip()
     if ch.startswith(("gold:", "goldf:")):
         return _gold_patch()
-    patch = dict(patch or {})
+    patch = {k: v for k, v in dict(patch or {}).items() if k in (*MC.FIELDS, "finalGrade", "reasons")}
     grade = patch.pop("finalGrade", None)
     reasons = patch.pop("reasons", None)
     if "entities" in patch:                        # 엔티티 교정: 문자열 목록으로 정규화(공백·빈 값·None 제거 · 중복 제거 · 순서 보존)
         ents = patch.get("entities")
         ents = ents if isinstance(ents, (list, tuple)) else ([ents] if ents else [])
-        patch["entities"] = list(dict.fromkeys(
-            s for s in (str(x).strip() for x in ents if x is not None) if s))
+        patch["entities"] = MC.clean_entities(ents)
     before = None
     hold_left = None
     if patch and hasattr(st, "get_item_meta"):
         try:
             cur = st.get_item_meta(ch, team=team)
             if isinstance(cur, dict):
+                if "entities" in patch and any(isinstance(v, dict) for v in cur.get("entities") or []):
+                    types = {MC.entity_name(v): v.get("type") for v in cur["entities"] if isinstance(v, dict)}
+                    patch["entities"] = [v if isinstance(v, dict) else {"name": v, "type": types.get(v)}
+                                         for v in patch["entities"]]
+                if "content_category" in patch and any(isinstance(v, dict) for v in patch["content_category"]):
+                    patch["content_category"] = MC.clean_categories(patch["content_category"])
                 before = {k: cur.get(k) for k in patch}           # 패치 대상 키의 이전 값만
+                manual = dict(cur.get("manual_fields") or {})
+                statuses = dict(cur.get("meta_status") or {})
+                changed = [k for k in MC.FIELDS if k in patch]
+                for k in changed:
+                    manual[k] = {"input_revision": cur.get("input_revision"),
+                                 "reviewer": reviewer or "(익명)", "confirmed_at": time.time()}
+                    statuses[k] = "success" if patch[k] else "no_value"
+                patch.update(manual_fields=manual, meta_status=statuses,
+                             manual_review_required=[k for k in cur.get("manual_review_required", []) if k not in changed])
                 hold = cur.get("hold_fields") or []
                 if hold:                                          # 입력 필요: 채워진 필드는 목록에서 뺀다
                     hold_left = [f for f in hold if not patch.get(f)]
@@ -763,7 +778,7 @@ def patch_content_meta(content_hash, patch, team=None, reviewer="") -> dict:
     # 덮어쓸 수 있었다(감사 기록 log_patch 는 호출자 팀에 남아 원 소유 팀 이력엔 안 보였다).
     ok = st.update_item_meta(ch, patch, team=team) if patch else False
     if ok and before is not None and hasattr(st, "log_patch"):
-        element = "category" if "content_category" in patch else ",".join(sorted(patch))
+        element = "category" if "content_category" in patch else ",".join(sorted(k for k in patch if k in MC.FIELDS))
         try:
             st.log_patch(ch, reviewer or "(익명)", element, before, patch, team=team)
         except Exception:
@@ -988,8 +1003,8 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
                     "url": ref.get("source_url", ""),
                     "images": ref.get("image_urls", []) or [],
                     "grade": qm.get("finalGrade", ""), "reasons": qm.get("reasons", []) or [],
-                    "category": im.get("content_category", []) or [],
-                    "summary": im.get("summary", ""), "entities": im.get("entities", []) or [],
+                    "category": MC.category_paths(im.get("content_category", [])) or [],
+                    "summary": im.get("summary", ""), "entities": MC.entity_names(im.get("entities", [])) or [],
                     "intent": im.get("intent", []) or [],
                     "model": tr.get("model", "") or "",
                     "version": int(tr.get("version") or 1),
@@ -998,7 +1013,7 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
                     "split": bool(fb.get("good") and fb.get("bad")),
                     "final": (finals.get(ch) or {}).get("verdict", ""),
                     "class_gap": bool(lack and {str(c).split("/")[0].strip()
-                                                for c in (im.get("content_category") or [])} & lack),
+                                                for c in (MC.category_paths(im.get("content_category")) or [])} & lack),
                     "fb": _SV._fb_public(fb, reviewer),
                     "assignees": (asg.get(ch) or {}).get("reviewers", []),
                     "min_reviewers": (asg.get(ch) or {}).get("min", 0),
@@ -1026,9 +1041,9 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
                            "body": g.get("body", ""), "url": g.get("url", ""), "images": [],
                            "grade": g.get("grade", ""), "reasons": g.get("reasons", []) or [],
                            "category": gcats,
-                           "summary": g.get("summary", ""), "entities": g.get("entities", []) or [],
+                           "summary": g.get("summary", ""), "entities": MC.entity_names(g.get("entities", [])) or [],
                            "entities_scored": EC.scored_entities(
-                               {"entities": g.get("entities", []) or [], "summary": g.get("summary", "")},
+                               {"entities": MC.entity_names(g.get("entities", [])) or [], "summary": g.get("summary", "")},
                                {"title": g.get("title", ""), "body": g.get("body", "")}),
                            "intent": g.get("intent", []) or [],
                            "model": g.get("model", ""), "version": g.get("version"),
@@ -1041,7 +1056,7 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
                            "final": "", "ops_hold": False, "source_status": {},
                            "assignees": [], "min_reviewers": 0,
                            "fb": {"verdict": "", "n": 0, "ts": 0},
-                           "item_meta": {"summary": g.get("summary", ""), "entities": g.get("entities", []),
+                           "item_meta": {"summary": g.get("summary", ""), "entities": MC.entity_names(g.get("entities", [])),
                                          "intent": g.get("intent", []), "content_category": gcats},
                            "quality_meta": {"finalGrade": g.get("grade", ""), "reasons": g.get("reasons", [])}})
     return {"ok": True, "items": out, "n": len(out)}
@@ -1087,7 +1102,7 @@ def model_stats(team=None) -> dict:
             g["lead"] += len(sm); g["lead_n"] += 1
         for t in (im.get("intent") or []):
             g["intents"][t] = g["intents"].get(t, 0) + 1
-        for c in (im.get("content_category") or []):
+        for c in (MC.category_paths(im.get("content_category")) or []):
             top = (c or "").split("/")[0].strip()
             if top:
                 g["cats"][top] = g["cats"].get(top, 0) + 1
@@ -1182,14 +1197,14 @@ def _gold_drafts(ch: str, team=None) -> dict:
             continue
         om = (_gold_origin_meta(st, [under], team) or {}).get(under) or {}
         exp = gold_shown_meta(exp, om)                # 큐 행과 같은 화면값(빈 축 = 골드 표시 방지)
-        cats = exp.get("content_category", []) or []
+        cats = MC.category_paths(exp.get("content_category", [])) or []
         flip = int(under, 16) % 2 == 1
         shown = gold_wrong_category(cats, under) if flip else [str(c) for c in cats]
         if shown is None:                             # 뒤집을 수 없으면 참값(출제 자체가 이 경우 제외됨)
             shown = [str(c) for c in cats]
         cur = {"label": f"{om.get('model') or '모델 미기록'} · v{int(om.get('version') or 1)} (현재)",
                "model": om.get("model", ""), "version": int(om.get("version") or 1),
-               "item_meta": {"summary": exp.get("summary", ""), "entities": exp.get("entities", []) or [],
+               "item_meta": {"summary": exp.get("summary", ""), "entities": MC.entity_names(exp.get("entities", [])) or [],
                              "intent": exp.get("intent", []) or [], "content_category": shown},
                "quality_meta": {"finalGrade": exp.get("finalGrade", "") or "G",
                                 "reasons": exp.get("reasons", []) or []}}
@@ -1349,7 +1364,7 @@ def _gold_candidates(st, team, answered) -> list:
             continue
         exp = gold_shown_meta(exp, om)               # 사람이 고치지 않은 축은 원본 산출로 채운다
         flip = int(h, 16) % 2 == 1                   # 홀수 = 카테고리 한 자리 뒤집기(정답 bad)
-        cats = exp.get("content_category", []) or []
+        cats = MC.category_paths(exp.get("content_category", [])) or []
         shown = gold_wrong_category(cats, h) if flip else [str(c) for c in cats]
         if shown is None:
             continue
@@ -1393,7 +1408,7 @@ def _gold_item(h, content, exp, om, shown, flip) -> dict:
     return {"hash": f"gold:{'bad' if flip else 'ok'}:{h}",
             "service": content.get("displayServiceName", ""), "title": content.get("title", ""),
             "body": content.get("body", ""), "summary": exp.get("summary", ""),
-            "entities": exp.get("entities", []) or [], "intent": exp.get("intent", []) or [],
+            "entities": MC.entity_names(exp.get("entities", [])) or [], "intent": exp.get("intent", []) or [],
             "category": shown,
             "grade": exp.get("finalGrade", "") or "G",
             "reasons": exp.get("reasons", []) or [], "review_reason": "",

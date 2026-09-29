@@ -407,7 +407,7 @@ class TestValidationCatchesTheRules(unittest.TestCase):
                          "News and Politics / Politics")
 
     def test_quantity_and_order_contract_rules(self):
-        self.assertEqual(self.one({"content_category": []})["code"], "category_empty")
+        self.assertEqual(PD.validate_result({"content_category": []})["items"], [])
         self.assertEqual(self.one({"intent": ["속보·단신", "속보·단신"]})["code"], "duplicate")
         # 2026-09-22 독립 4콜: 빈 리드문 + 다른 필드 채움은 정상이라 위반이 아니다.
         self.assertEqual(validate({"summary": "", "intent": ["속보·단신"]})["total"], 0)

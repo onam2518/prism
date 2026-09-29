@@ -1,5 +1,6 @@
 """토픽 생성 체계: 엔티티형/사건형(자동) + 사용자 정의(토픽 스튜디오)."""
 from __future__ import annotations
+from . import meta_contract as MC
 import re
 from collections import Counter, defaultdict
 from itertools import combinations
@@ -59,7 +60,7 @@ def _content_entities(rows, service_names, include_all=False):
             out.append([])
             continue
         im = r.get("item_meta") or {}
-        ents = [e for e in (im.get("entities") or []) if not _is_junk_entity(e, service_names)]
+        ents = [e for e in (MC.entity_names(im.get("entities")) or []) if not _is_junk_entity(e, service_names)]
         out.append(list(dict.fromkeys(ents)))
     return out
 
@@ -95,7 +96,19 @@ def _eligible(r) -> bool:
     켜져 있으면 R(과 검수 대기)만 제외하고, 꺼져 있거나 등급이 없으면 등급을 조건에서
     빼되 그 행은 '판정 없음'(_grade == "")으로 남겨 G 와 구분한다(감사 4-9).
     """
-    return _grade(r) not in _NOT_ELIGIBLE
+    return _grade(r) not in _NOT_ELIGIBLE and _hard_allowed(r)
+
+
+def _hard_allowed(r) -> bool:
+    """운영자 조건과 개별 포함도 해제할 수 없는 원천 삭제·철회 제한."""
+    ref, im = r.get("content_ref") or {}, r.get("item_meta") or {}
+    status = (r.get("src") or {}).get("status")
+    source_status = ref.get("source_status") or (r.get("quality_meta") or {}).get("source_status") or {}
+    return (str(status or "").upper() not in ("DELETE", "DELETED")
+            and source_status.get("status") not in ("deleted", "DELETE")
+            and source_status.get("state") != "gone"
+            and im.get("scope_status") not in ("excluded", "unresolved")
+            and not (r.get("quality_meta") or {}).get("ops_hold"))
 
 
 def _row_hash(r) -> str:
@@ -122,7 +135,7 @@ def build_entity_topics(rows, service_names, canon, min_contents=2, ent_keys=Non
         if not _eligible(r):
             continue
         im = r.get("item_meta") or {}
-        for e in (im.get("entities") or []):
+        for e in (MC.entity_names(im.get("entities")) or []):
             if _is_junk_entity(e, service_names):
                 continue
             k = keys.get(e) or e
@@ -277,10 +290,15 @@ def _content_dims(rows, service_names, ent_index=None, ent_keys=None):
     keys = ent_keys or {}
     c_cat, c_int, c_ent, elig, c_att, c_src, c_feed, c_eid = [], [], [], [], [], [], [], []
     for r in rows:
-        im = r.get("item_meta") or {}
-        c_cat.append(cat_values(im.get("content_category")))
+        im = dict(r.get("item_meta") or {})
+        for field in ("entities", "intent", "content_category"):
+            status = (im.get("meta_status") or {}).get(field)
+            if (status not in (None, "success") or
+                    (im.get("policy_version") and im["policy_version"] != "dnm-common-2026-09-29-r3")):
+                im[field] = []
+        c_cat.append(cat_values(MC.category_paths(im.get("content_category"))))
         c_int.append(set(im.get("intent") or []))
-        ents = [e for e in (im.get("entities") or []) if not _is_junk_entity(e, service_names)]
+        ents = [e for e in (MC.entity_names(im.get("entities")) or []) if not _is_junk_entity(e, service_names)]
         c_ent.append(ents)
         c_eid.append({keys[e] for e in ents if e in keys})     # 엔티티 조건의 공통키 매칭 원천(2-6)
         elig.append(_eligible(r))
@@ -414,17 +432,24 @@ def sanitize_feed(v) -> dict:
 def _feed_pass(f: dict, fd: dict, now: float):
     """원천 필드 조건 판정 → (통과, 모르는 필드명). 조건이 걸린 필드가 행에 없으면(None) 탈락하고 그 필드명을 돌려준다.
     기본 제외(광고 · 성인 · 선정 · 삭제)는 값이 있을 때만 걸린다(모르면 통과)."""
+    if str(f.get("status") or "").upper() in ("DELETE", "DELETED"):
+        return False, ""
     if fd.get("base_excl", True):
         st = f.get("status")
         if (st is not None and st != BASE_EXCL_STATUS) or any(f.get(k) is True for k in BASE_EXCL_FLAGS):
             return False, ""
     if fd.get("days"):
         ts = f.get("org_ts") if fd.get("basis", "org") == "org" else f.get("ingest_ts")
-        if not ts and fd.get("basis", "org") == "org":
-            ts = f.get("ingest_ts")                      # 원문 발행일이 없으면 적재일로 대신
-        if not ts:
+        if ts is None:
             return False, "days"
-        if float(ts) < now - int(fd["days"]) * 86400:
+        try:
+            ts = float(ts)
+        except (TypeError, ValueError):
+            return False, "days"
+        # KST 달력일 기준 [첫날 00:00, 다음날 00:00), 미래 발행분은 포함하지 않는다.
+        day_start = ((now + 9 * 3600) // 86400) * 86400 - 9 * 3600
+        start = day_start - (int(fd["days"]) - 1) * 86400
+        if not start <= ts < min(day_start + 86400, now):
             return False, ""
     ty, st = f.get("type"), f.get("subtype")
     code = (ty + ("/" + st if st else "")) if ty else None
@@ -715,6 +740,16 @@ def _match_valueset(dims, vs, eligible_only=True, ent_keys=None):
     eattrs 는 모아서 '같은 개체 AND' 로 판정.
     eligible_only=False 면 유통 불가 콘텐츠까지 센다(사후 편입 · 4-46)."""
     c_cat, c_int, c_ent, elig, c_att, c_src = dims[:6]
+    grouped = {k: [v for key, v in vs if key == k] for k, _ in vs}
+    if any(len(v) > 1 for k, v in grouped.items() if k != "eattrs"):
+        matches = set(range(len(c_cat)))
+        for k, values in grouped.items():
+            if k == "eattrs":
+                hits = set(_match_valueset(dims, [(k, v) for v in values], eligible_only, ent_keys))
+            else:
+                hits = set().union(*(set(_match_valueset(dims, [(k, v)], eligible_only, ent_keys)) for v in values))
+            matches &= hits
+        return sorted(matches)
     c_eid = dims[7]
     keys = ent_keys or {}
     econds = _eattr_conds([v for k, v in vs if k == "eattrs"])
@@ -766,6 +801,10 @@ def _neg_blocked(dims, neg, ent_keys=None) -> set:
         return set()
     out = set()
     for i in range(len(c_cat)):
+        if ((cats and not c_cat[i]) or (intents and not c_int[i])
+                or ((kws or kids) and not c_ent[i]) or (srcs and not c_src[i])):
+            out.add(i)
+            continue
         if (kids and c_eid[i] & kids) or \
            (cats and c_cat[i] & cats) or (intents and c_int[i] & intents) or \
            (kws and any(any(k in e.lower() for e in c_ent[i]) for k in kws)) or \
@@ -799,6 +838,16 @@ def _bundle(rows, dims, cid, kind, vs, sample=0, blocked=None, nondist=False, en
     return b
 
 
+def _expression_bundle(rows, dims, d, sample=0, ent_keys=None):
+    from .topic_conditions import evaluate
+    blocked = {i for i, row in enumerate(rows) if evaluate(d["condition_expr"], row) is not True}
+    blocked |= _feed_blocked(dims, d.get("feed"))[0] | _neg_blocked(dims, d.get("neg") or {}, ent_keys)
+    b = _bundle(rows, dims, (d.get("id") or "prev") + "-core", "core", [],
+                sample=sample, blocked=blocked, ent_keys=ent_keys)
+    b["label"] = "조건식"
+    return b
+
+
 def build_custom_topics(rows, service_names, defs, ent_index=None, ent_keys=None):
     """저장된 사용자 정의 목록 → 그룹 리스트. 각 그룹 = 토픽 1개가 여러 묶음(핵심+관련)으로 펼쳐짐."""
     if not defs:
@@ -815,6 +864,8 @@ def build_custom_topics(rows, service_names, defs, ent_index=None, ent_keys=None
             cid = did + ("-core" if kind == "core" else "-r" + str(idx))
             bundles.append(_bundle(rows, dims, cid, kind, vs, blocked=blocked,
                                    nondist=(kind == "core"), ent_keys=ent_keys))
+        if d.get("condition_expr"):
+            bundles = [_expression_bundle(rows, dims, d, ent_keys=ent_keys)]
         core = next((b for b in bundles if b["kind"] == "core"), None)
         groups.append({
             "category": _rep_category(rows, (core or {}).get("content_ids") or []),   # 대표 도메인(4-36)
@@ -843,6 +894,8 @@ def preview_definition(rows, service_names, d, sample=6, ent_index=None, ent_key
         bundles.append(_bundle(rows, dims, "prev-" + str(idx), kind, vs,
                                sample=sample if kind == "core" else 0, blocked=blocked,
                                ent_keys=ent_keys))
+    if d.get("condition_expr"):
+        bundles = [_expression_bundle(rows, dims, d, sample=sample, ent_keys=ent_keys)]
     return {
         "n_total": sum(1 for x in dims[3] if x), "bundles": bundles,
         "must_n": len(must), "opt_n": len(opt), "neg_blocked": len(neg_b),
@@ -880,9 +933,9 @@ def studio_catalog(rows, service_names=None, top_kw=30):
         for t in (im.get("intent") or []):
             if t:
                 int_c[t] += 1
-        for c in cat_values(im.get("content_category")):
+        for c in cat_values(MC.category_paths(im.get("content_category"))):
             cat_c[c] += 1
-        for e in (im.get("entities") or []):
+        for e in (MC.entity_names(im.get("entities")) or []):
             if not _is_junk_entity(e, svc):
                 ent_c[e] += 1
 
@@ -1308,7 +1361,7 @@ def _apply_inclusion(pool, key, rows, hashes, incmap):
     if not hs or ids is None:
         return
     have = set(ids)
-    add = [i for i, h in enumerate(hashes) if h in hs and i not in have]
+    add = [i for i, h in enumerate(hashes) if h in hs and i not in have and _hard_allowed(rows[i])]
     if not add:
         return
     pool["content_ids"] = sorted(ids + add)

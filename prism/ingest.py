@@ -56,19 +56,32 @@ META_ALIASES = {
     "finalGrade": ["등급", "품질등급", "finalgrade", "grade"],
     "reasons": ["사유", "품질사유", "reasons", "reason"]
 }
-REQUIRED = ["title", "body"]            # 이 둘이 잡혀야 '가능'
+REQUIRED = ["title", "body"]            # 둘 중 하나가 있으면 추출 가능
 # 발행 키(item_unique_key·service_code·cp_type)는 기본값을 두지 않는다. 컬럼 부재와
 # 빈 문자열을 갈라 보존해야 한다(511607345 '출처 필드의 발행 기준').
 OPTIONAL_DEFAULT = {"subtitle": "", "displayServiceName": "", "source_url": ""}
 
 
 def _item_from_row(r: dict, mapping: dict) -> dict:
-    """매핑된 원본 행 → 콘텐츠 dict. image_urls 만 목록 정규화(그 외는 문자열).
-    str(v or "") 는 문자열을 그대로 두므로 발행 키의 원문(공백·대소문자)도 보존된다."""
-    item = dict(OPTIONAL_DEFAULT)
-    item["image_urls"] = []
+    """매핑된 원본 행 → 콘텐츠 dict. 원천키와 보조 정보의 제공 여부를 보존한다."""
+    item = dict(OPTIONAL_DEFAULT, title="", body="", image_urls=[])
+    image_col = mapping.get("image_urls")
+    image_provided = image_col in r if image_col is not None else False
+    item["input_aux"] = {"image_count": {"provided": image_provided}}
+    if image_provided:
+        raw = r[image_col]
+        item["input_aux"]["image_count"]["value"] = None if raw is None else len(normalize_image_urls(raw))
     for field, col in mapping.items():
+        if field in ("item_unique_key", "service_code", "cp_type"):
+            if col in r:
+                item[field] = r[col]
+            continue
+        if field == "image_urls" and col not in r:
+            continue
         v = r.get(col, "")
+        if field == "image_urls" and v is None:
+            item[field] = None
+            continue
         item[field] = normalize_image_urls(v) if field == "image_urls" else str(v or "")
     return item
 
@@ -206,7 +219,7 @@ def assess(path: str, override: dict = None, extra: dict = None) -> dict:
     """적용 가능 판정. {ok, mapping, missing, headers, n_rows, samples, reason}."""
     headers, rows = read_table(path)
     mapping = infer_mapping(headers, override, extra)
-    missing = [f for f in REQUIRED if f not in mapping]
+    missing = [] if any(f in mapping for f in REQUIRED) else list(REQUIRED)
     ok = not missing
     reason = ("핵심 필드(제목·본문) 매핑 성공 → 적용 가능"
               if ok else f"필수 필드 미발견: {', '.join(missing)} → 컬럼명을 --map 으로 지정 필요")
@@ -222,7 +235,7 @@ def to_contents_rows(rows: list, override: dict = None, extra: dict = None) -> t
     """JSON 레코드(list[dict]) → (콘텐츠 리스트, 매핑). API 인입용. 판정 불가면 ValueError."""
     headers = list(rows[0].keys()) if rows else []
     m = infer_mapping(headers, override, extra)
-    missing = [f for f in REQUIRED if f not in m]
+    missing = [] if any(f in m for f in REQUIRED) else list(REQUIRED)
     if missing:
         raise ValueError(f"필수 필드 미발견: {', '.join(missing)} (헤더: {', '.join(map(str, headers))[:200]})")
     out = [_item_from_row(r, m) for r in rows]

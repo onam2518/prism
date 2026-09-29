@@ -12,6 +12,7 @@ import re
 from collections import Counter
 
 from . import dictionaries as D
+from . import meta_contract as MC
 from .entdict import normalize_name
 
 EMBED_FN = None                  # 리드문 임베딩 주입 훅([텍스트] → [벡터]) · None 이면 실키가 있을 때만 클라이언트 생성
@@ -26,7 +27,7 @@ def _f1(a: set, b: set) -> float:
 def _cats(v) -> set:
     out = set()
     for c in (v if isinstance(v, (list, tuple)) else [v]):
-        p = D.normalize_content_category(str(c or "")) if c else ""
+        p = D.normalize_content_category(MC.category_path(c)) if c else ""
         if p and p != "Unclassified":
             out.add(p)
     return out
@@ -42,7 +43,7 @@ def ent_norm(s) -> str:
 
 
 def _ents(v) -> set:
-    return {ent_norm(x) for x in (v or []) if isinstance(x, str) and ent_norm(x)}
+    return {ent_norm(x) for x in MC.entity_names(v) if ent_norm(x)}
 
 
 def _partial(a: str, b: str) -> bool:
@@ -119,9 +120,14 @@ def _bump(d: dict, keys) -> None:
 def meta_tally(acc: dict, exp: dict, out) -> None:
     """건 1개를 카테고리·엔티티·리드문 카운터에 반영. 기대값이 비어 있는 필드는 분모 제외.
     산출 None(실패)은 빈 산출로 채점(등급·인텐트 규칙과 동일)."""
+    exp = dict(exp)
+    for field in MC.FIELDS:
+        status = (exp.get("meta_status") or {}).get(field)
+        if status not in (None, "success", "no_value"):
+            exp.pop(field, None)
     im = _im(out)
     wc = _cats(exp.get("content_category"))
-    if wc:
+    if wc or (exp.get("meta_status") or {}).get("content_category") == "no_value":
         gc = _cats(im.get("content_category"))
         acc["cat_n"] = acc.get("cat_n", 0) + 1
         acc["cat_f1_sum"] = acc.get("cat_f1_sum", 0.0) + _f1(wc, gc)
@@ -140,11 +146,15 @@ def meta_tally(acc: dict, exp: dict, out) -> None:
                 k = w + "\x1f" + g
                 conf[k] = conf.get(k, 0) + 1
     we = _ents(exp.get("entities"))
-    if we:
+    if we or (exp.get("meta_status") or {}).get("entities") == "no_value":
         ge = _ents(im.get("entities"))
         acc["ent_n"] = acc.get("ent_n", 0) + 1
         acc["ent_f1_sum"] = acc.get("ent_f1_sum", 0.0) + _f1(we, ge)
         acc["ent_pf1_sum"] = acc.get("ent_pf1_sum", 0.0) + _ent_partial_f1(we, ge)
+        typed = {(ent_norm(v["name"]), v.get("type")) for v in exp.get("entities", []) if isinstance(v, dict)}
+        got_typed = {(ent_norm(v["name"]), v.get("type")) for v in im.get("entities", []) if isinstance(v, dict) and "name" in v}
+        acc["ent_type_n"] = acc.get("ent_type_n", 0) + len(typed)
+        acc["ent_type_hit"] = acc.get("ent_type_hit", 0) + len(typed & got_typed)
         _bump(acc.setdefault("ent_missed", {}), we - ge)
         _bump(acc.setdefault("ent_spurious", {}), ge - we)
     ws = str(exp.get("summary") or "").strip()
@@ -176,6 +186,8 @@ def meta_report(acc: dict) -> dict:
         "by_category": {v: _prf(d) for v, d in sorted((acc.get("per_cat") or {}).items())},
         "cat_confusion": [{"expected": k.split("\x1f")[0], "got": k.split("\x1f")[1], "n": n}
                           for k, n in _top(acc.get("cat_conf") or {})],
+        "ent_type_n": acc.get("ent_type_n", 0),
+        "ent_type_accuracy": r4(acc.get("ent_type_hit", 0), acc.get("ent_type_n", 0)),
         "ent_n": en, "ent_f1": r4(acc.get("ent_f1_sum", 0.0), en), "ent_f1_partial": r4(acc.get("ent_pf1_sum", 0.0), en),
         "ent_missed": [{"name": k, "n": n} for k, n in _top(acc.get("ent_missed") or {})],
         "ent_spurious": [{"name": k, "n": n} for k, n in _top(acc.get("ent_spurious") or {})],

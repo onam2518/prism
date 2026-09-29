@@ -7,6 +7,7 @@
 컴포지션: run_pipeline·store_save·mock 플래그는 serve 가 `_SV` 로 주입(learnops 와 동일 관례).
 """
 from __future__ import annotations
+from . import meta_contract as MC
 
 from .config import Config
 
@@ -61,7 +62,7 @@ def media_s5ab(text: str, models: list, *, caption: str = "") -> dict:
         tr = out.get("trace") or {}
         # 계측: 빈 산출 진단 — item_meta 가 비었는데 mock 도 아니면 실패. trace.fails 로 사유 노출
         #  (예: gemini 침묵 빈응답 → kind=parse_empty). 하네스가 '왜 빈값'을 스스로 보고한다.
-        empty = not (im.get("summary") or im.get("entities") or im.get("content_category"))
+        empty = not (im.get("summary") or MC.entity_names(im.get("entities")) or MC.category_paths(im.get("content_category")))
         results.append({"model": m, "mock": bool(res.get("mock")),
                         "item_meta": im, "empty": empty,
                         "fails": tr.get("fails") or []})

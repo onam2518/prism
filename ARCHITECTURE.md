@@ -156,3 +156,7 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
   (`getOwnPropertyDescriptors` — 게터 보존). node 동등성 검증(프로퍼티 754개 동일).
 - [ ] **지속 — 새 도메인은 새 모듈**: entdict.py·dictops.py 처럼 시작부터 별도
   파일 + serve 는 라우트 등록만. serve.py 가 다시 자라는 것을 막는 유일한 방법.
+
+### 공통 메타 계약 보완
+
+`meta_contract.py`는 객체형 값 검증·표시용 문자열 투영·수동값 보존을 공유한다. `topic_conditions.py`는 중첩 조건식과 unknown을 유지하는 3값 논리를 담당한다. SQLite와 Supabase의 수동값 보호·정답 이력 및 배포 순서는 [POLICY_CONTRACT_ROLLOUT](docs/POLICY_CONTRACT_ROLLOUT.md)를 따른다.

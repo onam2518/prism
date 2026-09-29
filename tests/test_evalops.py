@@ -153,7 +153,8 @@ class TestEvalRunFlow(unittest.TestCase):
         st.eval_results_add(rid, [{"hash": h, "title": "", "expected": {"finalGrade": "G", "reasons": []},
                                    "got": {"finalGrade": "G", "reasons": []}, "passed": True, "error": ""}
                                   for h in hashes[:2]])
-        st.eval_run_update(rid, cursor=2, metrics={"n": 2, "grade_hit": 2, "reason_exact": 2,
+        st.eval_run_update(rid, cursor=2, metrics={"basis_fingerprint": evalops._eval_basis(st.get_golden(None), "", None),
+                                                   "n": 2, "grade_hit": 2, "reason_exact": 2,
                                                    "jaccard_sum": 2.0, "harm_miss": 0, "empty": 0,
                                                    "cost_usd": 0.0, "tok_in": 0, "tok_out": 0,
                                                    "lat": [], "yellow": 0, "auto_n": 2, "auto_hit": 2,

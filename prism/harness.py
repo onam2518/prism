@@ -229,7 +229,8 @@ def st_item(ctx: HCtx):
             ctx.verdicts.append({"agent": "IntentCategory(emb)",
                                  "evidence": f"margin={margin}", "fail": None})
     if im and im.content_category:
-        im.content_category = D.normalize_category_list(im.content_category)   # 콘텐츠 단위 사전화
+        from .meta_contract import clean_categories
+        im.content_category = clean_categories(im.content_category)   # 콘텐츠 단위 사전화
     ctx.fallbacks += V.verify_item(im, ctx.content)
 
 

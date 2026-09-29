@@ -63,6 +63,8 @@ def _tally(m: dict, row: dict, out) -> dict:
     ME.meta_tally(m, exp, out)                   # 카테고리·엔티티·리드문(같은 카운터 dict · abtest.score 와 단일 소스)
     if exp.get("finalGrade") == "R":             # 유해 미탐률 분모(산출 실패 행도 포함)
         m["harm_n"] = int(m.get("harm_n") or 0) + 1   # 구 런 재개 시 키가 없다 → get 으로 시작
+    has_grade = exp.get("finalGrade") in ("G", "R")
+    m["grade_n"] = m.get("grade_n", m["n"] - 1) + int(has_grade)
     want_intent = abtest.intent_expected(exp)
     if out is None:
         m["empty"] += 1
@@ -81,6 +83,9 @@ def _tally(m: dict, row: dict, out) -> dict:
         m["lat"].append(float(t_ms))
     if any("fail" in str(f) or "unparse" in str(f) for f in tr.get("fallbacks", [])):
         m["empty"] += 1
+    if not has_grade:
+        return {"expected": exp, "got": out.get("item_meta") or {},
+                "passed": None, "error": ""}
     grade_ok = qm.get("finalGrade") == exp.get("finalGrade")
     m["grade_hit"] += int(grade_ok)
     if qm.get("review") == "yellow":
@@ -148,6 +153,16 @@ def _prepare(team, model: str, scope: str):
     return rows[:MAX_ROWS], llm, used_model, ""
 
 
+def _eval_basis(rows, model, team):
+    import hashlib
+    from . import learnops as LO
+    prompts = LO.compose_prompts(team, model)
+    prompts.pop("ts", None)
+    snapshot = {"rows": rows, "prompts": prompts, "config": Config.load().redacted()}
+    return hashlib.sha256(json.dumps(snapshot, ensure_ascii=False, sort_keys=True,
+                                    separators=(",", ":"), default=str).encode()).hexdigest()
+
+
 def eval_run_start(team=None, model: str = "", scope: str = "all", created_by: str = "") -> dict:
     """평가 런 생성 + 백그라운드 실행 시작. 즉시 {id,total} 반환(진행은 폴링)."""
     st = _SV.get_store()
@@ -162,7 +177,10 @@ def eval_run_start(team=None, model: str = "", scope: str = "all", created_by: s
         _SV._report_save(f"eval_prompts_{run_id}", {**LO.compose_prompts(team, used_model), "run_id": run_id}, team)
     except Exception as e:
         print(f"  [eval-run] #{run_id} 프롬프트 기록 실패: {e}")
-    _launch(run_id, rows, llm, team, _zero_metrics())
+    metrics = _zero_metrics()
+    metrics["basis_fingerprint"] = _eval_basis(rows, used_model, team)
+    st.eval_run_update(run_id, team=team, metrics=metrics)
+    _launch(run_id, rows, llm, team, metrics)
     return {"ok": True, "id": run_id, "total": len(rows)}
 
 
@@ -181,6 +199,9 @@ def eval_run_resume(run_id: int, team=None) -> dict:
     rows, llm, _used, err = _prepare(team, run.get("model") or "", run.get("scope") or "all")
     if rows is None:
         return {"ok": False, "error": err}
+    basis = (run.get("metrics") or {}).get("basis_fingerprint")
+    if not basis or basis != _eval_basis(rows, run.get("model") or "", team):
+        return {"ok": False, "error": "정답·프롬프트·설정 기준이 달라졌거나 구 평가입니다. 새 평가를 시작하세요"}
     from .store import content_hash
     done = st.eval_result_hashes(run_id, team)
     remain = [r for r in rows if content_hash(r.get("content") or {}) not in done]
@@ -719,9 +740,10 @@ def eval_run_report(run_id: int, team=None) -> dict:
            "rubric_cursor": run.get("rubric_cursor") or 0,
            "rubric": run.get("rubric"),
            "evaluated": n,
-           "grade_accuracy": round(m.get("grade_hit", 0) / n, 4) if n else 0,
-           "reason_exact_match": round(m.get("reason_exact", 0) / n, 4) if n else 0,
-           "reason_jaccard": round(m.get("jaccard_sum", 0.0) / n, 4) if n else 0,
+           "grade_n": m.get("grade_n", n),
+           "grade_accuracy": round(m.get("grade_hit", 0) / m.get("grade_n", n), 4) if m.get("grade_n", n) else None,
+           "reason_exact_match": round(m.get("reason_exact", 0) / m.get("grade_n", n), 4) if m.get("grade_n", n) else None,
+           "reason_jaccard": round(m.get("jaccard_sum", 0.0) / m.get("grade_n", n), 4) if m.get("grade_n", n) else None,
            "harm_miss_rate": harm_rate,
            "harm_miss_share": round(harm_miss / n, 4) if n else 0,   # 종전 정의 병기
            "harm_expected_n": int(harm_n or 0),
@@ -739,8 +761,8 @@ def eval_run_report(run_id: int, team=None) -> dict:
                                 for k, v in sorted((m.get("per_reason") or {}).items()) if v.get("n")},
            "by_service": abtest.service_report(m.get("per_service") or {}),
            "min_good": int(getattr(cfg, "golden_min_good", 1) or 1)}
-    lo, hi = Q.binomial_ci(out["grade_accuracy"] or 0.0, n)
-    out["grade_ci"] = {"lo": lo, "hi": hi, "n": n}
+    lo, hi = Q.binomial_ci(out["grade_accuracy"] or 0.0, m.get("grade_n", n))
+    out["grade_ci"] = {"lo": lo, "hi": hi, "n": m.get("grade_n", n)}
     try:
         seq = st.batch_seq(team) if hasattr(st, "batch_seq") else 0
     except Exception:

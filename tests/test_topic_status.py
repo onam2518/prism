@@ -206,12 +206,15 @@ class TestStatusActions(unittest.TestCase):
         b = self._act(action="save", **{"def": {"name": "나", "cats": ["Entertainment"]}})["saved"]["id"]
         r = self._act(action="merge", id=b, into=a)
         self.assertTrue(r["ok"])
-        merged = next(d for d in r["customDefs"] if d["id"] == a)
+        from prism.topicops import _studio_config
+        merged = next(d for d in _studio_config()["custom"] if d["id"] == a)
+        self.assertEqual(merged["status"], "draft")
+        self.assertIn(b, merged["aliases"])
         self.assertEqual(set(merged["cats"]), {"Business and Finance", "Entertainment"})
         self.assertEqual(merged["neg"]["intents"], ["팬덤·화제성"])
         self.assertEqual(next(g["status"] for g in r["custom"] if g["id"] == b), "archived")
         ids = {i for bd in self._custom(r, a)["bundles"] for i in bd["content_ids"]}
-        self.assertEqual(len(ids), 3)                 # 합친 조건의 콘텐츠를 모두 묶는다(관련 묶음)
+        self.assertEqual(len(ids), 0)                 # 전체 조건 재검토 전에는 배포 후보 없음
         self.assertFalse(self._act(action="merge", id=a, into=a)["ok"])
 
     def test_merge_carries_curation_memory(self):
@@ -226,7 +229,8 @@ class TestStatusActions(unittest.TestCase):
         r = self._act(action="merge", id=b, into=a)
         self.assertNotIn(b, r["exclusions"])
         self.assertEqual([e["h"] for e in r["exclusions"][a]], [hy])
-        self.assertEqual(self._custom(r, a)["bundles"][0].get("included_n"), 1)
+        from prism.topicops import _studio_config
+        self.assertEqual([e["h"] for e in _studio_config()["inclusions"][a]], [hx])
 
     def test_include_missing_content_and_undo(self):
         """2-17: 조건에 안 걸린 콘텐츠를 운영자가 직접 넣고 되돌린다."""

@@ -9,6 +9,7 @@ serve 가 기동 시 `_SV` 로 주입(learnops 관례). 테스트가 serve.rerun
 몽키패치하므로 rerun_all 등의 내부 호출도 `_SV.` 경유가 계약.
 """
 from __future__ import annotations
+from .schema import input_auxiliary
 
 import os
 import re
@@ -254,10 +255,12 @@ def run_pipeline(fields: dict, *, mock: bool, team=None, model: str = "", persis
             "body": fields.get("body", ""),
             # 참조용 원문 링크 · 해시(서비스+제목+부제+본문) 불포함이라 정체성 무변
             "source_url": fields.get("source_url", "") or fields.get("url", ""),
-            "image_urls": ref_images,             # 참조용 이미지 URL · 위와 같은 참조 패턴
+            "image_urls": ref_images,             # 참조용 이미지 URL
+            "input_aux": input_auxiliary(fields),
             # 발행 키(선택 · 511607345) · 발행·라우팅 정보라 모델 입력·해시에 안 들어간다
             **{k: fields[k] for k in ("item_unique_key", "service_code", "cp_type")
                if k in fields},
+            **({"source_fields": fields["source_fields"]} if "source_fields" in fields else {}),
         }
 
     out = PIPE.extract(content, llm, legal=cfg.legal_enabled, quality=cfg.quality_stage)
@@ -459,9 +462,9 @@ def rerun_content(content_hash: str, model: str, team=None, row=None, force_ques
               # 발행 키도 같은 이유로 되실어야 한다(511607345). STEP 1 에서 들어온 키를
               # 빼면 STEP 2 모델 실행(=일괄 재실행)이 payload 를 통째로 덮어쓰며 매번
               # 지운다. 원문 링크·이미지가 지워졌던 것과 같은 자리.
-              "item_unique_key": ref.get("item_unique_key"),
-              "service_code": ref.get("service_code"),
-              "cp_type": ref.get("cp_type")}
+              **{k: ref[k] for k in ("item_unique_key", "service_code", "cp_type") if k in ref},
+              "source_fields": ref.get("source_fields", {}),
+              "input_aux": ref.get("input_aux")}
     if _SV.quest_active() and not _SV._is_pending_row(row) and not force_quest:
         return {"error": "퀘스트 진행 중에는 검수 중 콘텐츠의 초안 재실행이 차단됩니다 · "
                          "반영 후 실행하거나 검수 목표 카드에서 목표를 해제하세요"}

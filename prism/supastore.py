@@ -9,6 +9,8 @@ dual-mode 의 한 축: PRISM_BACKEND=supabase 면 serve 가 이 스토어를 쓴
 설계: SUPABASE_MIGRATION.md
 """
 from __future__ import annotations
+from .schema import input_auxiliary
+from . import meta_contract as MC
 
 import http.client
 import json
@@ -608,7 +610,7 @@ class SupabaseStore:
             ex = r.get("expected") or {}
             out.append({"hash": r.get("content_hash") or "", "title": ct.get("title", ""),
                         "service": ct.get("displayServiceName", ""), "grade": ex.get("finalGrade", ""),
-                        "category": ex.get("content_category", []) or [],
+                        "category": MC.category_paths(ex.get("content_category")),
                         "intent": ex.get("intent") or [], "intent_review": ex.get("intent_review") or "",
                         "intent_retired": ex.get("intent_retired") or [],
                         "source": r.get("source") or "review", "ts": _epoch(r.get("created_at"))})
@@ -1270,12 +1272,12 @@ class SupabaseStore:
         out = {}
         for i in range(0, len(hs), 100):              # in.() URL 길이 한계 대비 청크(retention 과 같은 규칙)
             ids = ",".join(urllib.parse.quote(h) for h in hs[i:i + 100])
-            for r in self._get("contents", f"select=hash,source,quality_meta&hash=in.({ids})"):
+            for r in self._get("contents", f"select=hash,source,quality_meta,item_meta&hash=in.({ids})"):
                 qm = r.get("quality_meta") or {}
                 flags = {k: qm[k] for k in ("ops_hold", "source_status") if k in qm}
                 src = (r.get("source") or "").strip()
-                if src or flags:
-                    out[r.get("hash")] = {"source": src, "flags": flags}
+                if src or flags or (r.get("item_meta") or {}).get("manual_fields"):
+                    out[r.get("hash")] = {"source": src, "flags": flags, "item_meta": r.get("item_meta")}
         return out
 
     def sync_contents(self, pairs, source: str = "단건", team=None, include_all: bool = False):
@@ -1297,10 +1299,9 @@ class SupabaseStore:
                    "body": content.get("body", ""),
                    "source_url": content.get("source_url", "") or content.get("url", ""),
                    "image_urls": content.get("image_urls") or [],   # 참조용(사진 확인) · migrate_content_images.sql 선적용 필요
-                   # ponytail: 팀(supabase) 모드는 발행 키 3필드를 적재하지 않는다 ·
-                   # contents 가 컬럼 화이트리스트라 자리가 없다(sqlite 는 payload.content_ref 로
-                   # 그대로 흐른다). 운영 발행이 필요해지면 item_unique_key·service_code·cp_type
-                   # 컬럼을 마이그레이션으로 추가하고 이 행과 recent() 에 한 줄씩 잇는다.
+                   "source_fields": dict(content.get("source_fields") if isinstance(content.get("source_fields"), dict) else {
+                       k: content[k] for k in ("item_unique_key", "service_code", "cp_type", "displayServiceName")
+                       if k in content}, input_aux=input_auxiliary(content)),
                    "source": source, "final_grade": qm.get("finalGrade", ""),
                    "item_meta": out.get("item_meta"), "quality_meta": qm,
                    "model": (out.get("trace") or {}).get("model", "") or "",
@@ -1322,6 +1323,7 @@ class SupabaseStore:
                 kept = {}                             # 라벨 조회 실패가 적재 자체를 막지 않는다(최선 노력 보존)
             for row in rows:
                 prev = kept.get(row["hash"]) or {}
+                row["item_meta"] = MC.preserve_manual(prev.get("item_meta"), row.get("item_meta"))
                 if prev.get("source"):
                     row["source"] = prev["source"]     # 최초 인입 경로 유지(재실행이 덮어쓰지 않음)
                 flags = prev.get("flags") or {}
@@ -1395,8 +1397,8 @@ class SupabaseStore:
             im = r.get("item_meta") or {}
             out.append({"hash": r["hash"], "service": r.get("service") or "", "title": r.get("title") or "",
                         "body": r.get("body") or "", "url": r.get("source_url") or "",
-                        "summary": im.get("summary", ""), "entities": im.get("entities", []) or [],
-                        "intent": im.get("intent", []) or [], "category": im.get("content_category", []) or [],
+                        "summary": im.get("summary", ""), "entities": MC.entity_names(im.get("entities")),
+                        "intent": im.get("intent", []) or [], "category": MC.category_paths(im.get("content_category")),
                         "grade": r.get("final_grade") or "", "reasons": qm.get("reasons", []) or [],
                         "review_reason": qm.get("review_reason", ""),
                         "reviewed": is_rev, "split": is_split, "model": r.get("model") or "",
@@ -1411,10 +1413,12 @@ class SupabaseStore:
     def contents_by_hash(self, team=None, limit: int = 5000) -> dict:
         """content_hash → 콘텐츠 dict(학습데이터 추출용)."""
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
-        rows = self._get("contents", f"select=hash,service,title,subtitle,body{tq}"
+        rows = self._get("contents", f"select=hash,service,title,subtitle,body,source_fields{tq}"
                          f"&order=created_at.desc,hash&limit={int(limit)}")   # sqlite 와 동일 최신 N건(created_at 비유일 → hash 타이브레이크로 페이징 안정)
         return {r["hash"]: {"displayServiceName": r.get("service") or "", "title": r.get("title") or "",
-                            "subtitle": r.get("subtitle") or "", "body": r.get("body") or ""} for r in rows}
+                            "subtitle": r.get("subtitle") or "", "body": r.get("body") or "",
+                            **{k: v for k, v in (r.get("source_fields") or {}).items() if k != "displayServiceName"},
+                            "source_fields": r.get("source_fields") or {}} for r in rows}
 
     def _hash_q(self, content_hash, team=None) -> str:
         """(hash, team) 복합 필터. content_hash 는 콘텐츠 내용의 순수 함수라 같은 기사를
@@ -1841,7 +1845,7 @@ class SupabaseStore:
         out = []
         for r in rows:
             im = r.get("item_meta") or {}
-            cat = " · ".join(im.get("content_category") or [])
+            cat = " · ".join(MC.category_paths(im.get("content_category")))
             out.append({"hash": r["hash"], "service": r.get("service") or "", "title": r.get("title") or "",
                         "grade": r.get("final_grade") or "", "summary": im.get("summary", ""),
                         "category": cat, "source": r.get("source") or "단건", "model": r.get("model") or "",
@@ -2391,7 +2395,7 @@ class SupabaseStore:
 
     def recent(self, limit: int = 5000, team=None) -> list:
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
-        rows = self._get("contents", "select=hash,service,title,subtitle,body,source_url,image_urls,item_meta,quality_meta,model,version,created_at"
+        rows = self._get("contents", "select=hash,service,title,subtitle,body,source_url,image_urls,source_fields,item_meta,quality_meta,model,version,created_at"
                          f"{tq}&order=created_at.desc,hash&limit={int(limit)}")   # 벌크 인입 동률 대비 PK 타이브레이크(contents_by_hash 와 동일)
         # subtitle 보존: 재구성 콘텐츠의 해시가 저장 해시와 일치해야 재실행 upsert·골든 매칭이
         # 같은 행을 가리킨다(과거엔 subtitle 소실로 부제 있는 콘텐츠가 유령 행을 만들었음).
@@ -2405,7 +2409,9 @@ class SupabaseStore:
                                 # 원문 소실 플래그: 저장은 quality_meta.source_status(컬럼 사정) ·
                                 # 읽기는 sqlite 와 동일하게 content_ref 경로로 승격(단일 읽기 계약)
                                 "source_status": (r.get("quality_meta") or {}).get("source_status") or {},
-                                "body_hash": r.get("hash", "")}} for r in rows]
+                                "body_hash": r.get("hash", ""),
+                                **{k: v for k, v in (r.get("source_fields") or {}).items() if k != "displayServiceName"},
+                                "source_fields": r.get("source_fields") or {}}} for r in rows]
         out.reverse()
         return out
 

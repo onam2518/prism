@@ -7,6 +7,7 @@
 리드문·엔티티·인텐트·카테고리 카드 + 원본 JSON. 키 없으면 자동 mock.
 """
 from __future__ import annotations
+from . import meta_contract as MC
 
 import argparse
 import gzip
@@ -572,11 +573,11 @@ def _detail_row(r: dict) -> dict:
         "images": ref.get("image_urls", []) or r.get("images", []) or [],
         "body": ref.get("body", ""),
         "summary": im.get("summary", ""),
-        "entities": im.get("entities", []) or [],
+        "entities": MC.entity_names(im.get("entities")),
         # 읽기 시점 확신도 병행 노출(entconf.py) · entities 키는 계약 유지(하위 호환)
         "entities_scored": EC.scored_entities(im, ref),
         "intent": im.get("intent", []) or [],
-        "category": im.get("content_category", []) or [],
+        "category": MC.category_paths(im.get("content_category")),
         "grade": qm.get("finalGrade", "") or r.get("grade", ""),
         "reasons": qm.get("reasons", []) or [],
         "source_status": ref.get("source_status") or {},   # 원문 소실 신고 플래그(게시판 #10)
