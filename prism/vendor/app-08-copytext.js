@@ -402,6 +402,7 @@ window.PRISM_APP_PARTS.push(() => ({
           fd.append('title', this.txtTitle);
           fd.append('body', this.txtBody);
           fd.append('source_url', this.txtUrl);
+          if (this.txtKey) fd.append('item_unique_key', this.txtKey);   // 빈 값은 보내지 않는다(부재 보존)
         }
         try {
           if (endpoint === '/run-batch') this.pollIngestStatus();   // 실행 큐 진척도 실시간
