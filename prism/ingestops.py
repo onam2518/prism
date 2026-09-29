@@ -309,7 +309,7 @@ def ingest_run_source(source: dict, trigger: str = "manual") -> dict:
         _INGEST_STATE[sid].update(total=len(contents), done=0, failed=0, last_msg="추출 중…")
         for c in contents:
             try:
-                out = PIPE.extract(c, llm, legal=cfg.legal_enabled)
+                out = PIPE.extract(c, llm, legal=cfg.legal_enabled, quality=cfg.quality_stage)
                 pairs.append((c, out))
                 # 비용·실패 원장: 자동 인입도 run_pipeline 을 안 타므로 여기서 직접 기록 —
                 # 종전엔 크레딧이 마른 상태로 매 폴링 402 가 반복돼도 원장·트리아지 신호가 0 이었다.

@@ -94,18 +94,55 @@ def legal_grade(total: int) -> str:
 
 
 # 기본 프로파일(예시). 회사별 서비스 체계는 --profile 로 교체.
-# media: 보도·편집 중심 / ugc: 사용자 생성 콘텐츠
+# 키 = displayServiceName 원문(위키 278036632 의 정의값 10개).
+#   종전 키는 "콘텐츠"·"블로그"·"동영상" 같은 옛 UI 그룹명이라 실제 원문
+#   ("다음카페"·"콘텐츠뷰 (커뮤니티)"·"티스토리"·"VOD"·"루프")이 한 번도 매칭되지 않고
+#   전부 보수적 default 로 떨어졌다. UGC 전용 3종(format·political·hate)이 한 번도
+#   켜지지 않던 원인이다. 판정 진입점은 service_group_of() 하나(routing 이 거쳐 간다).
+# media = 전문 생성(PGC · 뉴스·연예·스포츠·콘텐츠뷰 (일반)·멜론)
+# ugc   = 사용자 생성(다음카페·콘텐츠뷰 (커뮤니티)·티스토리·VOD·루프)
+# ponytail: 값 이름은 옛 media/ugc 유지 · 프롬프트 스냅샷·학습 원장이 이 문자열로 적재돼
+#           있어 이름을 PGC/UGC 로 바꾸려면 데이터 이관이 함께 와야 한다(감사 4-28).
 SERVICE_GROUP = {
     "뉴스": "media",
     "연예": "media",
     "스포츠": "media",
-    "콘텐츠": "media",
-    "커뮤니티": "ugc",
-    "블로그": "ugc",
-    "음악": "media",       # 멜론 = PGC 그룹 (2차 필터 정책 · 위키 277118998)
-    "동영상": "ugc",
+    "콘텐츠뷰 (일반)": "media",
+    "멜론": "media",                 # 멜론 = PGC 그룹 (2차 필터 정책 · 위키 277118998)
+    "다음카페": "ugc",
+    "콘텐츠뷰 (커뮤니티)": "ugc",
+    "티스토리": "ugc",
+    "VOD": "ugc",
+    "루프": "ugc",
 }
-SERVICE_GROUP_DEFAULT = "media"
+SERVICE_GROUP_DEFAULT = "media"      # 미정의 displayServiceName = PGC 처리(보수적 default)
+
+# 별칭 → 정의값. 마이그레이션 기간의 구 명칭(카카오TV·카카오비디오)과 옛 UI 그룹명으로
+# 저장된 기존 데이터를 같은 그룹으로 받아 준다. 드롭다운(/vocab)은 정의값 10개만 쓴다.
+SERVICE_ALIASES = {
+    "카카오TV": "VOD", "카카오비디오": "루프",
+    "콘텐츠": "콘텐츠뷰 (일반)", "음악": "멜론",
+    "커뮤니티": "다음카페", "블로그": "티스토리", "동영상": "VOD",
+}
+
+
+def service_group_of(display_name: str) -> str:
+    """displayServiceName → 품질 서비스 그룹. 미정의 값은 보수적 default(media)."""
+    n = (display_name or "").strip().replace(" ", "")
+    if not n:
+        return SERVICE_GROUP_DEFAULT
+    # 프로파일 override 가 SERVICE_GROUP 을 바꾸므로 표를 매번 만든다(항목 열몇 개 · 캐시 불필요).
+    table = {k.replace(" ", ""): v for k, v in SERVICE_GROUP.items()}
+    for alias, defined in SERVICE_ALIASES.items():
+        g = table.get(defined.replace(" ", ""))
+        if g:
+            table[alias.replace(" ", "")] = g
+    if n in table:
+        return table[n]
+    for k, v in table.items():       # 표기 변형(접미어·괄호 차이) 느슨한 포함
+        if k and k in n:
+            return v
+    return SERVICE_GROUP_DEFAULT
 
 
 def active_quality_metas(service_group: str) -> list:

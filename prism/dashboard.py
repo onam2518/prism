@@ -196,13 +196,15 @@ document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
 
 # 집계
 def _aggregate(rows):
-    grades = {"G": 0, "YELLOW": 0, "R": 0}
+    grades = {"G": 0, "YELLOW": 0, "R": 0, "none": 0}   # none = 판정 없음(품질 단계 off·미판정)
     reasons, intents, ecats, services = {}, {}, {}, {}
     ents = set()
     for r in rows:
         qm = r.get("quality_meta", {})
-        # 결정 = YELLOW(사람검수)면 YELLOW, 아니면 finalGrade
-        decision = "YELLOW" if qm.get("review") == "yellow" else qm.get("finalGrade", "G")
+        # 결정 = YELLOW(사람검수)면 YELLOW, 아니면 finalGrade.
+        # 등급이 비면 'none'(판정 없음)으로 센다. 종전 기본값 G 는 미판정을 유통 가능으로
+        # 부풀렸다(277118998 · 미판정·호출 실패를 자동 G로 처리하지 않음).
+        decision = "YELLOW" if qm.get("review") == "yellow" else (qm.get("finalGrade") or "none")
         grades[decision] = grades.get(decision, 0) + 1
         for x in qm.get("reasons", []):
             reasons[x] = reasons.get(x, 0) + 1
@@ -295,7 +297,8 @@ def _graph(rows, max_nodes: int = 900, top_entities: int = 260):
     for i, r in enumerate(rows):
         ref = r.get("content_ref", {})
         qm = r.get("quality_meta", {})
-        decision = "YELLOW" if qm.get("review") == "yellow" else qm.get("finalGrade", "G")
+        # 집계(_aggregate)와 같은 규칙: 빈 등급은 none(판정 없음) · G 로 채우지 않는다.
+        decision = "YELLOW" if qm.get("review") == "yellow" else (qm.get("finalGrade") or "none")
         cid = f"c:{i}"
         node(cid, ref.get("title", "")[:24] or f"content {i}", "content",
              ref.get("displayServiceName", ""))
@@ -568,7 +571,8 @@ const A = DATA.agg;
 document.getElementById('grades').innerHTML =
  `<div class="gG"><b>${A.grades.G||0}</b>G · 유통가능</div>
   <div class="gY"><b>${A.grades.YELLOW||0}</b>YELLOW · 검수</div>
-  <div class="gR"><b>${A.grades.R||0}</b>R · 불가</div>`;
+  <div class="gR"><b>${A.grades.R||0}</b>R · 불가</div>`
+  + (A.grades.none? `<div><b>${A.grades.none}</b>판정 없음</div>`:'');
 bars(document.getElementById('reasons'), A.reasons, 'var(--r)');
 bars(document.getElementById('intents'), A.intent_categories, 'var(--int)');
 bars(document.getElementById('ecats'), A.entity_categories, 'var(--cat)');
@@ -580,7 +584,8 @@ let gradeFilter='ALL', textFilter='';
 // 등급 필터 칩
 const gcount=DATA.agg.grades;
 const chipDefs=[['ALL','전체',DATA.rows.length],['G','G',gcount.G||0],
-  ['YELLOW','YELLOW',gcount.YELLOW||0],['R','R',gcount.R||0]];
+  ['YELLOW','YELLOW',gcount.YELLOW||0],['R','R',gcount.R||0]]
+  .concat(gcount.none? [['','판정 없음',gcount.none]]:[]);
 document.getElementById('chips').innerHTML=chipDefs.map(([k,lab,n])=>
   `<span class="chip c${k} ${k==='ALL'?'on':''}" data-g="${k}">${lab} ${n}</span>`).join('');
 document.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{
@@ -650,12 +655,13 @@ function openD(i){
   const qv=find(/Quality/);
   const yv=find(/Yellow/i);
   const isY = qm.review==='yellow';
-  const decision = isY?'YELLOW':qm.finalGrade;
+  const none = !isY && !qm.finalGrade;            // 판정 없음(품질 단계 off · 미판정)
+  const decision = isY?'YELLOW':(qm.finalGrade||'판정 없음');
   const qmethod = qv? vbadge(qv.agent) : vbadge('Agent');
   h+=stage(isY?'gate':(qm.finalGrade==='G'?'ok':'gate'),'③ 품질 메타 '+qmethod,
     'decision '+decision,
-   `<div class="kv"><b>판정</b> <span class="pill ${decision}">${decision}</span>
-      ${isY?'사람 검수 필요(저신뢰)':(qm.finalGrade==='G'?'유통 가능':'유통 불가')}
+   `<div class="kv"><b>판정</b> <span class="pill ${isY?'YELLOW':(qm.finalGrade||'')}">${decision}</span>
+      ${isY?'사람 검수 필요(저신뢰)':(none?'품질 판정을 하지 않았습니다(유통 가능으로 보지 않음)':(qm.finalGrade==='G'?'유통 가능':'유통 불가'))}
       ${qm.confidence!=null?` · conf=${qm.confidence}`:''}</div>
     ${isY&&qm.review_reason?`<div class="kv" style="color:var(--ent)"><b>YELLOW 사유</b> ${esc(qm.review_reason)}</div>`:''}
     ${(im&&im.hold_fields&&im.hold_fields.length)?`<div class="kv" style="color:var(--ent)"><b>입력 필요</b> ${im.hold_fields.map(esc).join(', ')} <span style="opacity:.7">(품질 등급과 별개)</span></div>`:''}
@@ -663,10 +669,10 @@ function openD(i){
     ${qv&&qv.evidence?`<div class="kv"><b>근거</b> ${esc(qv.evidence)}</div>`:''}`);
   h+='<div class="flowarrow">↓</div>';
 
-  // 4. Item (G 또는 YELLOW)
+  // 4. Item (등급 무관 전건 · 2026-09-08 게이트 폐지)
   if(im){
     const ic=find(/IntentCategory/), ec=find(/EntityCategory/);
-    h+=stage('ok','④ 아이템 메타 (intent→entities→categories)','finalGrade=G',
+    h+=stage('ok','④ 아이템 메타 (요약·엔티티·인텐트·카테고리)','등급 무관 전건',
      `<div class="kv"><b>intent</b> ${esc(im.intent)}</div>
       <div class="kv"><b>entities</b> ${(im.entities||[]).map(x=>`<span class="tag">${esc(x)}</span>`).join('')}
         ${vbadge('Agent')}</div>
@@ -677,7 +683,7 @@ function openD(i){
         `<div class="kv">· ${esc(k)} → ${esc(v)}</div>`).join('')}`);
   }else{
     h+=stage('skip','④ 아이템 메타','SKIP',
-     '<div class="kv">finalGrade=R(또는 image_only) → 아이템 메타 생략(유통 불가)</div>');
+     '<div class="kv">이미지 전용 트랙 → 별도 파이프라인(품질 등급은 실행 조건이 아니다 · 2026-09-08)</div>');
   }
   h+='<div class="flowarrow">↓</div>';
 
@@ -707,7 +713,7 @@ const KLAB={content:'콘텐츠',entity:'엔티티',category:'콘텐츠 카테고
 function _hexA(hex,a){const h=(hex||'#888').replace('#','');return `rgba(${parseInt(h.slice(0,2),16)},${parseInt(h.slice(2,4),16)},${parseInt(h.slice(4,6),16)},${a})`;}
 // 기본 보기: 엔티티↔카테고리 구조만(콘텐츠·인텐트는 토글로): 헤어볼 방지
 const gLayers={content:false,entity:true,category:true,intent:false};
-const gGrades={G:true,YELLOW:true,R:true};
+const gGrades={G:true,YELLOW:true,R:true,none:true};   // none = 판정 없음(품질 단계 off)
 const gEl=document.getElementById('g');
 
 // 불변 링크 스펙(필터마다 새 객체 생성), 인접 맵(하이라이트용)
@@ -779,7 +785,7 @@ function rebuild(){
   for(const n of DATA.nodes){
     if(n.kind==='category'){ if(gLayers.category) ok.add(n.id); continue; }
     if(n.kind==='intent'){ if(gLayers.intent) ok.add(n.id); continue; }
-    if(n.kind==='content'){ if(gLayers.content && gGrades[n.grade||'G']) ok.add(n.id); continue; }
+    if(n.kind==='content'){ if(gLayers.content && gGrades[n.grade||'none']) ok.add(n.id); continue; }
     if(n.kind==='entity' && gLayers.entity){
       if(allEnt){ ok.add(n.id); }
       // 펼친 카테고리에 속한 엔티티만
@@ -807,7 +813,7 @@ function rebuild(){
 
 // 필터 칩 UI
 function renderGChips(){
-  const grd=[['G','G'],['YELLOW','Y'],['R','R']].map(([k,lab])=>
+  const grd=[['G','G'],['YELLOW','Y'],['R','R'],['none','판정 없음']].map(([k,lab])=>
     `<span class="chip c${k} ${gGrades[k]?'on':''}" data-grade="${k}">${lab}</span>`).join('');
   const lay=[['content','콘텐츠'],['entity','엔티티'],['category','콘텐츠 카테고리'],['intent','인텐트']].map(([k,lab])=>
     `<span class="chip ${gLayers[k]?'on':''}" data-layer="${k}" style="${gLayers[k]?`border-color:${COL[k]};color:${COL[k]};background:${COL[k]}26;font-weight:700`:''}">${lab}</span>`).join('');

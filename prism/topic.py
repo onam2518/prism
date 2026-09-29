@@ -69,17 +69,33 @@ def _service_names(rows):
 
 
 def _grade(r):
+    """품질 결정값. 빈 문자열 = 판정 없음(품질 단계 off · 미판정 · 호출 실패).
+
+    종전 기본값은 "G" 였다. 품질 값이 없는 행을 통과로 세면 품질 기능이 붙는 순간
+    집계가 통째로 흔들리고, 미판정이 유통 가능으로 둔갑한다(감사 4-9 · 277118998
+    "미판정·호출 실패를 자동 G로 처리하지 않음").
+    """
     qm = r.get("quality_meta", {})
-    return "YELLOW" if qm.get("review") == "yellow" else qm.get("finalGrade", "G")
+    return "YELLOW" if qm.get("review") == "yellow" else (qm.get("finalGrade") or "")
 
 
 def _title(r):
     return r.get("content_ref", {}).get("title", "")
 
 
+# 토픽 대상에서 빼는 품질 결정값. 나머지(G · 판정 없음)는 대상이다.
+_NOT_ELIGIBLE = {"R", "YELLOW"}
+
+
 def _eligible(r) -> bool:
-    """토픽 편입 자격: 품질 통과(G)만. R·YELLOW(검수 대기)는 토픽 대상 자체가 아니다."""
-    return _grade(r) == "G"
+    """토픽 편입 자격: 유통 불가(R)와 검수 대기(YELLOW)만 뺀다.
+
+    토픽 대상은 아이템 메타가 부여된 유통 가능 콘텐츠 일체이고, 1차 메타 발행에는
+    품질 판정 필터를 포함하지 않는다(279904498 · 2026-09-22 수정). 그래서 품질 단계가
+    켜져 있으면 R(과 검수 대기)만 제외하고, 꺼져 있거나 등급이 없으면 등급을 조건에서
+    빼되 그 행은 '판정 없음'(_grade == "")으로 남겨 G 와 구분한다(감사 4-9).
+    """
+    return _grade(r) not in _NOT_ELIGIBLE
 
 
 def _row_hash(r) -> str:

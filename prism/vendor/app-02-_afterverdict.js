@@ -120,7 +120,8 @@ window.PRISM_APP_PARTS.push(() => ({
       status: '',
       result: null,
       batchResult: null,
-      groups: ['뉴스', '연예', '스포츠', '콘텐츠', '커뮤니티', '블로그', '음악', '동영상'],
+      // /vocab 응답 전 표시용 기본값. displayServiceName 정의값 10개(위키 278036632)와 같게 둔다.
+      groups: ['뉴스', '연예', '스포츠', '콘텐츠뷰 (일반)', '멜론', '다음카페', '콘텐츠뷰 (커뮤니티)', '티스토리', 'VOD', '루프'],
       group: '뉴스',
       txtTitle: '', txtBody: '', txtUrl: '', txtKey: '',   // txtKey = 발행 키 item_unique_key(선택 · 원문 보존)
       excelFile: null, xlsDrag: false,
@@ -141,7 +142,7 @@ window.PRISM_APP_PARTS.push(() => ({
         return set.length ? '등록됨: ' + set.map((k) => nm[k]).join(' · ') : '';
       },
       models: [], modelsMsg: '',
-      reasoning: 'default', legalEnabled: false,
+      reasoning: 'default', legalEnabled: false, qualityStage: true,
       availableModels: [],
       visionCandidates: [],                   // 이미지 탭 시각 슬롯 선택지(/config visionCandidates)
       reasoningOpts: [{ id: 'low', label: 'Low' }, { id: 'default', label: 'Medium' }, { id: 'high', label: 'High' }],

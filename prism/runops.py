@@ -260,7 +260,7 @@ def run_pipeline(fields: dict, *, mock: bool, team=None, model: str = "", persis
                if k in fields},
         }
 
-    out = PIPE.extract(content, llm, legal=cfg.legal_enabled)
+    out = PIPE.extract(content, llm, legal=cfg.legal_enabled, quality=cfg.quality_stage)
     # 폴백 체인: 실호출인데 산출이 전량 빈값이면 예비 모델로 1회씩 재시도(최대 3 · 성공 시 채택).
     # 단 비재시도성 실패(크레딧 소진·지출 한도·인증)면 예비 모델도 같은 402/401 로 죽는다 —
     # 무의미한 호출 증폭(건당 최대 3배)을 막기 위해 폴백을 생략한다.
@@ -273,7 +273,7 @@ def run_pipeline(fields: dict, *, mock: bool, team=None, model: str = "", persis
             fllm, _route = _SV.llm_for_model(fm, mock)
             if fllm is None or fllm.mock:
                 continue
-            retry = PIPE.extract(content, fllm, legal=cfg.legal_enabled)
+            retry = PIPE.extract(content, fllm, legal=cfg.legal_enabled, quality=cfg.quality_stage)
             if not _SV._pipeline_empty(retry):
                 (retry.setdefault("trace", {}))["fallback_from"] = primary or "(기본)"
                 out = retry
@@ -625,7 +625,7 @@ def run_batch(file_bytes: bytes, filename: str, purpose: str = "", team=None,
         _SV._INGEST_STATE[jid]["hashes"] = [_bch(c) for c in contents]
         try:
             for c in contents:
-                out = PIPE.extract(c, llm, legal=cfg.legal_enabled)
+                out = PIPE.extract(c, llm, legal=cfg.legal_enabled, quality=cfg.quality_stage)
                 # 비용·실패 원장: 이 경로는 run_pipeline 을 안 타므로 여기서 직접 기록 —
                 # 종전엔 엑셀 일괄 추출의 실키 지출·402 실패가 원장에 한 건도 안 남았다.
                 _log_run_ledgers(c, out, mock=llm.mock, team=team, content_hash=_bch(c))

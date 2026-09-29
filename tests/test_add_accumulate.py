@@ -66,7 +66,7 @@ class AccumulateBase(unittest.TestCase):
     def _stub_extract(self, serve):
         calls = []
 
-        def fake(content, llm, legal=False):
+        def fake(content, llm, legal=False, quality=True):
             calls.append(content.get("title"))
             return _j.loads(_j.dumps(_ok_out()))
         orig = serve.PIPE.extract

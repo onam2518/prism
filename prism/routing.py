@@ -6,15 +6,10 @@ from . import dictionaries as D
 def dispatch(content: Content) -> Routing:
     name = (content.displayServiceName or "").strip()
 
-    # 서비스 그룹: 정확 매칭 → 부분 매칭 → 보수적 default(media)
-    group = D.SERVICE_GROUP.get(name)
-    if group is None:
-        for k, v in D.SERVICE_GROUP.items():
-            if k and k in name:
-                group = v
-                break
-    if group is None:
-        group = D.SERVICE_GROUP_DEFAULT
+    # 서비스 그룹: 정의값·구 명칭·표기 변형 흡수는 사전 한 곳(service_group_of)에서 한다.
+    # 종전의 SERVICE_GROUP 직접 매칭은 원문("다음카페"·"티스토리"·"VOD")을 못 잡아
+    # UGC 서비스가 전부 media 로 떨어졌다(위키 278036632).
+    group = D.service_group_of(name)
 
     # 콘텐츠 트랙: 텍스트(제목/부제/본문)가 하나라도 있으면 text.
     # image_only 는 텍스트가 전혀 없는 '이미지 단독'만(분류기 호출 전 분기: v28).

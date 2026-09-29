@@ -146,7 +146,7 @@ class TestFallbackSkipsNonRetryable(unittest.TestCase):
         self.addCleanup(serve._agg_bump)
         calls = []
 
-        def fake_extract(content, llm, legal=False):
+        def fake_extract(content, llm, legal=False, quality=True):
             calls.append(getattr(llm, "model", ""))
             return {"item_meta": {}, "quality_meta": {},
                     "trace": {"model": llm.model,

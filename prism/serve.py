@@ -1151,6 +1151,7 @@ def config_status(team=None) -> dict:
         "visionProvider": cfg.vision_provider or "upstage_ie",
         "visionModel": cfg.vision_model or "",
         "legalEnabled": bool(cfg.legal_enabled),
+        "qualityStage": bool(getattr(cfg, "quality_stage", True)),
         # 콘텐츠 조회(메타베이스) · 키는 존재 여부만(실값 금지)
         "metabaseUrl": getattr(cfg, "metabase_url", "") or "",
         "metabaseDbId": int(getattr(cfg, "metabase_db_id", 0) or 0),
@@ -1174,7 +1175,7 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
             "model", "base_url", "reasoning", "system_prompt", "stage_prompts", "stage_models",
             "model_prompts", "ingest_sources", "fallback_models", "meta_four_calls",
             "meta_call_models", "family_wrappers", "text_provider", "text_model",
-            "vision_provider", "vision_model", "legal_enabled",
+            "vision_provider", "vision_model", "legal_enabled", "quality_stage",
             "metabase_url", "metabase_db_id", "metabase_query",
             "metabase_api_key", "forget_metabase")
         data = {k: v for k, v in data.items() if k not in _ADMIN_ONLY_CFG}
@@ -1241,6 +1242,7 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
     slot_keys = ("text_provider", "text_model", "vision_provider", "vision_model")
     has_slot = any(k in data for k in slot_keys)
     has_legal = "legal_enabled" in data
+    has_quality = "quality_stage" in data
     has_ingest = "ingest_sources" in data and isinstance(data.get("ingest_sources"), list)
     has_smodels = "stage_models" in data and isinstance(data.get("stage_models"), dict)
     has_mprompts = "model_prompts" in data and isinstance(data.get("model_prompts"), dict)
@@ -1252,7 +1254,7 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
                 or ("metabase_url" in data) or ("metabase_db_id" in data) or ("metabase_query" in data)
                 or ("final_rerun_after_batch" in data) or ("final_gold_check" in data)
                 or ("assist_model" in data) or ("draft_judge_model" in data))
-    if (model or base or reasoning or has_sp or has_stage or has_slot or has_legal or has_ingest
+    if (model or base or reasoning or has_sp or has_stage or has_slot or has_legal or has_quality or has_ingest
             or has_smodels or has_mprompts or has_wrappers or has_callm or has_4c or has_misc):
         cfg = Config.load()
         if has_ingest:
@@ -1306,6 +1308,8 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
             cfg.stage_prompts_meta = meta
         if has_legal:
             cfg.legal_enabled = bool(data.get("legal_enabled"))
+        if has_quality:
+            cfg.quality_stage = bool(data.get("quality_stage"))
         if has_wrappers:                          # 계열 래퍼 오버라이드(빈 값 = 기본 복원)
             fw = dict(cfg.family_wrappers or {})
             for fam, tpl in (data.get("family_wrappers") or {}).items():

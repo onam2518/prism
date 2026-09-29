@@ -21,14 +21,14 @@ class _FakeLLM:
         self.mock = mock
 
 
-def _ok_yellow(content, llm, legal=False):
+def _ok_yellow(content, llm, legal=False, quality=True):
     """저장되는(검토 대상 yellow) 산출."""
     return {"item_meta": {"summary": "s"},
             "quality_meta": {"finalGrade": "R", "review": "yellow"},
             "trace": {"model": "m", "version": 1}}
 
 
-def _billing(content, llm, legal=False):
+def _billing(content, llm, legal=False, quality=True):
     """콜 실패(크레딧)만 있는 산출 — 에러 키 없음(실제 402 배치 모양)."""
     return {"item_meta": {}, "quality_meta": {},
             "trace": {"model": "m", "fails": [{"tag": "quality", "kind": "billing"}]}}
@@ -60,7 +60,7 @@ class Base(unittest.TestCase):
     def _stub_extract(self, serve, fn):
         calls = []
 
-        def wrapped(content, llm, legal=False):
+        def wrapped(content, llm, legal=False, quality=True):
             calls.append(content.get("title"))
             return fn(content, llm, legal)
         o = serve.PIPE.extract

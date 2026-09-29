@@ -76,6 +76,7 @@ window.PRISM_APP_PARTS.push(() => ({
           if (this.cfg.textProvider) this.textProvider = this.cfg.textProvider;
           if (typeof this.cfg.textModel === 'string' && this.cfg.textModel) this.textModel = this.cfg.textModel;
           if (typeof this.cfg.legalEnabled === 'boolean') this.legalEnabled = this.cfg.legalEnabled;
+          if (typeof this.cfg.qualityStage === 'boolean') this.qualityStage = this.cfg.qualityStage;
           if (typeof this.cfg.assistModel === 'string' && this.cfg.assistModel) this.assistModel = this.cfg.assistModel;
           if (Array.isArray(this.cfg.assistModels)) this.assistModels = this.cfg.assistModels;
         } catch (e) { /* noop */ }
@@ -83,6 +84,10 @@ window.PRISM_APP_PARTS.push(() => ({
       async toggleLegal() {
         try { await this._afetch('/config', { method: 'POST', headers: this._authHeaders(),
           body: JSON.stringify({ legal_enabled: this.legalEnabled }) }); } catch (e) {}
+      },
+      async toggleQuality() {
+        try { await this._afetch('/config', { method: 'POST', headers: this._authHeaders(),
+          body: JSON.stringify({ quality_stage: this.qualityStage }) }); } catch (e) {}
       },
       // ── 키(서비스별) ──
       keyState(service) { return !!this.cfg[this.keyDefs[service].has]; },

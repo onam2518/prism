@@ -107,9 +107,11 @@ class TestPromptPolicy(unittest.TestCase):
     # ── 2026-07-09 정책 정합: 멜론=PGC · 품질 메타 우선순위는 상황부 규칙 ──
     def test_melon_service_group_is_media(self):
         from prism import dictionaries as D
-        self.assertEqual(D.SERVICE_GROUP["음악"], "media")    # 멜론 = PGC (위키 277118998)
+        # 2026-09-29: SERVICE_GROUP 키가 옛 UI 그룹명("음악")에서 displayServiceName
+        # 원문("멜론")으로 바뀌었다(감사 4-19). 판정은 service_group_of 한 곳을 거친다.
+        self.assertEqual(D.service_group_of("멜론"), "media")   # 멜론 = PGC (위키 277118998)
         # PGC 자동 비활성 메타가 음악 그룹에도 적용되는지 (political·hate·format 미검사)
-        active = D.active_quality_metas(D.SERVICE_GROUP["음악"])
+        active = D.active_quality_metas(D.service_group_of("멜론"))
         for m in ("political", "hate", "format"):
             self.assertNotIn(m, active)
 

@@ -61,7 +61,7 @@ class LedgerBase(unittest.TestCase):
     def _stub_extract(self, serve, trace):
         calls = []
 
-        def fake(content, llm, legal=False):
+        def fake(content, llm, legal=False, quality=True):
             calls.append(content.get("title"))
             return {"item_meta": {"summary": "s"}, "quality_meta": {"finalGrade": "G"},
                     "trace": dict(trace)}
