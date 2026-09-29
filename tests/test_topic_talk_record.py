@@ -88,7 +88,7 @@ class TestTalkRecordContract(unittest.TestCase):
         d2 = next(x for x in td2["customDefs"] if x["id"] == d["id"])
         self.assertEqual([t["text"] for t in d2["turns"]], ["경제 심층분석만", "광고는 빼줘"])
         # 직접 손보기(turns 없이 저장): 기록이 지워지지 않는다
-        td3 = S.topic_studio_action({"action": "save", "def": {"id": d["id"], "name": "기록 보존", "cats": ["Business and Finance", "Sports"]}})
+        td3 = S.topic_studio_action({"action": "save", "def": {"id": d["id"], "name": "기록 보존(손봄)", "cats": ["Business and Finance"]}})   # 데이터 없는 분야를 더하면 0건 잠금(초안)이라 이름만 바꾼다
         d3 = next(x for x in td3["customDefs"] if x["id"] == d["id"])
         self.assertEqual([t["text"] for t in d3["turns"]], ["경제 심층분석만", "광고는 빼줘"])
 
