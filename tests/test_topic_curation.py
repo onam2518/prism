@@ -212,7 +212,7 @@ class TestServeActions(unittest.TestCase):
     def test_entity_auto_topic_drill_and_exclude(self):
         S, rows = self.S, _rows()
         S.topic_studio_action({"action": "settings", "settings": {"entity_min": 1}})
-        # 식별자는 사전 공통키 기반(등재 전이면 이름 기준) — 이름으로 찾아서 쓴다(2-6)
+        # 식별자는 사전 공통키 기반(등재 전이면 이름 기준) · 이름으로 찾아서 쓴다(2-6)
         cid = next(p["cluster_id"] for p in S.topics_data()["single"] if p["name"] == "삼성전자")
         dr = S.topic_drill(cid)
         self.assertEqual((dr["topic_id"], dr["n"]), (cid, 2))

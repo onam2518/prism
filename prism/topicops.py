@@ -83,7 +83,8 @@ def _row_stats(ids, rows, now=None, settings=None):
     prev7 = sum(1 for t in ts if now - 14 * 86400 <= t < now - 7 * 86400)
     last = max(ts) if ts else 0
     stall = int((now - last) // 86400) if last else 0
-    inactive = (not ts) or stall >= inactive_min
+    # 시각을 모르는 행은 집계에서 빠질 뿐 '매핑 0건'이 아니다 · 묶인 게 있으면 비활성으로 보지 않는다
+    inactive = (stall >= inactive_min) if ts else not ids
     signal = ""
     if inactive:
         signal = "비활성"
@@ -642,10 +643,11 @@ def topic_studio_action(data: dict, mock: bool = False, team=None, who: str = ""
         for k in TP._DIMS:                      # 제외 우선은 합칠 때도 유지(4-14)
             dst[k] = [v for v in dst[k] if v not in (dst["neg"].get(k) or [])]
             dst["req"][k] = [v for v in dst["req"][k] if v in dst[k]]
-        for key, lst in ((cid, exclusions.get(cid)), (into, exclusions.get(into))):
-            if lst and key == cid:
-                exclusions[into] = (exclusions.get(into) or []) + lst
-        exclusions.pop(cid, None)
+        inclusions = dict(cfg["inclusions"] or {})
+        for m in (exclusions, inclusions):          # 개별 제외 · 직접 편입 기억도 합친 쪽으로 옮긴다
+            if m.get(cid):
+                m[into] = (m.get(into) or []) + m[cid]
+            m.pop(cid, None)
         # ponytail: 합친 토픽의 핵심 묶음은 조건 교집합이라 0건일 수 있다 · 합집합은 관련 묶음이 표현한다.
         # 현황 건수까지 합집합으로 올리려면 core_count(핵심 묶음 건수) 계약을 먼저 바꿔야 한다.
         _log_add(dst, "병합 ← " + (src.get("name") or cid), who)
@@ -654,7 +656,7 @@ def topic_studio_action(data: dict, mock: bool = False, team=None, who: str = ""
         _log_add(arch, "병합 → " + (dst.get("name") or into) + " · 보관", who)
         custom[i_src] = arch
         _save_studio_config({"custom": custom, "settings": cfg["settings"], "exclusions": exclusions,
-                             "inclusions": cfg["inclusions"], "paused_auto": cfg["paused_auto"]})
+                             "inclusions": inclusions, "paused_auto": cfg["paused_auto"]})
         return dict(_SV.topics_data(team), ok=True, saved={"id": into, "merged": cid})
     elif action == "settings":
         s = data.get("settings") or {}

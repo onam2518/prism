@@ -143,6 +143,9 @@ class TestEntityCommonKey(unittest.TestCase):
         st = _FakeStore({"손흥민": "e_son", "쏘니": "e_son"})
         self.assertEqual(ED.canon_keys(st, ["손흥민", "쏘니", "없는이름"]),
                          {"손흥민": "e_son", "쏘니": "e_son"})
+        # 같은 이름으로 정규화되는 표기(공백 차이 등)는 하나만 남기지 않고 전부 돌려준다
+        self.assertEqual(ED.canon_keys(st, ["손흥민", "손흥민 "]),
+                         {"손흥민": "e_son", "손흥민 ": "e_son"})
 
 
 if __name__ == "__main__":

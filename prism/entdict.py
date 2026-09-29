@@ -184,7 +184,7 @@ def canon_keys(store, names) -> dict:
     for n in (names or []):
         k = normalize_name(n)
         if k:
-            norm.setdefault(k, n)
+            norm.setdefault(k, []).append(n)             # 같은 이름으로 정규화되는 표기는 전부 돌려준다
     if not norm:
         return {}
     try:
@@ -192,7 +192,7 @@ def canon_keys(store, names) -> dict:
     except Exception as e:                               # 조회 실패는 '미등재'로(부분일치 폴백 유지)
         print(f"[entdict] canon_keys 실패 · 엔티티 조건은 문자열 폴백: {e}")
         return {}
-    return {norm[k]: eid for k, eid in (found or {}).items() if eid and k in norm}
+    return {n: eid for k, eid in (found or {}).items() if eid for n in norm.get(k, ())}
 
 
 def ingest_meta(store, items, team="") -> dict:

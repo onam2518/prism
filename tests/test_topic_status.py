@@ -94,6 +94,8 @@ class TestFeedAndSource(unittest.TestCase):
         back = _row_stats([0, 1], rows, now)                              # 재매핑 → 되살아난다
         self.assertEqual((back["inactive"], back["signal"]), (False, ""))
         self.assertTrue(_row_stats([], rows, now)["inactive"])            # 매핑 0건도 비활성
+        notime = _row_stats([0, 1], [_row("a"), _row("b")], now)          # 적재 시각 모름 ≠ 매핑 0건
+        self.assertEqual((notime["inactive"], notime["signal"]), (False, ""))
 
     def test_sanitize_status_and_feed(self):
         from prism.serve import _sanitize_def
@@ -211,6 +213,20 @@ class TestStatusActions(unittest.TestCase):
         ids = {i for bd in self._custom(r, a)["bundles"] for i in bd["content_ids"]}
         self.assertEqual(len(ids), 3)                 # 합친 조건의 콘텐츠를 모두 묶는다(관련 묶음)
         self.assertFalse(self._act(action="merge", id=a, into=a)["ok"])
+
+    def test_merge_carries_curation_memory(self):
+        """2-16 · 3-11: 합칠 때 개별 제외 · 직접 편입 기억이 합친 쪽으로 따라간다(지우지 않는다)."""
+        from prism.topic import _row_hash
+        a = self._act(action="save", **{"def": {"name": "가", "cats": ["Business and Finance"]}})["saved"]["id"]
+        b = self._act(action="save", **{"def": {"name": "나", "cats": ["Entertainment"]}})["saved"]["id"]
+        hx = _row_hash(_row("삼성 분석1", entities=["삼성전자"], cats=["Business and Finance"]))
+        hy = _row_hash(_row("연예 속보", entities=["아이유"], cats=["Entertainment"]))
+        self._act(action="exclude", id=b, hash=hy, title="연예 속보")
+        self._act(action="include", id=b, hash=hx, title="삼성 분석1")
+        r = self._act(action="merge", id=b, into=a)
+        self.assertNotIn(b, r["exclusions"])
+        self.assertEqual([e["h"] for e in r["exclusions"][a]], [hy])
+        self.assertEqual(self._custom(r, a)["bundles"][0].get("included_n"), 1)
 
     def test_include_missing_content_and_undo(self):
         """2-17: 조건에 안 걸린 콘텐츠를 운영자가 직접 넣고 되돌린다."""

@@ -648,7 +648,7 @@ def _def_bundles(d):
     하위호환: req 가 전혀 없으면 선택 없이 '전부 필수'(= 기존 AND 단일 묶음)로 해석."""
     sel = {k: [str(v) for v in (d.get(k) or []) if str(v).strip()] for k in _DIMS}
     req_raw = d.get("req") or {}
-    # req 키가 있으면(현행 저장 형식) 값이 비어도 '필수 없음'으로 읽는다 — 합친 토픽처럼
+    # req 키가 있으면(현행 저장 형식) 값이 비어도 '필수 없음'으로 읽는다. 합친 토픽처럼
     # 전부 선택인 정의가 '전부 필수'로 뒤집히면 묶음이 통째로 0건이 된다.
     has_req = any(req_raw.get(k) for k in _DIMS) or isinstance(d.get("req"), dict)
     if has_req:
@@ -659,7 +659,7 @@ def _def_bundles(d):
     opt = [(k, v) for k in _DIMS for v in sel[k] if v not in req[k]]
     # 개체 속성(eattrs)은 4축이 아니라 보조 축이다(4-17): 선택 사용이고, 걸릴 때는
     # '같은 개체 AND' 의미라 선택(관련 묶음) 분해 없이 필수로 붙는다.
-    # 토픽 성립(4축 하나 이상)은 저장 경계(topicops)에서 막는다 — 여기서는 매칭만 본다.
+    # 토픽 성립(4축 하나 이상)은 저장 경계(topicops)에서 막는다 · 여기서는 매칭만 본다.
     must += [("eattrs", v) for v in dict.fromkeys(str(x).strip() for x in (d.get("eattrs") or []) if str(x).strip())]
     if not must and not opt:
         return [], [], []        # 조건 0개 → 묶음 없음. 전건을 묶는 토픽은 만들지 않는다(4-15)
