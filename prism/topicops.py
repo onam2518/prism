@@ -606,6 +606,10 @@ def topic_studio_action(data: dict, mock: bool = False, team=None, who: str = ""
         idx = next((i for i, c in enumerate(custom) if c.get("id") == d["id"]), -1)
         prev = custom[idx] if idx >= 0 else {}
         d["log"] = list(prev.get("log") or [])
+        if idx >= 0:                                   # 대화 기록(4-38)은 재저장·직접 손보기에도 보존 · 새 턴만 뒤에 붙인다
+            old = list(prev.get("turns") or [])
+            seen = {(t.get("text"), t.get("model")) for t in old}
+            d["turns"] = (old + [t for t in d["turns"] if (t.get("text"), t.get("model")) not in seen])[-20:]
         if data.get("talk"):
             d["via"] = "talk"
             d["talk_model"] = d["talk_model"] or Config.load().model    # 기록이 빈 문자열이 되지 않게(4-45)

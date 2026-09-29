@@ -84,7 +84,7 @@ window.PRISM_APP_PARTS.push(() => ({
         if (before) chips.forEach(c => { c.new = !before.has(c.key); });
         const core = (pv.bundles || []).find(b => b.kind === 'core') || { count: 0, samples: [] };
         t.chips = chips; t.n = core.count || 0; t.samples = (core.samples || []).slice(0, 5);
-        t.after = chips.map(c => c.key);                  // 칩 조정 뒤(4-38 기록)
+        if (!t.saved) t.after = chips.map(c => c.key);     // 칩 조정 뒤(4-38 기록) · 저장된 옛 턴의 기록은 덮지 않는다
         t.similar = pv.similar || [];                     // 가까운 기존 토픽 · 저장 전에도(4-44)
         t.neg_n = pv.neg_blocked || 0; t.feed_n = pv.feed_blocked || 0;
         const miss = pv.feed_miss || {}; const mk = Object.keys(miss);
@@ -99,16 +99,16 @@ window.PRISM_APP_PARTS.push(() => ({
         try {
           // 누적 해석: 문장 전체를 다시 풀되, 사용자가 뺀 칩은 되살리지 않는다
           const r = await this._studioPost({ action: 'suggest', text: sentences.join(' '), model: mid });
-          const before = new Set(this._talkChips().map(c => c.key));
+          const prevKeys = new Set(this._talkChips().map(c => c.key));   // 직전 턴 상태(새 칩 표시용)
           this._applySuggest((r && r.suggest) || {});
-          const parsed = this._talkChips().map(c => c.key);      // 해석 결과(칩 조정 전 · 4-38 기록)
-          this._talkPrune();
           if (!this.studio.name.trim()) this.studio.name = s.replace(/[.。!?]+$/, '').slice(0, 40);
           this.studio.prompt = sentences.join(' / ');
           const prev = this.talk.turns.length ? this.talk.turns[this.talk.turns.length - 1].n : null;
           // 해석 모델은 서버가 확정해 돌려준 값(화면에 모델 선택이 없다 · 4-45)
-          this.talk.turns.push({ text: s, chips: [], n: 0, prev, samples: [], via: (r && r.via) || '', model: (r && r.model) || mid, miss: '', neg_n: 0, feed_n: 0, before: parsed, after: [], similar: [] });
-          await this._talkRefresh(before);
+          this.talk.turns.push({ text: s, chips: [], n: 0, prev, samples: [], via: (r && r.via) || '', model: (r && r.model) || mid, miss: '', neg_n: 0, feed_n: 0, before: [], after: [], similar: [] });
+          await this._talkRefresh(prevKeys);                     // 미리보기가 원천 조건(기간·형식·기본 제외)까지 칩으로 돌려준다
+          const t = this.talk.turns[this.talk.turns.length - 1]; t.before = t.after.slice();   // 해석 결과(칩 조정 전 · 4-38 기록)
+          if (this.talk.dropped.length) { this._talkPrune(); await this._talkRefresh(prevKeys); }   // 이전 턴에서 뺀 칩은 되살리지 않는다 → after 갱신
           this.talk.input = '';
         } catch (e) { this.studioMsg = '해석 실패 · 다시 시도하세요'; }
         this.talk.busy = false;
@@ -118,7 +118,10 @@ window.PRISM_APP_PARTS.push(() => ({
       talkEdit(g) {
         this.studioEdit(g); this.studioManual = false;
         const def = (this.topicData.customDefs || []).find(d => d.id === g.id) || {};
-        this.talk = { turns: [{ text: def.prompt || g.prompt || g.name || '', chips: [], n: g.core_count || 0, prev: null, samples: [], via: '', model: def.talk_model || '', miss: '', neg_n: 0, feed_n: 0, before: [], after: [], similar: [] }], input: '', busy: false, dropped: [], help: false };
+        // 저장된 대화 기록(4-38)을 그대로 이어받는다 · 기록이 없는 옛 정의만 문장 요약으로 합성 턴(저장 안 함)
+        const hist = (def.turns || []).map(t => ({ text: t.text, chips: [], n: 0, prev: null, samples: [], via: t.via || '', model: t.model || '', miss: '', neg_n: 0, feed_n: 0, before: t.before || [], after: t.after || [], similar: [], saved: true }));
+        const seed = { text: def.prompt || g.prompt || g.name || '', chips: [], n: g.core_count || 0, prev: null, samples: [], via: '', model: def.talk_model || '', miss: '', neg_n: 0, feed_n: 0, before: [], after: [], similar: [], synthetic: true };
+        this.talk = { turns: hist.length ? hist : [seed], input: '', busy: false, dropped: [], help: false };
         this._talkRefresh();
       },
       async talkSave(status) {
@@ -127,7 +130,7 @@ window.PRISM_APP_PARTS.push(() => ({
         this.studioSaving = true; this.studioMsg = '저장 중…';
         const def = this.studioDef(); def.status = status;
         // 기록(4-38): 문장 원문 · 해석 모델 · 해석 결과(before) · 칩 조정 뒤(after) 를 턴별로 저장
-        def.turns = this.talk.turns.map(t => ({ text: t.text, model: t.model || '', via: t.via || '', before: t.before || [], after: t.after || [] }));
+        def.turns = this.talk.turns.filter(t => !t.synthetic).map(t => ({ text: t.text, model: t.model || '', via: t.via || '', before: t.before || [], after: t.after || [] }));
         def.talk_model = (this.talk.turns[this.talk.turns.length - 1] || {}).model || '';
         try {
           const r = await this._studioPost({ action: 'save', def, talk: true, reviewer: this.reviewer || '' });

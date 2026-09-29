@@ -74,6 +74,24 @@ class TestTalkRecordContract(unittest.TestCase):
         self.assertNotIn("similar", S.topic_studio_action(
             {"action": "preview", "def": {"name": "x", "cats": ["Business and Finance"]}})["preview"])
 
+    def test_turns_history_is_preserved_on_resave(self):
+        """재저장(말로 다듬기·직접 손보기)해도 저장된 대화 기록은 사라지지 않고 새 턴만 뒤에 붙는다(4-38)."""
+        S = self.S
+        first = [{"text": "경제 심층분석만", "model": "solar-pro2", "via": "llm", "before": ["cats:Business and Finance"], "after": ["cats:Business and Finance"]}]
+        td = S.topic_studio_action({"action": "save", "talk": True, "def": {
+            "name": "기록 보존", "cats": ["Business and Finance"], "turns": first}})
+        d = next(x for x in td["customDefs"] if x["name"] == "기록 보존")
+        # 말로 다듬기: 클라이언트가 기존 턴을 이어 보내도 중복 없이 · 새 턴만 추가
+        td2 = S.topic_studio_action({"action": "save", "talk": True, "def": {
+            "id": d["id"], "name": "기록 보존", "cats": ["Business and Finance"],
+            "turns": first + [{"text": "광고는 빼줘", "model": "solar-pro2", "via": "heuristic", "before": [], "after": []}]}})
+        d2 = next(x for x in td2["customDefs"] if x["id"] == d["id"])
+        self.assertEqual([t["text"] for t in d2["turns"]], ["경제 심층분석만", "광고는 빼줘"])
+        # 직접 손보기(turns 없이 저장): 기록이 지워지지 않는다
+        td3 = S.topic_studio_action({"action": "save", "def": {"id": d["id"], "name": "기록 보존", "cats": ["Business and Finance", "Sports"]}})
+        d3 = next(x for x in td3["customDefs"] if x["id"] == d["id"])
+        self.assertEqual([t["text"] for t in d3["turns"]], ["경제 심층분석만", "광고는 빼줘"])
+
     def test_turns_limits(self):
         """신뢰 경계: 기록은 20턴 · 문장 600자 · 칩 40개에서 잘리고, 목록이 아닌 turns 는 무시한다."""
         from prism.topicops import _sanitize_def
