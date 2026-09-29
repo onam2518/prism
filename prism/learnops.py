@@ -721,7 +721,6 @@ def compose_prompts(team=None, model: str = "") -> dict:
     except Exception:
         ver = 1
     from .schema import Content
-    from . import dictionaries as D
     _SV.sync_prompt()
     cfg = Config.load()
     base_model = (model or "").strip() or cfg.model or ""
