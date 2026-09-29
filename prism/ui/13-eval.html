@@ -282,10 +282,16 @@
                 <span class="text-xs text-muted" x-show="cmpResult && cmpResult.ok && cmpResult.ts" x-text="cmpResult ? ('마지막 비교 ' + fmtTs(cmpResult.ts) + ' · 정답 ' + cmpResult.golden_n + '건') : ''"></span>
                 <button type="button" class="copybtn tnum" x-show="cmpResult && cmpResult.ok && cmpResult.prompt_snapshot_version" x-on:click="downloadPrompt({ v: cmpResult.prompt_snapshot_version })" x-text="cmpResult ? ('프롬프트 v' + cmpResult.prompt_snapshot_version + ' 내려받기') : ''" data-tip="비교 시작 시점 프롬프트 버전(zip · 호출별 파일) · 도중에 학습이 반영되면 결과가 다른 버전 기준일 수 있어요" data-tip-pos="top"></button>
               </div>
+            </div>
+          </section>
               <template x-if="cmpResult && cmpResult.ok && cmpCols.length">
-                <div>
+                <div class="content-section-stack">
+                  <section class="panel content-section content-section--panel" aria-labelledby="compare-summary-title">
+                  <div class="content-section__head">
+                    <div><h3 class="content-section__title" id="compare-summary-title">요약 지표</h3><p class="content-section__description">같은 정답셋에서 모델별 정확도, 비용과 응답 속도를 비교합니다.</p></div>
+                  </div>
                   <div class="overflow-auto"><table class="ds-table model-compare-table" x-bind:style="'--compare-model-count:' + cmpCols.length"><colgroup><col class="model-compare-label"><col x-bind:span="cmpCols.length"></colgroup><thead><tr><th>항목</th>
-                    <template x-for="(m,mi) in cmpCols" x-bind:key="'ch'+mi"><th><span class="selctl__tag" x-bind:style="'background:' + cmpColor(mi)" x-text="cmpTag(mi)"></span> <span x-text="m.model"></span> <span class="ds-badge ds-badge--success" x-show="m.model===cmpResult.best">★ best</span> <span class="ds-badge ds-badge--intent" style="cursor:help" x-show="m.model===cmpResult.cheapest_passing" x-bind:data-tip="'등급 일치율 ' + pctTxt(cmpResult.eval_gate) + ' 이상 합격 모델 중 비용이 가장 낮아요'" data-tip-pos="top">합격 최저 비용</span></th></template>
+                    <template x-for="(m,mi) in cmpCols" x-bind:key="'ch'+mi"><th><span class="selctl__tag" x-bind:style="'background:' + cmpColor(mi)" x-text="cmpTag(mi)"></span> <span class="compare-model-name" x-text="m.model"></span> <span class="ds-badge ds-badge--success" x-show="m.model===cmpResult.best">★ best</span> <span class="ds-badge ds-badge--intent" style="cursor:help" x-show="m.model===cmpResult.cheapest_passing" x-bind:data-tip="'등급 일치율 ' + pctTxt(cmpResult.eval_gate) + ' 이상 합격 모델 중 비용이 가장 낮아요'" data-tip-pos="top">합격 최저 비용</span></th></template>
                   </tr></thead><tbody>
                     <tr><td class="text-ink">호출</td><template x-for="(m,mi) in cmpCols" x-bind:key="'cr'+mi"><td><span class="ds-badge" x-bind:class="m.real ? 'ds-badge--neutral' : 'ds-badge--warning'" x-bind:data-tip="m.real ? '실제 API 호출 결과' : '모의 응답 · API 키를 설정하면 실호출됩니다'" data-tip-pos="top" style="cursor:help" x-text="m.real ? (m.route||'실호출') : 'mock'"></span></td></template></tr>
                     <tr><td class="text-ink">등급 일치율 <span class="text-xs text-muted">(신뢰구간)</span></td><template x-for="(m,mi) in cmpCols" x-bind:key="'cg'+mi"><td>
@@ -309,20 +315,27 @@
                     <tr x-show="assignAdmin"><td class="text-ink">최종 선정</td><template x-for="(m,mi) in cmpCols" x-bind:key="'ca'+mi"><td>
                       <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="cfgModel===m.model ? 'ds-btn--ghost' : 'ds-btn--secondary'" x-bind:disabled="applyBusy || cfgModel===m.model" x-on:click="applyModel(m.model)" x-text="cfgModel===m.model ? '현재 기본 모델' : (applyBusy ? '적용 중…' : '이 모델로 확정')"></button></td></template></tr>
                   </tbody></table></div>
-                  <div class="text-xs text-muted" style="margin-top:8px" x-show="(cmpResult.skipped||[]).length">비교 제외: <span x-text="(cmpResult.skipped||[]).map(s => s.model + ' (' + s.reason + ')').join(' · ')"></span></div>
-                  <div class="text-xs text-muted" style="margin-top:4px">★ best = 게이트를 통과한 모델 중 종합 점수 1위 · ▲ = 그 줄에서 가장 좋은 값 · 신뢰구간이 겹치면 우열 판단 보류 · 정답셋이 쌓일수록 오차가 줄어듭니다<span x-show="cmpResult.cheapest_passing"> · 합격 기준 = 등급 일치율 <span class="tnum" x-text="pctTxt(cmpResult.eval_gate)"></span> 이상 · 그중 비용이 가장 낮은 모델 = <b x-text="cmpResult.cheapest_passing"></b></span></div>
+                  <ul class="result-notes">
+                    <li><b>★ best</b> · 게이트를 통과한 모델 중 종합 점수 1위입니다.</li>
+                    <li><b>▲</b> · 해당 항목에서 가장 좋은 값입니다.</li>
+                    <li>신뢰구간이 겹치면 우열 판단을 보류합니다. 정답셋이 쌓일수록 오차가 줄어듭니다.</li>
+                    <li x-show="cmpResult.cheapest_passing"><b>합격 최저 비용</b> · 등급 일치율 <span class="tnum" x-text="pctTxt(cmpResult.eval_gate)"></span> 이상인 모델 중 비용이 가장 낮은 모델은 <b x-text="cmpResult.cheapest_passing"></b>입니다.</li>
+                    <li x-show="(cmpResult.skipped||[]).length">비교 제외: <span x-text="(cmpResult.skipped||[]).map(s => s.model + ' (' + s.reason + ')').join(' · ')"></span></li>
+                  </ul>
+                  </section>
                   <!-- 건별 비교: 정답 vs 모델별 등급 · 틀린 건·갈린 건만 추려 어디서 차이가 나는지 본다 -->
-                  <div class="flexrow" style="margin-top:14px;align-items:center;gap:10px;flex-wrap:wrap">
-                    <b>건별 비교</b>
-                    <span class="text-xs text-muted" x-text="'전체 ' + (cmpResult.items||[]).length + '건 · 하나라도 틀린 건 ' + (cmpResult.miss_n||0) + ' · 모델끼리 갈린 건 ' + (cmpResult.split_n||0)"></span>
-                    <span class="srcfilter" style="margin-left:auto">
+                  <section class="panel content-section content-section--panel" aria-labelledby="compare-items-title">
+                  <div class="content-section__head">
+                    <div><h3 class="content-section__title" id="compare-items-title">건별 비교</h3>
+                    <p class="content-section__description" x-text="'전체 ' + (cmpResult.items||[]).length + '건 · 하나라도 틀린 건 ' + (cmpResult.miss_n||0) + ' · 모델끼리 갈린 건 ' + (cmpResult.split_n||0)"></p></div>
+                    <span class="srcfilter content-section__actions">
                       <button type="button" class="srcfilter__chip" x-bind:class="cmpItemFilter==='miss' ? 'sel' : ''" x-on:click="cmpItemFilter='miss'">틀린 건만</button>
                       <button type="button" class="srcfilter__chip" x-bind:class="cmpItemFilter==='split' ? 'sel' : ''" x-on:click="cmpItemFilter='split'">갈린 건만</button>
                       <button type="button" class="srcfilter__chip" x-bind:class="cmpItemFilter==='all' ? 'sel' : ''" x-on:click="cmpItemFilter='all'">전체</button>
                     </span>
                   </div>
-                  <div class="overflow-auto" style="margin-top:8px;max-height:420px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:70px">정답</th>
-                    <template x-for="(m,mi) in cmpCols" x-bind:key="'ih'+mi"><th style="width:110px"><span class="selctl__tag" x-bind:style="'background:' + cmpColor(mi)" x-text="cmpTag(mi)"></span> <span class="text-xs" x-text="m.model"></span></th></template>
+                  <div class="overflow-auto" style="max-height:420px"><table class="ds-table item-compare-table" x-bind:style="'--compare-model-count:' + cmpCols.length"><colgroup><col class="item-compare-content"><col class="item-compare-expected"><col x-bind:span="cmpCols.length"></colgroup><thead><tr><th>콘텐츠</th><th>정답</th>
+                    <template x-for="(m,mi) in cmpCols" x-bind:key="'ih'+mi"><th><span class="selctl__tag" x-bind:style="'background:' + cmpColor(mi)" x-text="cmpTag(mi)"></span> <span class="compare-model-name" x-text="m.model"></span></th></template>
                   </tr></thead><tbody>
                     <template x-for="it in cmpItems" x-bind:key="'ci'+it.hash">
                       <tr>
@@ -334,12 +347,14 @@
                     </template>
                     <tr x-show="!cmpItems.length"><td x-bind:colspan="2 + cmpCols.length" class="text-muted text-xs">해당하는 건이 없습니다</td></tr>
                   </tbody></table></div>
-                  <div class="text-xs text-muted" style="margin-top:4px" x-show="cmpItemsMore">처음 <span x-text="cmpItems.length"></span>건만 표시 · 필터를 좁혀 보세요</div>
+                  <p class="content-section__description" x-show="cmpItemsMore">처음 <span x-text="cmpItems.length"></span>건만 표시 · 필터를 좁혀 보세요</p>
+                  </section>
                   <!-- 개선 루프: 지표 → 문제점 → 쿡북 지시 → 스테이지 프롬프트 반영 → 다시 비교 -->
-                  <div class="flexrow" style="margin-top:14px;align-items:center;gap:10px;flex-wrap:wrap">
-                    <b>개선 루프</b>
-                    <span class="text-xs text-muted">문제점을 골라 프롬프트에 반영하고 다시 비교합니다 · 반영은 공통 스테이지 프롬프트(사전·정책 › 메타 프롬프트)에 얹힙니다</span>
-                    <span class="srcfilter" style="margin-left:auto">
+                  <section class="panel content-section content-section--panel" aria-labelledby="compare-loop-title">
+                  <div class="content-section__head">
+                    <div><h3 class="content-section__title" id="compare-loop-title">개선 루프</h3>
+                    <p class="content-section__description">문제점을 골라 공통 스테이지 프롬프트(사전·정책 › 메타 프롬프트)에 반영하고 다시 비교합니다.</p></div>
+                    <span class="srcfilter content-section__actions">
                       <template x-for="(m,mi) in cmpCols" x-bind:key="'lp'+mi"><button type="button" class="srcfilter__chip" x-bind:class="cmpLoopModel===m.model ? 'sel' : ''" x-on:click="cmpLoopModel=m.model" x-text="cmpTag(mi) + ' ' + m.model"></button></template>
                     </span>
                   </div>
@@ -348,7 +363,7 @@
                       <tr>
                         <td><span class="ds-badge ds-badge--neutral" x-text="cmpFieldKo(it.field)"></span><div class="text-xs text-muted" x-text="it.stage"></div></td>
                         <td><span x-text="it.why"></span></td>
-                        <td class="text-xs" x-text="it.directive"></td>
+                        <td x-text="it.directive"></td>
                         <td>
                           <span class="ds-badge ds-badge--success" x-show="it.applied">반영됨</span>
                           <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="!it.applied && assignAdmin" x-bind:disabled="cookBusy" x-on:click="applyRecipe(it)" x-text="cookBusy ? '반영 중…' : '프롬프트에 반영'"></button>
@@ -357,11 +372,13 @@
                     </template>
                     <tr x-show="!cmpIssues.length"><td colspan="4" class="text-muted text-xs">눈에 띄는 문제점이 없습니다 · 표본이 3건 미만인 항목은 진단하지 않습니다</td></tr>
                   </tbody></table></div>
-                  <div class="text-xs text-muted" style="margin-top:4px">반영 뒤 '비교 실행' 을 다시 눌러 지표가 오르는지 확인합니다 · 내려가면 사전·정책 › 메타 프롬프트에서 해당 문장을 지웁니다</div>
+                  <ul class="result-notes">
+                    <li>반영 뒤 ‘비교 실행’을 다시 눌러 지표가 오르는지 확인합니다.</li>
+                    <li>지표가 내려가면 사전·정책 › 메타 프롬프트에서 해당 문장을 지웁니다.</li>
+                  </ul>
+                  </section>
                 </div>
               </template>
-            </div>
-          </section>
         </div>
       </template>
 

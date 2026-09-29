@@ -74,6 +74,15 @@ export const tokens = {
     controlHeight: '36px', controlHeightCompact: '32px', controlGap: '8px',
     tableCellX: '14px', tableCellY: '12px', tableCellYCompact: '8px',
     gridGap: '16px', statGap: '10px', statMinWidth: '140px',
+    sectionGap: '32px',
+    sectionPadding: '24px',
+    sectionGapCompact: '24px',
+    sectionPaddingCompact: '20px',
+    sectionHeadingSize: '16px',
+    sectionHeadingSizeCompact: '15px',
+    sectionDescriptionSize: '13px',
+    sectionCopyLineHeight: 1.6,
+    resultNotesGap: '8px',
   },
   // Shadow 3단 (low·medium·high). Anchor: 깊이는 surface 대비가 1차, shadow는 보조.
   shadow: {

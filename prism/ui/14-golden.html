@@ -108,6 +108,7 @@
             <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm ml-auto" x-bind:disabled="learnBusy" x-on:click="runLearnBatch()" x-text="learnBusy ? '실행 중…' : '즉시 반영'"></button>
           </div>
             <div class="panel-bd">
+              <section class="content-section" aria-label="검수 목표 설정">
               <div style="display:flex;align-items:center;gap:var(--ds-space-4);flex-wrap:wrap">
                 <span class="selctl" data-tip="모델 버전 시한: 이 일시에 검수 의견을 모아 반영하고 버전이 올라갑니다 · 도달 후에는 새 목표를 다시 생성" data-tip-pos="top"><span class="selctl__lbl">반영 일시</span>
                   <input type="datetime-local" class="field" x-model="learnNextAt" x-bind:disabled="!schedEditing" x-bind:min="new Date(Date.now()+60000).toISOString().slice(0,16)" style="min-width:190px">
@@ -134,9 +135,17 @@
                 <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-show="!schedEditing && nextBatchAt" x-on:click="deleteQuest()" data-tip="반영 예약을 해제합니다 · 검수 의견과 점수는 그대로 남습니다" data-tip-pos="top">퀘스트 삭제</button>
                 <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-show="schedEditing" x-on:click="saveLearnSched()">저장</button>
                 <span class="text-xs" style="color:var(--ds-success)" x-text="learnSchedMsg"></span>
-                <span x-show="learnReport && learnReport.ts" style="width:1px;height:14px;background:var(--ds-hairline)" aria-hidden="true"></span>
+              </div>
+              <ul class="ds-bullets" style="margin-top:10px">
+                <li>의견을 모아 <b>지정한 일시(모델 버전 시한)</b>에 한 번에 반영해 결과가 흔들리지 않게 합니다 · 반영 후 목표는 소진되고 새 퀘스트를 생성합니다.</li>
+                <li>'정확' 합의는 <b>정답셋</b>으로 쌓이고, 바뀐 프롬프트는 정답셋으로 다시 평가합니다.</li>
+                <li>'즉시 반영'은 목표 일시와 무관하게 지금까지 모인 의견을 바로 반영합니다.</li>
+              </ul>
+              </section>
+              <section class="content-section" x-show="(learnReport && learnReport.ts) || (metaResults && ['extract','analyze','review','judge'].some(st => metaResults[st] && (metaResults[st].directive || (metaResults[st].ambiguities||[]).length)))" aria-labelledby="golden-latest-result-title">
+                <div class="content-section__head"><h3 id="golden-latest-result-title" class="content-section__title">최근 학습 반영 결과</h3></div>
                 <template x-if="learnReport && learnReport.ts">
-                  <span class="text-xs text-muted">최근 반영: 정답 확정 <b class="text-ink tnum" x-text="(learnReport.golden&&learnReport.golden.confirmed)||0"></b>
+                  <div class="content-section__description">최근 반영: 정답 확정 <b class="text-ink tnum" x-text="(learnReport.golden&&learnReport.golden.confirmed)||0"></b>
                     · 신규 <b class="text-ink tnum" x-text="'+' + ((learnReport.golden&&learnReport.golden.new)||0)"></b>
                     · 분류 필요 <b class="text-ink tnum" x-text="(learnReport.golden&&learnReport.golden.need_category)||0"></b>
                     · 의견 갈림 <b class="text-ink tnum" x-text="(learnReport.golden&&learnReport.golden.disagree)||0"></b>
@@ -145,14 +154,8 @@
                     <span x-show="learnReport.improve_delta != null && !(learnReport.improve && learnReport.improve.reverted)" class="tnum" x-bind:style="(learnReport.improve_delta||0) >= 0 ? 'color:var(--ds-success-deep)' : 'color:var(--ds-error-deep)'" x-text="' · 보정 효과 ' + deltaTxt(learnReport.improve_delta)"></span>
                     <span x-show="learnReport.improve && learnReport.improve.reverted" class="ds-badge ds-badge--warning" style="cursor:help;margin-left:4px" x-bind:data-tip="(learnReport.improve && learnReport.improve.revert_reason) || '정합성 악화로 이번 보정을 반영하지 않았습니다'" data-tip-pos="top">보정 미반영</span>
                     <span x-show="learnReport.eval && learnReport.eval.grade_ci" class="tnum" x-text="learnReport.eval && learnReport.eval.grade_ci ? (' (신뢰구간 ' + pctTxt(learnReport.eval.grade_ci.lo) + '~' + pctTxt(learnReport.eval.grade_ci.hi) + ' · 표본 ' + learnReport.eval.grade_ci.n + '건)') : ''"></span>
-                  </span>
+                  </div>
                 </template>
-              </div>
-              <ul class="ds-bullets" style="margin-top:10px">
-                <li>의견을 모아 <b>지정한 일시(모델 버전 시한)</b>에 한 번에 반영해 결과가 흔들리지 않게 합니다 · 반영 후 목표는 소진되고 새 퀘스트를 생성합니다.</li>
-                <li>'정확' 합의는 <b>정답셋</b>으로 쌓이고, 바뀐 프롬프트는 정답셋으로 다시 평가합니다.</li>
-                <li>'즉시 반영'은 목표 일시와 무관하게 지금까지 모인 의견을 바로 반영합니다.</li>
-              </ul>
               <!-- 학습 보정 지시(단계별 · 중복 정리) -->
               <div class="subhd" style="margin:12px 0 8px" x-show="metaResults && ['extract','analyze','review','judge'].some(st => metaResults[st] && (metaResults[st].directive || (metaResults[st].ambiguities||[]).length))">학습 보정 지시 <span class="meta">검수 피드백을 정리해 각 단계 프롬프트에 병기합니다</span></div>
               <template x-for="stage in ['extract','analyze','review','judge']" x-bind:key="stage">
@@ -170,7 +173,7 @@
                   </div>
                 </div>
               </template>
-
+              </section>
             </div>
           </section>
 
@@ -178,6 +181,7 @@
           <!-- 학습 보정 지시 · 버전 히스토리(독립 카드 · 표): 버전별 보정 효과 + 행 클릭 시 그 버전이 쓴 지시 -->
           <section class="panel" data-fn x-show="goldenStatus" x-cloak><div class="panel-hd"><b>학습 보정 지시 · 버전 히스토리</b><span class="meta">검수 목표가 끝날 때마다 한 버전으로 반영 · 버전별 보정 효과와 그때 쓴 지시(행을 눌러 펼치기)</span></div>
             <div class="panel-bd">
+              <section class="content-section" aria-label="학습 버전 이력">
               <div class="vht" x-show="verRows.length">
                 <div class="vht__head"><span>버전</span><span>반영한 날</span><span class="num">정답 일치율</span><span class="num">보정 효과</span><span class="num">확정 정답</span><span class="act">모델 적용</span></div>
                 <template x-for="r in verRows" x-bind:key="r.v">
@@ -208,8 +212,10 @@
               </div>
               <div class="meta" style="padding:4px 2px" x-show="!verRows.length">아직 반영된 버전이 없습니다 · 검수 목표를 채우거나 즉시 반영하면 v2가 만들어집니다.</div>
 
+              </section>
               <!-- 지시 원본 관리: 잘못 들어간 보정 하나만 끄기(전체 재컴파일 불필요 · 원본 보존) -->
-              <div style="margin-top:10px">
+              <section class="content-section" aria-labelledby="golden-route-management-title">
+                <div class="content-section__head"><h3 id="golden-route-management-title" class="content-section__title">지시 원본 관리</h3></div>
                 <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-on:click="routesOpen = !routesOpen; if (routesOpen) loadRoutesRaw()" x-text="routesOpen ? '지시 원본 관리 접기' : '지시 원본 관리 · 개별 끄기'"></button>
                 <template x-if="routesOpen">
                   <div style="margin-top:8px">
@@ -224,10 +230,10 @@
                       </template>
                       <template x-if="!((routesRaw&&routesRaw.items)||[]).length"><tr><td colspan="4" class="text-muted">검수 교정이 쌓이면 지시 원본이 표시됩니다</td></tr></template>
                     </tbody></table></div>
-                    <div class="text-xs text-muted" style="margin-top:6px">끈 지시는 다음 학습 반영(컴파일)부터 제외됩니다 · 원본 기록은 지워지지 않아요</div>
+                    <div class="content-section__description">끈 지시는 다음 학습 반영(컴파일)부터 제외됩니다 · 원본 기록은 지워지지 않아요</div>
                   </div>
                 </template>
-              </div>
+              </section>
             </div>
           </section>
 

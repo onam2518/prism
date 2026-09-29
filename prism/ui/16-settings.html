@@ -47,6 +47,7 @@
             <span x-text="cfg.hasKey ? '· 현재 연결됨 ✓' : '· 서버에 키 미설정(관리자 확인 필요)'"></span></p>
         </div>
         <div x-show="!cfg.keyManagedByServer || (adminData && adminData.isAdmin)">
+              <section class="content-section" aria-label="API 키 설정">
               <div class="subhd" style="margin:2px 0 6px">API 키</div>
               <ul class="ds-bullets" style="margin-bottom:6px">
                 <li x-show="keyTarget !== 'solar'">통합 라우터 · 한 키로 <b>여러 모델</b>(OpenAI · Anthropic · Google · Solar 등)을 호출합니다 · 키 관리가 단순해 권장.</li>
@@ -70,14 +71,19 @@
                 <button type="button" x-show="keyState(keyTarget)" x-on:click="testConn(keyTarget)" x-bind:disabled="cfgBusy" class="ds-btn ds-btn--secondary ds-btn--s-sm disabled:opacity-50">연결 테스트</button>
                 <button type="button" x-show="keyPersisted(keyTarget)" x-on:click="forgetKey(keyTarget)" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm">삭제</button>
               </div>
-              <div class="text-xs text-muted" style="margin-top:6px" aria-live="polite" x-text="keyMsgs[keyTarget] || keySummary"></div>
+              <div class="content-section__description" aria-live="polite" x-text="keyMsgs[keyTarget] || keySummary"></div>
               <div style="margin-top:var(--ds-space-4);padding-top:14px;border-top:1px solid var(--ds-hairline-soft,rgba(0,0,0,.06))">
                 <label class="flex cursor-pointer items-center gap-2 text-[13px] text-body" style="margin:0"><input type="checkbox" x-model="cfgPersist" class="h-4 w-4 rounded border-black/15 bg-canvas text-violet"> 이 기기에 저장 (재시작 후에도 유지)</label>
                 <ul class="ds-bullets" style="margin-top:8px"><li>키 저장 시 연결을 확인합니다 · 기본 실행 모델은 <b>콘텐츠 관리 · 모델 실행 · 사용 모델</b>에서 선택합니다.</li></ul>
               </div>
-              <div style="margin-top:var(--ds-space-4);padding-top:14px;border-top:1px solid var(--ds-hairline-soft,rgba(0,0,0,.06))">
-                <b class="text-[13px]">팀 가이드 링크</b>
-                <p class="text-xs text-muted" style="margin:4px 0 10px">시작하기 카드의 '상세 가이드' 바로가기 주소입니다 · 대상을 고르고 URL 을 넣어 저장하면 팀 전체에 공유됩니다.</p>
+              </section>
+              <section class="content-section" aria-labelledby="settings-team-guide-title">
+                <div class="content-section__head">
+                  <div>
+                    <h3 id="settings-team-guide-title" class="content-section__title">팀 가이드 링크</h3>
+                    <p class="content-section__description">시작하기 카드의 '상세 가이드' 바로가기 주소입니다 · 대상을 고르고 URL 을 넣어 저장하면 팀 전체에 공유됩니다.</p>
+                  </div>
+                </div>
                 <div class="control-row">
                   <label class="selctl"><span class="selctl__tag">대상</span>
                     <select x-model="tlTarget" class="bg-transparent text-[13px]" style="border:none;outline:none">
@@ -87,9 +93,9 @@
                     </select></label>
                   <label class="selctl" style="flex:1;min-width:240px"><span class="selctl__tag">URL</span><input type="url" x-model="teamLinks[tlTarget]" placeholder="https://…" class="w-full bg-transparent text-[13px]" style="border:none;outline:none;min-width:0"></label>
                   <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-on:click="saveTeamLinks()">저장</button>
-                  <span class="text-xs text-muted" aria-live="polite" x-text="tlMsg || tlStatus"></span>
+                  <span class="content-section__description" aria-live="polite" x-text="tlMsg || tlStatus"></span>
                 </div>
-              </div>
+              </section>
         </div>
           </div>
         </section>

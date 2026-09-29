@@ -55,6 +55,7 @@
   --ds-text-link: #004bcc;        /* atomic.Blue.Link.700 */
   --ds-border-card: rgba(0, 0, 0, 0.08);
   --ds-divider-section: rgba(0, 0, 0, 0.08);
+  --ds-divider-content: rgba(0, 0, 0, 0.20);
   --ds-divider-item: rgba(0, 0, 0, 0.04);
   --ds-divider-inline: rgba(0, 0, 0, 0.16);
   --ds-state-info: #1e84ff;
@@ -162,6 +163,17 @@
   --ds-stat-gap: 10px;
   --ds-stat-min-width: 140px;
 
+  /* content sections · flat hierarchy and readable supporting copy */
+  --ds-section-gap: 32px;
+  --ds-section-padding: 24px;
+  --ds-section-gap-compact: 24px;
+  --ds-section-padding-compact: 20px;
+  --ds-section-heading-size: 16px;
+  --ds-section-heading-size-compact: 15px;
+  --ds-section-description-size: 13px;
+  --ds-section-copy-line-height: 1.6;
+  --ds-result-notes-gap: 8px;
+
   /* motion */
   --ds-motion-fast: 120ms;
   --ds-motion-standard: 220ms;
@@ -211,6 +223,7 @@
   --ds-text-link: #5796e1;         /* atomic.Blue.Link.300 */
   --ds-border-card: rgba(255, 255, 255, 0.08);
   --ds-divider-section: rgba(255, 255, 255, 0.08);
+  --ds-divider-content: rgba(255, 255, 255, 0.24);
   --ds-divider-item: rgba(255, 255, 255, 0.04);
   --ds-divider-inline: rgba(255, 255, 255, 0.16);
   --ds-state-info-subtle: rgba(30, 132, 255, 0.16);
@@ -280,6 +293,7 @@
     --ds-text-link: #5796e1;
     --ds-border-card: rgba(255, 255, 255, 0.08);
     --ds-divider-section: rgba(255, 255, 255, 0.08);
+  --ds-divider-content: rgba(255, 255, 255, 0.24);
     --ds-divider-item: rgba(255, 255, 255, 0.04);
     --ds-divider-inline: rgba(255, 255, 255, 0.16);
     --ds-state-info-subtle: rgba(30, 132, 255, 0.16);

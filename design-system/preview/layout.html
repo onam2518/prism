@@ -71,7 +71,15 @@
 
   <section class="panel"><div class="panel-hd"><b>모델별 비교</b><span class="meta">모델 열은 같은 너비로 표시하고 표 안에서 가로 스크롤합니다</span></div><div class="panel-bd">
     <div class="control-row"><label for="model-count">모델 수</label><select id="model-count" class="field" style="width:auto"><option>2</option><option>4</option><option selected>6</option></select></div>
-    <div class="overflow-auto" id="compare-scroll"><table class="ds-table model-compare-table" id="comparison"></table></div>
+    <section class="content-section" id="summary-section" aria-labelledby="summary-title">
+      <header class="content-section__head"><div><h2 class="content-section__title" id="summary-title">요약 지표</h2><p class="content-section__description">같은 정답셋으로 측정한 모델별 결과입니다.</p></div></header>
+      <div class="overflow-auto" id="compare-scroll"><table class="ds-table model-compare-table" id="comparison"></table></div>
+      <ul class="result-notes"><li><b>최고 종합 점수</b>는 기준을 통과한 모델 중에서 고릅니다.</li><li><b>▲</b>는 해당 항목에서 가장 좋은 값입니다.</li><li>신뢰구간이 겹치면 우열 판단을 보류합니다.</li></ul>
+    </section>
+    <section class="content-section" id="detail-section" aria-labelledby="detail-title">
+      <header class="content-section__head"><div><h2 class="content-section__title" id="detail-title">건별 비교</h2><p class="content-section__description">전체 200건 · 하나라도 틀린 건 15건 · 모델끼리 갈린 건 13건</p></div><div class="content-section__actions control-row"><button type="button" class="srcfilter__chip sel">틀린 건만</button><button type="button" class="srcfilter__chip">전체</button></div></header>
+      <div class="overflow-auto"><table class="ds-table"><thead><tr><th>콘텐츠</th><th>정답</th><th>모델 A</th></tr></thead><tbody><tr><td>비 오는 날의 실내 활동</td><td>G</td><td><span class="ds-badge ds-badge--error">R</span></td></tr></tbody></table></div>
+    </section>
   </div></section>
 </main>
 <script>
