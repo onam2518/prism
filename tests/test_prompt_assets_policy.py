@@ -73,6 +73,13 @@ class TestNoServiceBranchInAnyFamily(unittest.TestCase):
             self.assertTrue(ex["in"].startswith("title="), ex["in"][:40])
         self.assertIn("삼성전자", MP.gold_examples("entities"))   # 예시 내용·기대 출력은 보존
 
+    def test_no_call_rule_cites_another_calls_output(self):
+        # 4호출은 서로의 출력을 입력으로 받지 않는다(call_user 는 title·body 만 보낸다).
+        # ③ 인텐트 규칙이 판정 근거로 '리드문'을 들면 모델이 없는 입력을 찾는다.
+        self.assertNotIn("리드문", MP.CALL_RULES["intent"])
+        self.assertNotIn("리드문", MP.CALL_RULES["category"])
+        self.assertNotIn("리드문", MP.CALL_RULES["entities"])
+
     def test_family_wrappers_have_no_service_branch(self):
         for family, tpl in MP.FAMILY_WRAPPER_DEFAULT.items():
             for phrase in BANNED:
