@@ -404,6 +404,10 @@ window.PRISM_APP_PARTS.push(() => ({
         if (this.activeTabId === 'excel') {
           if (!this.excelFile) { this.status = '엑셀/CSV 파일을 선택하세요'; this.loading = false; return; }
           fd.append('file', this.excelFile); endpoint = '/run-batch';
+          if (this.metaImport) {                       // 모델 미실행 · 외부 메타를 초안으로 적재
+            fd.append('with_meta', '1');
+            fd.append('model_label', (this.metaLabel || '외부').trim() || '외부');
+          }
         } else {
           fd.append('displayServiceName', this.group);
           fd.append('title', this.txtTitle);

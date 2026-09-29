@@ -77,7 +77,7 @@ def _holdout_scope(team=None, hashes=None) -> str:
           "개선에 쓴 콘텐츠가 평가셋에 섞입니다(콘텐츠 관리 STEP 1에서 용도를 지정하세요)")
     return "all"
 
-def eval_golden(team=None, model: str = "", scope: str = "all", hashes=None) -> dict:
+def eval_golden(team=None, model: str = "", scope: str = "all", hashes=None, progress=None) -> dict:
     """프로세스 1 · 관리자 등록 골든셋으로 원천 프롬프트 정합성 측정(기대 vs 실제). abtest 재사용.
     건별 불일치를 _LAST_EVAL_DETAIL 로 보존 → 라벨 오류 후보 플래깅(Northcutt 2021: 기계 플래그→휴먼 확정)."""
     from .store import content_hash
@@ -103,7 +103,12 @@ def eval_golden(team=None, model: str = "", scope: str = "all", hashes=None) -> 
         used_model = cfg.model or getattr(llm, "model", "") or ""
     meth = H.Methodology(name="골든셋")
     sample = rows[:300]
-    outs = abtest.run_methodology(sample, meth, llm, concurrency=8)
+    outs = []
+    step = _COMPARE_CHUNK if progress else max(1, len(sample))   # 진척을 보는 호출만 청크로 끊는다(progress(done, total))
+    for i in range(0, len(sample), step):
+        outs += abtest.run_methodology(sample[i:i + step], meth, llm, concurrency=8)
+        if progress:
+            progress(len(outs), len(sample))
     m = abtest.score(sample, outs)
     m["methodology"] = meth.to_dict()
     global _LAST_EVAL_DETAIL
@@ -229,6 +234,80 @@ def register_golden(uid, team, rows, email="", merge=False) -> dict:
                 f"{v} → {' 또는 '.join(D.INTENT_RETIRED[v])}" for v in retired)
     return out
 
+def _golden_one2one() -> dict:
+    """폐기 인텐트 중 대응 후보가 하나뿐인 값(표본 점검 뒤 일괄 치환 대상). 조건부(후보 여럿)는 재판정."""
+    from . import dictionaries as D
+    return {k: v[0] for k, v in (D.INTENT_RETIRED or {}).items() if len(v) == 1}
+
+
+def golden_intent_migrate(team=None) -> dict:
+    """공통 68 전환에 맞춘 정답셋 인텐트 일괄 정리(멱등). ① 일대일 폐기값은 새 값으로 치환
+    ② 조건부 폐기값은 남기고 intent_retired 로 표시(재판정 큐) ③ 인텐트가 있는 정답은 전부
+    intent_review=needed(재확정 필요 · 확정 전까지 인텐트 측정에서 제외). 이미 confirmed 인 행은 건너뛴다."""
+    from . import abtest
+    from . import dictionaries as D
+    st = _SV.get_store()
+    if not (st and hasattr(st, "golden_entries")):
+        return {"ok": False, "error": "지원하지 않는 저장소"}
+    one2one = _golden_one2one()
+    n = flagged = substituted = retired_rows = confirmed = 0
+    for row in st.golden_entries(team):
+        n += 1
+        exp = dict(row.get("expected") or {})
+        want = abtest.intent_expected(exp)
+        if not want:
+            continue
+        if exp.get("intent_review") == "confirmed":
+            confirmed += 1
+            continue
+        new, moved = [], []
+        for v in want:
+            t = one2one.get(v)
+            if t:
+                moved.append(f"{v} → {t}")
+            new.append(t or v)
+        new = list(dict.fromkeys(new))
+        left = [v for v in new if v in (D.INTENT_RETIRED or {})]
+        exp["intent"] = new
+        exp["intent_review"] = "needed"
+        if moved:
+            exp["intent_migrated"] = moved
+            substituted += 1
+        if left:
+            exp["intent_retired"] = left
+            retired_rows += 1
+        else:
+            exp.pop("intent_retired", None)
+        st.upsert_golden(row["hash"], row.get("content") or {}, exp, team=team, source=row.get("source") or "review")
+        flagged += 1
+    return {"ok": True, "total": n, "flagged": flagged, "substituted": substituted,
+            "retired_rows": retired_rows, "already_confirmed": confirmed}
+
+
+def golden_intent_confirm(content_hash: str, intents, team=None, by: str = "") -> dict:
+    """정답 한 건의 인텐트를 공통 68 기준으로 재확정. 사전 밖 값·폐기값은 거절(신뢰 경계)."""
+    from . import dictionaries as D
+    st = _SV.get_store()
+    if not (st and hasattr(st, "golden_entries")):
+        return {"ok": False, "error": "지원하지 않는 저장소"}
+    vals = list(dict.fromkeys(str(x).strip() for x in (intents or []) if str(x).strip()))
+    ok_vals = set(D.intent_categories())
+    bad = [v for v in vals if v not in ok_vals]
+    if bad:
+        return {"ok": False, "error": "공통 68 사전에 없는 값: " + ", ".join(bad[:5])}
+    row = next((r for r in st.golden_entries(team) if r.get("hash") == content_hash), None)
+    if not row:
+        return {"ok": False, "error": "정답 항목을 찾을 수 없습니다"}
+    exp = dict(row.get("expected") or {})
+    exp["intent"] = vals
+    exp["intent_review"] = "confirmed"
+    exp["intent_confirmed_at"] = time.time()
+    exp["intent_confirmed_by"] = (by or "")[:80]
+    exp.pop("intent_retired", None)
+    st.upsert_golden(content_hash, row.get("content") or {}, exp, team=team, source=row.get("source") or "review")
+    return {"ok": True, "hash": content_hash, "intent": vals}
+
+
 def golden_list(team=None) -> dict:
     """관리자 골든 브라우저: 목록 + 출처 집계 + 라벨 오류 의심(최근 평가 불일치) 표시."""
     st = _SV.get_store()
@@ -255,7 +334,18 @@ def golden_list(team=None) -> dict:
         it["version"] = m.get("version")
         j = jm.get(it["hash"]) or {}
         it["fix_needed"] = bool(j.get("adopt", 0) >= mg and j.get("adopt", 0) > j.get("reject", 0))
-    return {"ok": True, "items": items,
+    rc = {"needed": 0, "confirmed": 0, "retired": 0}
+    try:                                       # 인텐트 재확정 현황(전체 정답 기준)
+        for e in (st.golden_entries(team) if hasattr(st, "golden_entries") else []):
+            ex = e.get("expected") or {}
+            k = ex.get("intent_review") or ""
+            if k in rc:
+                rc[k] += 1
+            if ex.get("intent_retired"):
+                rc["retired"] += 1
+    except Exception:
+        pass
+    return {"ok": True, "items": items, "intent_review_counts": rc,
             "source_counts": (st.golden_source_counts(team) if hasattr(st, "golden_source_counts") else {}),
             "total": (st.golden_count(team) if hasattr(st, "golden_count") else len(items))}
 
@@ -714,7 +804,7 @@ def compare_history(team=None) -> dict:
 def compose_prompts(team=None, model: str = "") -> dict:
     """호출별 최종 시스템 프롬프트 묶음(현재 설정 · 학습 보정 포함). model 을 주면 호출별 모델 지정이
     없는 콜은 그 모델로 · 평가 런이 실제로 쓰는 조합(agents._call_llm)과 같은 규칙.
-    ③ 인텐트만 콘텐츠 서비스에 따라 분기절이 달라 정의된 서비스 전부를 by_service 에 싣는다."""
+    메타 4호출은 2026-09-22 부터 전 출처 공통 하나뿐이라 서비스별 변형을 싣지 않는다(품질만 묶음별)."""
     st = _SV.get_store()
     try:
         ver = int(st.batch_seq(team)) + 1 if st else 1
@@ -726,20 +816,20 @@ def compose_prompts(team=None, model: str = "") -> dict:
     base_model = (model or "").strip() or cfg.model or ""
     cm = dict(getattr(cfg, "meta_call_models", {}) or {})
 
-    def _c(svc):
-        return Content(displayServiceName=svc, title="(스냅샷)", subtitle="", body="(스냅샷 본문)")
+    # 스냅샷용 자리표 콘텐츠. 메타 4호출·통합 1콜은 서비스명을 읽지 않으므로(2026-09-22) 비워 둔다.
+    snap = Content(displayServiceName="", title="(스냅샷)", subtitle="", body="(스냅샷 본문)")
     calls = {}
     for call in MP.CALLS:
         m = cm.get(call) or base_model
         try:
-            calls[call] = {"model": m, "system": PR.call_system(_c("뉴스"), call, m)}
+            calls[call] = {"model": m, "system": PR.call_system(snap, call, m)}
         except Exception:
             pass
     payload = {"version": ver, "ts": time.time(), "model": base_model,
                "quality_version": PR.quality_version(), "calls": calls,
                "learned": dict(PR.LEARNED), "learned_by_model": dict(PR.LEARNED_BY_MODEL)}
     try:
-        payload["item"] = PR.item_system(_c("뉴스"), base_model)
+        payload["item"] = PR.item_system(snap, base_model)
     except Exception:
         pass
     try:
@@ -937,7 +1027,7 @@ def _batch_regressions(pre: dict, post: dict, min_bucket_n: int = 5,
     return out
 
 
-def learning_batch(team=None, models=None, model: str = "", golden_hashes=None) -> dict:
+def learning_batch(team=None, models=None, model: str = "", golden_hashes=None, progress=None) -> dict:
     """배치 학습: ① 정확분 골든 축적(평가 셋 고정) ② 개선 전 회귀 점수 ③ 피드백 병합→프롬프트 개선
     ④ 개선 후 회귀 점수 → 전/후 delta 기록. 정합성 2%p 초과 악화·유해 미탐 악화·버킷 회귀
     중 하나라도 걸리면 개선을 반영하지 않고 이전 프롬프트를 유지한다(방향 검증 · 진동 방지)."""
@@ -951,15 +1041,25 @@ def learning_batch(team=None, models=None, model: str = "", golden_hashes=None) 
             quest_bonus = None
         golden = build_golden_from_reviews(team)             # 전/후를 같은 정답셋으로 재도록 먼저 고정
         gopt = {"hashes": golden_hashes} if golden_hashes else {}   # 오토파일럿: 런 시작 셋만 평가(새 골든은 다음 런부터)
+        step = progress or (lambda phase, done=0, total=0: None)   # 단계 진척: pre → improve → post(보정이 바뀐 때만) → wrap
+        popt = (lambda ph: {"progress": lambda d, t: step(ph, d, t)}) if progress else (lambda ph: {})
         prev_learned = dict(PR.LEARNED)
         prev_by_model = {m: dict(v) for m, v in (PR.LEARNED_BY_MODEL or {}).items()}
         scope = _holdout_scope(team, golden_hashes)          # 전/후를 개선이 못 본 홀드아웃으로 잰다(없으면 전체 · 고정 셋 안에서 판정)
-        eval_pre = eval_golden(team, model=model, scope=scope, **gopt)            # 개선 전(현행 프롬프트) 점수 · model 비면 기본 텍스트 슬롯
+        step("pre")
+        eval_pre = eval_golden(team, model=model, scope=scope, **gopt, **popt("pre"))            # 개선 전(현행 프롬프트) 점수 · model 비면 기본 텍스트 슬롯
+        step("improve")
         improve = meta_compile_run(team)
         changed = (PR.LEARNED != prev_learned) or (PR.LEARNED_BY_MODEL != prev_by_model)
         delta = None
         if changed and eval_pre.get("ok"):
-            evalr = eval_golden(team, model=model, scope=scope, **gopt)           # 개선 후 점수(같은 셋 · 같은 모델)
+            try:
+                step("post")
+                evalr = eval_golden(team, model=model, scope=scope, **gopt, **popt("post"))       # 개선 후 점수(같은 셋 · 같은 모델)
+            except BaseException:                            # 중지 등으로 후평가가 끊기면 검증 안 된 보정을 되돌리고 올린다
+                PR.LEARNED = prev_learned
+                PR.LEARNED_BY_MODEL = prev_by_model
+                raise
             try:
                 delta = round((evalr.get("grade_accuracy") or 0.0) - (eval_pre.get("grade_accuracy") or 0.0), 4)
             except (TypeError, ValueError):
@@ -976,6 +1076,7 @@ def learning_batch(team=None, models=None, model: str = "", golden_hashes=None) 
             evalr = eval_pre
             if eval_pre.get("ok"):
                 delta = 0.0
+        step("wrap")
         compare = compare_models_on_golden(models, team) if (models and len(models) > 1) else None
         try:                                        # 학습 반영 회차 기록 → 초안 버전(v = 회차+1)
             stv = _SV.get_store()

@@ -128,6 +128,17 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       async finalDecide(r, v) {                    // 편입(good)/제외(bad)/철회('') · 기존 /final-verdict 재사용
         try {
+          if (r.final_reason === '인텐트 재확정') {   // 정답셋 인텐트 재확정: 상세(교정 반영분)의 의도를 그대로 정답으로 · 성공 시 큐에서 제거
+            if (v !== 'good') return;
+            const cur = (this.detail && this.detail.hash === r.hash) ? (this.detail.intent || []) : (r.intent || []);
+            const res = await (await this._afetch('/final-verdict', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: r.hash, verdict: 'intent_confirm', intent: cur, reviewer: this.reviewer }) })).json();
+            if (!(res && res.ok)) { this._err((res && res.error) || '재확정 저장 실패'); return; }
+            this.liveToast('인텐트 재확정 저장 · 이 정답은 다시 인텐트 측정에 들어갑니다');
+            this.finalQueue.items = ((this.finalQueue || {}).items || []).filter((x) => x.hash !== r.hash);
+            if (this.finalQueue) this.finalQueue.n = this.finalQueue.items.length;
+            if (this.finalCtx && this.finalCtx.hash === r.hash) { this.detailOpen = false; this.finalCtx = null; }
+            return;
+          }
           const res = await (await this._afetch('/final-verdict', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: r.hash, verdict: v, reviewer: this.reviewer }) })).json();
           if (res && res.ok && res.gold) {         // 골드 캘리브레이션 문항: 정오 알림 후 목록에서 제거(원장 무오염)
             this.liveToast(res.gold.correct ? '골드 문항 정답 · 판정 정확도에 반영됐어요' : ('골드 문항 오답 · 정답은 ' + (res.gold.expected === 'good' ? '편입' : '제외') + '이었어요'));

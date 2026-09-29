@@ -68,6 +68,13 @@ export const tokens = {
   radius: { xs: '4px', sm: '8px', md: '12px', lg: '16px', xl: '24px', full: '9999px' },
   // Spacing 2·4·6·8·10·12·16·18·20·24·32·40
   space: { 0.5: '2px', 1: '4px', 1.5: '6px', 2: '8px', 2.5: '10px', 3: '12px', 4: '16px', 4.5: '18px', 5: '20px', 6: '24px', 8: '32px', 10: '40px' },
+  // App layout semantics · CSS --ds-* aliases and tokens.json layout group.
+  layout: {
+    padPanelX: '20px', padInset: '16px',
+    controlHeight: '36px', controlHeightCompact: '32px', controlGap: '8px',
+    tableCellX: '14px', tableCellY: '12px', tableCellYCompact: '8px',
+    gridGap: '16px', statGap: '10px', statMinWidth: '140px',
+  },
   // Shadow 3단 (low·medium·high). Anchor: 깊이는 surface 대비가 1차, shadow는 보조.
   shadow: {
     low: '0 0 4px 0 rgba(0,0,0,0.04)',

@@ -44,7 +44,7 @@ tests/
   test_quality_stats.py   Krippendorff alpha · Dawid-Skene EM · 이항 CI
   test_store.py           스토어 계약 (학습 루프 테이블 · 용도 · 평가 판정)
   test_gamification.py    골드 문항 · 미션 · 품질 가중 점수 · 레벨 커브
-  test_extraction.py      mock 하네스 · 계열 래퍼 · 분리형 4호출 (순차·차단·검증·라우팅)
+  test_extraction.py      mock 하네스 · 계열 래퍼 · 독립 4호출 (병렬·항목별 보류·검증·라우팅)
   test_learning_loop.py   골든 누적 · 라우팅 · 학습 데이터 · QA 시드
   test_admin.py           권한 2단계 (운영/팀 관리자)
   test_serve_views.py     드릴다운 · 배지 영속 · 집계 캐시

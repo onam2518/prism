@@ -363,10 +363,12 @@ TOOLS = {
                            "description": "검사할 메타 JSON(키: summary · entities · intent · "
                                           "content_category · 있는 필드만 검사한다)"},
                 "service": {"type": "string",
-                            "description": "그 콘텐츠의 displayServiceName · 응답 echo 전용이며 "
+                            "description": "그 콘텐츠의 displayServiceName · 선택 · 응답 echo 전용이며 "
                                            "인텐트 후보를 가르지 않는다(2026-09-22 공통 사전)"},
             },
-            "required": ["result", "service"],
+            # service 는 2026-09-22 부터 검사에 쓰이지 않으므로 필수에서 뺐다(공통 68개 · 511247058).
+            # 인자 자체는 남긴다 · 이미 보내는 파트너 호출이 additionalProperties=False 에 걸리지 않게.
+            "required": ["result"],
             "additionalProperties": False,
         },
         "fn": PD.validate_result,

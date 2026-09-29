@@ -2109,16 +2109,19 @@ def _g_board(h, q):
     return board_data(h._req_team(), h._bearer_uid() or "")
 
 
-@_get_route("/template.xlsx")
+@_get_route("/template.xlsx")                         # ?meta=1 → 외부 메타 열까지 붙인 서식
 def _g_template_xlsx(h, q):
-    h._send_file(build_template_xlsx(),
+    meta = (q.get("meta") or [""])[0] in ("1", "true")
+    h._send_file(build_template_xlsx(meta),
                  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                 "prism_template.xlsx")
+                 "prism_template_meta.xlsx" if meta else "prism_template.xlsx")
 
 
 @_get_route("/template.csv")
 def _g_template_csv(h, q):
-    h._send_file(build_template_csv(), "text/csv; charset=utf-8", "prism_template.csv")
+    meta = (q.get("meta") or [""])[0] in ("1", "true")
+    h._send_file(build_template_csv(meta), "text/csv; charset=utf-8",
+                 "prism_template_meta.csv" if meta else "prism_template.csv")
 
 
 @_get_route("/autoreview-status", admin=True)        # AI 초안 판정 진척도·부분 결과 폴링(운영 관리자 · 화이트리스트)
@@ -2780,6 +2783,10 @@ def _p_final_verdict(h, body):
     if (data.get("hash") or "").startswith("goldf:"):
         # 골드 캘리브레이션 응답 → gold_checks 분리 기록(최종판정 원장 무오염)
         return apply_gold_answer(data)
+    if (data.get("verdict") or "").strip() == "intent_confirm":   # 정답셋 인텐트 재확정(공통 68 값만 · learnops 가 검증)
+        res = LO.golden_intent_confirm(data.get("hash") or "", data.get("intent") or [], team=team, by=rv)
+        _agg_bump()
+        return res
     res = set_final_verdict(data.get("hash") or "", (data.get("verdict") or "").strip(),
                             by=rv, team=team)
     if res.get("ok") and (data.get("verdict") or "").strip():
@@ -2797,6 +2804,22 @@ def _p_golden_remove(h, body):
               and st.remove_golden((data.get("hash") or "").strip(), team=h._req_team()))
     _agg_bump()
     return {"ok": ok}
+
+
+@_post_route("/golden-intent-migrate", gate="admin") # 공통 68 전환 정답 정리(멱등): 일대일 치환 · 조건부 표시 · 재확정 필요 표시
+def _p_golden_intent_migrate(h, body):
+    r = LO.golden_intent_migrate(h._req_team())
+    _agg_bump()
+    return r
+
+
+@_post_route("/golden-intent-confirm", gate="admin") # 정답 한 건 인텐트 재확정(공통 68 값만)
+def _p_golden_intent_confirm(h, body):
+    data = json.loads(body or b"{}")
+    r = LO.golden_intent_confirm((data.get("hash") or "").strip(), data.get("intent") or [],
+                                 team=h._req_team(), by=(h._bearer_email() or h._bearer_uid() or ""))
+    _agg_bump()
+    return r
 
 
 @_post_route("/golden")                              # 골든셋 등록(.jsonl 업로드 · merge 지원 · 권한은 register_golden 내부)
@@ -3046,7 +3069,10 @@ def _p_run(h, body):
             else:
                 result = run_batch(f["bytes"], f.get("filename", "upload.xlsx"),
                                    purpose=str(fields.get("purpose") or ""), team=h._req_team(),
-                                   add_only=add_only)
+                                   add_only=add_only,
+                                   # 모델 실행 없이 외부 파이프라인 메타째 적재(엑셀 한정)
+                                   with_meta=str(fields.get("with_meta") or "") in ("1", "true"),
+                                   model_label=str(fields.get("model_label") or ""))
         elif add_only:                               # STEP 1 = 추가만(모델 미실행)
             result = add_contents([{
                 "displayServiceName": fields.get("displayServiceName", ""),

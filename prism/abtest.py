@@ -100,6 +100,9 @@ def intent_tally(acc: dict, exp: dict, out) -> None:
     """건 1개를 인텐트 카운터에 반영(제자리 갱신). 기대 라벨이 없으면 분모 제외 후 계수만.
     산출이 None(실패·빈 산출)인 건도 '빈 집합 산출'로 채점한다 — 등급 채점이 실패 행을
     오답으로 계수하는 규칙(score/_tally 주석)과 같은 취급."""
+    if (exp or {}).get("intent_review") == "needed":      # 공통 68 전환 뒤 아직 재확정 안 된 정답 · 라벨 노후를 모델 점수로 읽지 않는다
+        acc["intent_unconfirmed"] = acc.get("intent_unconfirmed", 0) + 1
+        return
     want = intent_expected(exp)
     if not want:
         acc["intent_skipped"] = acc.get("intent_skipped", 0) + 1
@@ -139,6 +142,7 @@ def intent_report(acc: dict) -> dict:
         "intent_exact": round(acc.get("intent_exact", 0) / n, 4) if n else 0,
         "intent_jaccard": round(acc.get("intent_jac_sum", 0.0) / n, 4) if n else 0,
         "intent_f1": round(acc.get("intent_f1_sum", 0.0) / n, 4) if n else 0,
+        "intent_unconfirmed": acc.get("intent_unconfirmed", 0),   # 재확정 필요로 측정에서 뺀 정답 수
         "intent_top1": round(acc.get("intent_top1", 0) / n, 4) if n else 0,
         "by_intent_value": by,
     }

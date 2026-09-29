@@ -118,6 +118,35 @@ window.PRISM_APP_PARTS.push(() => ({
       // 관리자 골든 브라우저
       goldenList: null,
       async loadGoldenList() { try { const r = await (await this._afetch('/golden-list', { headers: this._authHeaders() })).json(); if (r && r.ok) this.goldenList = r; } catch (e) { this._err('정답셋 목록 불러오기 실패'); } },
+      // 인텐트 재확정(공통 68 전환 · 정답셋 화면): 필터 · 일괄 정리 · 한 건 확정
+      giOnly: false, giBusy: false, giMsg: '', giHash: '', giTitle: '', giSel: [], giRetired: [],
+      get giCandidates() { const d = this.dictData || {}; return [].concat(d.intentUniversal || [], d.intentForm || [], d.intentCommon || []); },
+      giEdit(g) {
+        if (!this.dictData) this.loadDict();
+        const ret = new Set(g.intent_retired || []);
+        this.giHash = g.hash; this.giTitle = g.title || ''; this.giRetired = g.intent_retired || [];
+        this.giSel = (g.intent || []).filter(v => !ret.has(v));   // 폐기값은 선택에서 빼고 본문 기준으로 다시 고른다
+      },
+      giToggle(v) { const i = this.giSel.indexOf(v); if (i >= 0) this.giSel.splice(i, 1); else this.giSel.push(v); },
+      async giSave() {
+        this.giBusy = true;
+        try {
+          const r = await (await this._afetch('/golden-intent-confirm', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: this.giHash, intent: this.giSel }) })).json();
+          if (r && r.ok) { this.giHash = ''; this.giMsg = '확정 저장됨'; this.loadGoldenList(); this.loadGoldenStatus(); }
+          else this._err((r && r.error) || '확정 저장 실패');
+        } catch (e) { this._err('확정 저장 실패'); }
+        this.giBusy = false;
+      },
+      async giMigrate() {
+        if (!(await this.dsConfirm('폐기 인텐트 값을 정리하고 인텐트가 있는 정답 전체에 재확정 필요 표시를 붙일까요? 확정 전까지 인텐트 측정에서 빠집니다.', { ok: '적용' }))) return;
+        this.giBusy = true;
+        try {
+          const r = await (await this._afetch('/golden-intent-migrate', { method: 'POST', headers: this._authHeaders(), body: '{}' })).json();
+          this.giMsg = (r && r.ok) ? ('정리 완료 · 재확정 표시 ' + r.flagged + '건 · 치환 ' + r.substituted + '건 · 폐기값 남은 행 ' + r.retired_rows + '건 · 이미 확정 ' + r.already_confirmed + '건') : ((r && r.error) || '정리 실패');
+          this.loadGoldenList(); this.loadGoldenStatus();
+        } catch (e) { this.giMsg = '정리 실패'; }
+        this.giBusy = false;
+      },
       async removeGolden(h) {
         if (!(await this.dsConfirm('이 정답 항목을 제거할까요? (정답셋에서 빠집니다)', { ok: '제거', danger: true }))) return;
         try { await this._afetch('/golden-remove', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: h }) }); } catch (e) {}

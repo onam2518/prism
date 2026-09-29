@@ -8,6 +8,8 @@
 
 규칙: 부품 이름은 `ds-{component}__{part}`. 색·간격은 토큰만 참조. 새 컴포넌트보다 **기존 8 primitive의 variant** 우선.
 
+앱 공통 배치의 사용 규칙과 수치는 [컴포넌트 계약](../DESIGN_COMPONENTS.md#카드구획)을 따른다. `.control-row`(36px/compact32px), `.layout-grid--two`, `.ds-table--compact`는 공용 CSS와 앱 배포본에 함께 제공한다. 패널 인셋·타일·모델 비교 규칙은 앱 조합 컴포넌트다. 실제 렌더는 [배치 검수 페이지](preview/layout.html)에서 확인한다.
+
 ---
 
 ## 0. 분류 (Primitive → Composite)

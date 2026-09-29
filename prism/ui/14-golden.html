@@ -33,7 +33,7 @@
             <div class="panel-bd">
               <template x-if="goldenStatus">
                 <div>
-                  <div class="tiles" style="grid-template-columns:repeat(6,1fr);margin-bottom:12px">
+                  <div class="tiles tiles--6" style="margin-bottom:12px">
                     <div class="tile"><div class="n tnum" x-text="(goldenStatus.reviewed&&goldenStatus.reviewed.contents)||0"></div><div class="t">검수 완료</div></div>
                     <div class="tile"><div class="n tnum" x-text="goldenStatus.total"></div><div class="t">정답 누적</div></div>
                     <div class="tile"><div class="n tnum" x-text="(goldenStatus.source_counts&&goldenStatus.source_counts.review)||0"></div><div class="t">검수로 확정</div></div>
@@ -105,7 +105,7 @@
           <!-- 실패 진단(현 '메타 생성 실패 콘텐츠')은 콘텐츠 관리(STEP 3 실행 큐 아래 · 18-queue.html)로 이동(2026-07-22) -->
           <!-- 검수 목표 / 퀘스트 생성: 관리자가 지정한 일시(모델 버전 시한)에 학습 반영 1회 · 홈·사이드바 팀 퀘스트와 같은 원천 -->
           <section class="panel" data-fn x-init="loadLearnReport()"><div class="panel-hd"><b>검수 목표 / 퀘스트 생성</b><span class="meta">지정한 일시까지 모인 검수 의견이 새 버전 프롬프트에 반영됩니다</span>
-            <button type="button" class="ds-btn ds-btn--primary ml-auto" style="height:30px;padding:0 12px" x-bind:disabled="learnBusy" x-on:click="runLearnBatch()" x-text="learnBusy ? '실행 중…' : '즉시 반영'"></button>
+            <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm ml-auto" x-bind:disabled="learnBusy" x-on:click="runLearnBatch()" x-text="learnBusy ? '실행 중…' : '즉시 반영'"></button>
           </div>
             <div class="panel-bd">
               <div style="display:flex;align-items:center;gap:var(--ds-space-4);flex-wrap:wrap">
@@ -307,18 +307,39 @@
           </span>
         </div>
           <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:10px"><li>정답은 <b>검수 '정확' 합의</b>가 학습 반영 때 누적 승격됩니다.</li><li>평가와 어긋나 <b>오류 의심 · 교정 필요</b> 표시된 항목은 확인 후 제거하세요(정답 오류는 모델 순위를 뒤집습니다).</li></ul>
+            <ul class="ds-bullets" style="margin-bottom:10px"><li>정답은 <b>검수 '정확' 합의</b>가 학습 반영 때 누적 승격됩니다.</li><li>평가와 어긋나 <b>오류 의심 · 교정 필요</b> 표시된 항목은 확인 후 제거하세요(정답 오류는 모델 순위를 뒤집습니다).</li><li>인텐트 후보가 <b>전 출처 공통 68개</b>로 바뀌어(2026-09-22) 기존 정답의 인텐트는 <b>재확정 필요</b> 표시가 붙고 확정 전까지 인텐트 측정에서 빠집니다. 폐기된 값이 남은 항목은 <b>재판정(폐기값)</b>으로 먼저 보이며, 행의 <b>인텐트 확정</b>으로 새 후보 기준으로 다시 고르면 측정에 포함됩니다.</li></ul>
+            <div class="flexrow" style="gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px" x-show="goldenList && goldenList.intent_review_counts">
+              <span class="text-xs text-muted tnum" x-text="'인텐트 재확정 · 필요 ' + ((goldenList.intent_review_counts||{}).needed||0) + '건 · 확정 ' + ((goldenList.intent_review_counts||{}).confirmed||0) + '건 · 폐기값 남은 행 ' + ((goldenList.intent_review_counts||{}).retired||0) + '건'"></span>
+              <button type="button" class="srcfilter__chip" x-bind:class="giOnly ? 'sel' : ''" x-bind:aria-pressed="giOnly ? 'true' : 'false'" x-on:click="giOnly = !giOnly">재확정 필요만 보기</button>
+              <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-bind:disabled="giBusy" x-on:click="giMigrate()" data-tip="폐기 인텐트 중 대응이 하나뿐인 값(생활·실용정보 → 실용 정보 · 음악 큐레이션 → 큐레이션·모음 · 차트·랭킹 → 랭킹·리스트)은 치환하고, 후보가 여럿인 값은 재판정 표시만 · 인텐트가 있는 정답 전체에 재확정 필요 표시 · 여러 번 눌러도 같은 결과" data-tip-pos="top" x-text="giBusy ? '정리 중…' : '폐기값 정리·재확정 표시 일괄 적용'"></button>
+              <span class="text-xs text-muted" aria-live="polite" x-text="giMsg"></span>
+            </div>
+            <div class="tile" style="margin-bottom:10px" x-show="giHash" x-cloak>
+              <div class="flexrow" style="gap:8px;align-items:center;flex-wrap:wrap"><b>인텐트 확정</b><span class="text-xs text-muted" x-text="giTitle"></span>
+                <span class="text-xs" style="color:var(--ds-warning-deep)" x-show="giRetired.length" x-text="'폐기값 ' + giRetired.map(v => v + ' → ' + (((dictData||{}).intentRetired||{})[v]||[]).join(' 또는 ')).join(' · ') + ' · 본문을 다시 보고 아래에서 고르세요'"></span></div>
+              <div class="flex flex-wrap gap-1.5" style="margin-top:8px" role="group" aria-label="인텐트 후보(공통 68)">
+                <template x-for="v in giCandidates" x-bind:key="'gi'+v"><button type="button" class="ds-badge" style="cursor:pointer;border:0;font-family:inherit" x-bind:class="giSel.indexOf(v) >= 0 ? 'ds-badge--intent' : 'ds-badge--neutral'" x-bind:aria-pressed="giSel.indexOf(v) >= 0 ? 'true' : 'false'" x-bind:data-tip="termDef('intent', v)" data-tip-pos="top" x-on:click="giToggle(v)" x-text="v"></button></template>
+              </div>
+              <div class="flexrow" style="gap:8px;align-items:center;margin-top:8px">
+                <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-bind:disabled="giBusy" x-on:click="giSave()">확정 저장</button>
+                <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="giHash=''">취소</button>
+                <span class="text-xs text-muted tnum" x-text="'선택 ' + giSel.length + '개 · 대표 값을 첫 번째에'"></span>
+              </div>
+            </div>
             <template x-if="goldenList && goldenList.items && goldenList.items.length">
               <div style="margin-top:12px">
-              <div class="overflow-auto" style="max-height:300px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:56px">등급</th><th>카테고리</th><th style="width:56px">버전</th><th style="width:74px">출처</th><th style="width:60px"></th></tr></thead><tbody>
+              <div class="overflow-auto" style="max-height:300px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:56px">등급</th><th>카테고리</th><th>인텐트</th><th style="width:56px">버전</th><th style="width:74px">출처</th><th style="width:130px"></th></tr></thead><tbody>
                 <template x-for="g in goldenShownList" x-bind:key="g.hash">
                   <tr>
                     <td><span x-text="g.title || '(제목 없음)'"></span> <span class="ds-badge ds-badge--error" style="cursor:help" x-show="g.flagged && !g.fix_needed" data-tip="최근 평가에서 모델과 불일치 · 정답 오류 후보" data-tip-pos="top">오류 의심</span> <span class="ds-badge ds-badge--warning" style="cursor:help" x-show="g.fix_needed" data-tip="평가 판정에서 '모델이 맞음' 합의 · 모델 결과가 맞다고 확정된 정답(제거 후 재등록 또는 검수 재확정 필요)" data-tip-pos="top">교정 필요</span></td>
                     <td><span class="ds-badge" style="cursor:help" x-bind:class="g.grade==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-bind:data-tip="termDef('grade', g.grade)" data-tip-pos="top" x-text="g.grade || '·'"></span></td>
                     <td><template x-for="c in (g.category||[])" x-bind:key="c"><span class="ds-badge ds-badge--category" style="cursor:help;margin:1px" x-bind:data-tip="termDef('category', c)" data-tip-pos="top" x-text="catKo(c)"></span></template></td>
+                    <td><template x-for="v in (g.intent||[])" x-bind:key="'gv'+g.hash+v"><span class="ds-badge" style="cursor:help;margin:1px" x-bind:class="(g.intent_retired||[]).indexOf(v) >= 0 ? 'ds-badge--error' : 'ds-badge--intent'" x-bind:data-tip="termDef('intent', v)" data-tip-pos="top" x-text="v"></span></template>
+                      <span class="ds-badge ds-badge--warning" style="margin:1px" x-show="g.intent_review === 'needed'" x-text="(g.intent_retired||[]).length ? '재판정(폐기값)' : '재확정 필요'"></span>
+                      <span class="ds-badge ds-badge--success" style="margin:1px" x-show="g.intent_review === 'confirmed'">확정</span></td>
                     <td class="tnum" x-text="g.version ? ('v' + g.version) : '·'"></td>
                     <td><span class="ds-badge ds-badge--neutral" x-text="g.source === 'manual' ? '직접' : '검수'"></span></td>
-                    <td><button type="button" class="copybtn" x-on:click="removeGolden(g.hash)">제거</button></td>
+                    <td><span style="display:inline-flex;gap:6px"><button type="button" class="copybtn" x-show="g.intent_review === 'needed'" x-on:click="giEdit(g)">인텐트 확정</button><button type="button" class="copybtn" x-on:click="removeGolden(g.hash)">제거</button></span></td>
                   </tr>
                 </template>
               </tbody></table></div>
@@ -335,12 +356,12 @@
         <div x-show="backend !== 'supabase' || (adminData && adminData.isAdmin)" x-init="loadLearnData()" class="space-y-4">
         <section class="panel" data-fn>
             <div class="panel-hd"><b>학습 데이터 현황</b><span class="meta">특화 LLM 학습데이터 요약 · 용어는 항목에 마우스를 올리면 설명됩니다</span>
-              <button type="button" class="ds-btn ds-btn--secondary ml-auto" style="height:30px;padding:0 12px" x-bind:disabled="learnDataBusy" x-on:click="loadLearnData()" x-text="learnDataBusy ? '집계 중…' : '새로고침'"></button>
+              <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm ml-auto" x-bind:disabled="learnDataBusy" x-on:click="loadLearnData()" x-text="learnDataBusy ? '집계 중…' : '새로고침'"></button>
             </div>
             <div class="panel-bd">
               <template x-if="learnData">
                 <div>
-                  <div class="tiles" style="grid-template-columns:repeat(5,1fr)">
+                  <div class="tiles tiles--5">
                     <div class="tile" style="cursor:help" data-tip="사람 검수 합의로 확정된 정답 데이터 · 평가와 학습의 기준" data-tip-pos="top"><div class="n tnum" x-text="learnData.golden_n"></div><div class="t">정답셋</div></div>
                     <div class="tile" style="cursor:help" data-tip="카테고리(클래스)별 목표 8건(SetFit 2022)을 채운 클래스 수" data-tip-pos="top"><div class="n tnum" x-text="learnData.covered + '/' + learnData.class_total"></div><div class="t">클래스 충족</div></div>
                     <div class="tile" style="cursor:help" data-tip="검수자 간 판정 일치도(Krippendorff's alpha) · 참고 지표(임계값 기계 적용 금지 · Artstein & Poesio 2008)" data-tip-pos="top"><div class="n tnum" x-text="learnData.alpha == null ? '·' : learnData.alpha"></div><div class="t">일치도 α</div></div>
@@ -357,13 +378,13 @@
         <section class="panel" data-fn>
             <div class="panel-hd"><b>데이터셋 내보내기</b><span class="meta">검수 결과를 학습용 JSONL·소요서·핸드오프 번들로</span></div>
             <div class="panel-bd">
-              <div style="display:flex;gap:var(--ds-space-2);flex-wrap:wrap">
-                <button type="button" class="ds-btn ds-btn--secondary" style="height:32px" data-tip="지도 미세조정(Supervised Fine-Tuning) 학습쌍 · 콘텐츠 → 확정 메타" data-tip-pos="top" x-on:click="exportLearn('sft')">SFT 내보내기 <span class="tnum" x-text="'(' + learnData.extractable.sft + ')'"></span></button>
-                <button type="button" class="ds-btn ds-btn--secondary" style="height:32px" data-tip="선호 학습(DPO)용 교정 전/후 쌍 · 상세 화면에서 교정할수록 쌓입니다" data-tip-pos="top" x-on:click="exportLearn('dpo')">선호쌍(DPO) 내보내기 <span class="tnum" x-text="'(' + learnData.extractable.dpo + ')'"></span></button>
-                <button type="button" class="ds-btn ds-btn--secondary" style="height:32px" data-tip="판정 이유(rationale) 데이터 · 근거 증류 학습(Distilling Step-by-Step)용" data-tip-pos="top" x-on:click="exportLearn('rationale')">판단근거 내보내기 <span class="tnum" x-text="'(' + learnData.extractable.rationale + ')'"></span></button>
-                <button type="button" class="ds-btn ds-btn--secondary" style="height:32px" data-tip="정답셋마다 사람 판단의 궤적(판정 노트·REAP 사유·교정 전/후·합의)을 결속 · '왜 이 정답인가' 검증용" data-tip-pos="top" x-on:click="exportLearn('knowhow')">노하우 내보내기 <span class="tnum" x-text="'(' + (learnData.extractable.knowhow == null ? '·' : learnData.extractable.knowhow) + ')'"></span></button>
-                <button type="button" class="ds-btn ds-btn--secondary" style="height:32px" x-on:click="exportSpec()" data-tip="현재 수치·기준치·권장 스펙을 한 문서로(파인튜닝 소요서 .md)" data-tip-pos="top">소요서(.md) 생성</button>
-                <button type="button" class="ds-btn ds-btn--primary" style="height:32px" x-on:click="exportHandoff()" data-tip="모델러 전달용 한 파일(.zip): 학습데이터 3종 + 노하우·백로그 + 소요서 + 프롬프트·사전 스냅샷 + manifest(건수·체크섬·직전 발행 대비 증분)" data-tip-pos="top">핸드오프 번들(.zip)</button>
+              <div class="control-row control-row--compact">
+                <button type="button" class="ds-btn ds-btn--secondary" data-tip="지도 미세조정(Supervised Fine-Tuning) 학습쌍 · 콘텐츠 → 확정 메타" data-tip-pos="top" x-on:click="exportLearn('sft')">SFT 내보내기 <span class="tnum" x-text="'(' + learnData.extractable.sft + ')'"></span></button>
+                <button type="button" class="ds-btn ds-btn--secondary" data-tip="선호 학습(DPO)용 교정 전/후 쌍 · 상세 화면에서 교정할수록 쌓입니다" data-tip-pos="top" x-on:click="exportLearn('dpo')">선호쌍(DPO) 내보내기 <span class="tnum" x-text="'(' + learnData.extractable.dpo + ')'"></span></button>
+                <button type="button" class="ds-btn ds-btn--secondary" data-tip="판정 이유(rationale) 데이터 · 근거 증류 학습(Distilling Step-by-Step)용" data-tip-pos="top" x-on:click="exportLearn('rationale')">판단근거 내보내기 <span class="tnum" x-text="'(' + learnData.extractable.rationale + ')'"></span></button>
+                <button type="button" class="ds-btn ds-btn--secondary" data-tip="정답셋마다 사람 판단의 궤적(판정 노트·REAP 사유·교정 전/후·합의)을 결속 · '왜 이 정답인가' 검증용" data-tip-pos="top" x-on:click="exportLearn('knowhow')">노하우 내보내기 <span class="tnum" x-text="'(' + (learnData.extractable.knowhow == null ? '·' : learnData.extractable.knowhow) + ')'"></span></button>
+                <button type="button" class="ds-btn ds-btn--secondary" x-on:click="exportSpec()" data-tip="현재 수치·기준치·권장 스펙을 한 문서로(파인튜닝 소요서 .md)" data-tip-pos="top">소요서(.md) 생성</button>
+                <button type="button" class="ds-btn ds-btn--primary" x-on:click="exportHandoff()" data-tip="모델러 전달용 한 파일(.zip): 학습데이터 3종 + 노하우·백로그 + 소요서 + 프롬프트·사전 스냅샷 + manifest(건수·체크섬·직전 발행 대비 증분)" data-tip-pos="top">핸드오프 번들(.zip)</button>
               </div>
               <div class="text-xs text-muted" style="margin-top:8px" x-show="learnData.knowhow">노하우 결속 <b class="text-ink tnum" x-text="(learnData.knowhow ? learnData.knowhow.n : 0) + '/' + learnData.golden_n + '건'"></b> · 정답셋에 사람 판단 사유(검수 노트·교정 이력)가 연결된 비율 · 결속률이 낮으면 검수 노트 작성을 독려하세요</div>
             </div>
@@ -469,12 +490,12 @@
         <!-- 모델 선택(별도 영역 · selctl 정책): 아래 목록의 기준 모델 지정 -->
         <section class="panel" data-fn><div class="panel-hd"><b>모델 선택</b><span class="meta">아래 목록의 기준 모델 지정</span></div>
           <div class="panel-bd">
-            <div class="filterbar" style="margin:0 16px">
+            <div class="filterbar control-row">
               <span class="selctl abslot"><span class="selctl__tag">모델</span>
                 <x-modelpick key="rm" value="rawModel" set="rawModel=$v" options="rawModels" first-label="전체" first-value="" width="228px"></x-modelpick>
               </span>
             </div>
-            <ul class="ds-bullets" style="margin:10px 16px 0">
+            <ul class="ds-bullets" style="margin:10px 0 0">
               <li>선택한 모델이 <b>초기 판정한 초안</b>만 목록에 표시됩니다(누적 · 모델별 정답셋의 재료).</li>
               <li>검수 합의는 <b>이 모델의 정답셋</b>으로 쌓입니다.</li>
               <li>버전 간 비교는 <b>결과 비교</b> 탭에서 합니다.</li>
@@ -497,7 +518,7 @@
                  이전엔 등급·서비스·검수 상태·분류 부족 우선이 상단에 늘어서 폭이 좁아지면 줄이 접히고
                  검색창이 뭉개졌다. 자주 쓰는 검색만 남기고 나머지 조건은 팝오버 한 곳으로 모은다.
                  패널이 overflow:hidden 이라 absolute 로 띄우면 잘린다 → mpMenuBox 로 position:fixed(모델 선택과 같은 규약). -->
-            <div class="filterbar">
+            <div class="filterbar control-row">
               <input class="field" placeholder="제목·카테고리·사유 검색" x-model="rawQ">
               <div class="fpop" x-data="{ fpOpen:false, fpBox:{} }" x-on:keydown.escape="fpOpen=false"
                    x-on:click.outside="fpOpen=false" x-on:scroll.window="fpOpen=false" x-on:resize.window="fpOpen=false">

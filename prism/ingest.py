@@ -17,6 +17,13 @@ ALIASES = {
               "subject", "타이틀", "head"],
     "body": ["body", "본문", "본문내용", "기사본문", "기사내용", "content", "contents",
              "내용", "내용본문", "text", "article", "기사", "description", "desc", "원문"],
+    # 외부 파이프라인 메타(모델 실행 없이 메타째 추가 전용 · 콘텐츠 열이 아니다).
+    # subtitle·displayServiceName 보다 **앞에** 둬야 '리드문'을 subtitle 의 포함 별칭 '리드'가,
+    # '콘텐츠 카테고리'를 displayServiceName 의 포함 별칭 '카테고리'가 먼저 삼키지 않는다.
+    # ponytail: 단독 헤더 'summary'·'요약'·'카테고리'·'category' 는 종전대로 부제·콘텐츠 그룹으로
+    #   간다(기존 업로드 하위 호환 · 바꾸면 content_hash 가 달라져 중복 행이 생긴다).
+    #   메타 열은 템플릿 헤더('리드문'·'콘텐츠 카테고리')를 쓴다 · 겹치는 헤더를 메타로 받아야 하면
+    #   업로드 요청에 컬럼 override 를 실어 infer_mapping 으로 넘긴다.
     "subtitle": ["subtitle", "부제목", "부제", "summary", "요약", "subhead", "lead", "리드"],
     # 발행 키(선택 · 511607345). displayServiceName 의 포함 매칭 별칭 'service' 가
     # 'service_code' 헤더를 삼키지 않도록 **앞에** 둔다(image_urls 와 같은 이유).
@@ -37,6 +44,17 @@ ALIASES = {
     # 참조용 원문 링크(선택). 있으면 상세뷰 '원문 열기' 로 연결.
     "source_url": ["sourceurl", "url", "link", "permalink", "href", "링크", "원문링크",
                    "원문url", "articleurl", "weburl", "원문주소", "주소", "originurl"],
+}
+# 메타째 업로드(외부 파이프라인 결과) 전용 별칭. 전역 ALIASES 에 섞지 않는다 · 포함 매칭이
+# 'IAB 카테고리'·'등급구분' 같은 기존 헤더를 콘텐츠 그룹에서 빼앗아 content_hash 를 바꾼다.
+META_ALIASES = {
+    "summary": ["리드문", "요약문", "메타리드문", "leadsummary", "metasummary"],
+    "entities": ["엔티티", "개체", "개체명", "entities", "entity"],
+    "intent": ["인텐트", "의도", "intent", "intents"],
+    "content_category": ["콘텐츠카테고리", "contentcategory", "contentcategories",
+                         "카테고리경로", "iab카테고리", "iab"],
+    "finalGrade": ["등급", "품질등급", "finalgrade", "grade"],
+    "reasons": ["사유", "품질사유", "reasons", "reason"]
 }
 REQUIRED = ["title", "body"]            # 이 둘이 잡혀야 '가능'
 # 발행 키(item_unique_key·service_code·cp_type)는 기본값을 두지 않는다. 컬럼 부재와
@@ -152,12 +170,12 @@ def _col_idx(letters: str) -> int:
 
 
 # 필드 매핑 추론 + 판정
-def infer_mapping(headers: list, override: dict = None) -> dict:
-    """헤더 → {우리필드: 원본컬럼}. override 로 강제 지정 가능."""
+def infer_mapping(headers: list, override: dict = None, extra: dict = None) -> dict:
+    """헤더 → {우리필드: 원본컬럼}. override 로 강제 지정 가능 · extra 는 이 호출에만 더하는 별칭 표(메타 업로드)."""
     norm = {h: str(h).strip().lower().replace(" ", "").replace("_", "") for h in headers}
     mapping = {}
     used = set()                                  # 한 컬럼이 두 필드에 중복배정되지 않게
-    for field, aliases in ALIASES.items():
+    for field, aliases in {**(extra or {}), **ALIASES}.items():   # extra 를 앞에 · 메타 열이 부제·콘텐츠 그룹보다 먼저 헤더를 잡는다
         if override and field in override:
             mapping[field] = override[field]
             used.add(override[field])
@@ -184,10 +202,10 @@ def infer_mapping(headers: list, override: dict = None) -> dict:
     return mapping
 
 
-def assess(path: str, override: dict = None) -> dict:
+def assess(path: str, override: dict = None, extra: dict = None) -> dict:
     """적용 가능 판정. {ok, mapping, missing, headers, n_rows, samples, reason}."""
     headers, rows = read_table(path)
-    mapping = infer_mapping(headers, override)
+    mapping = infer_mapping(headers, override, extra)
     missing = [f for f in REQUIRED if f not in mapping]
     ok = not missing
     reason = ("핵심 필드(제목·본문) 매핑 성공 → 적용 가능"
@@ -200,10 +218,10 @@ def assess(path: str, override: dict = None) -> dict:
             "n_rows": len(rows), "samples": samples, "reason": reason}
 
 
-def to_contents_rows(rows: list, override: dict = None) -> tuple:
+def to_contents_rows(rows: list, override: dict = None, extra: dict = None) -> tuple:
     """JSON 레코드(list[dict]) → (콘텐츠 리스트, 매핑). API 인입용. 판정 불가면 ValueError."""
     headers = list(rows[0].keys()) if rows else []
-    m = infer_mapping(headers, override)
+    m = infer_mapping(headers, override, extra)
     missing = [f for f in REQUIRED if f not in m]
     if missing:
         raise ValueError(f"필수 필드 미발견: {', '.join(missing)} (헤더: {', '.join(map(str, headers))[:200]})")
@@ -211,9 +229,9 @@ def to_contents_rows(rows: list, override: dict = None) -> tuple:
     return out, m
 
 
-def to_contents(path: str, override: dict = None) -> list:
+def to_contents(path: str, override: dict = None, extra: dict = None) -> list:
     """표 → 우리 콘텐츠 스키마 리스트. 판정 불가면 ValueError."""
-    a = assess(path, override)
+    a = assess(path, override, extra)
     if not a["ok"]:
         raise ValueError(a["reason"])
     headers, rows = read_table(path)

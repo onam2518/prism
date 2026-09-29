@@ -204,7 +204,8 @@ window.PRISM_APP_PARTS.push(() => ({
         } finally { this._adminBusy = false; }
       },
       get filteredGolden() {                   // 정답셋 목록 · 모델별 분리 없음(정답은 모델 무관 사람 확정값)
-        return (this.goldenList && this.goldenList.items) || [];
+        const its = (this.goldenList && this.goldenList.items) || [];
+        return this.giOnly ? its.filter(g => g.intent_review === 'needed') : its;   // 인텐트 재확정 필요만 보기
       },
       goldenShown: 200,                        // 정답셋 표시 캡(더 보기 증분) · 검수 표 rawShown 200 과 동일 규약
       get goldenShownList() { return this.filteredGolden.slice(0, this.goldenShown); },
@@ -375,6 +376,11 @@ window.PRISM_APP_PARTS.push(() => ({
       learnTrend: [],
       async loadLearnTrend() {
         try { const r = await (await this._afetch('/learn-reports', { headers: this._authHeaders() })).json(); if (r && r.ok) this.learnTrend = r.items || []; } catch (e) {}
+      },
+      get pilotStep() {                        // 진행 중 라운드의 현재 단계(서버 progress · 첫 단계 전이면 null)
+        const p = this.pilot && this.pilot.status === 'running' && !this.pilot.stalled && this.pilot.progress; if (!p) return null;
+        const ks = ['pre', 'improve', 'post', 'wrap'];
+        return { label: '라운드 ' + p.round + ' · ' + (ks.indexOf(p.phase) + 1) + '/4 ' + ({ pre: '보정 전 평가', improve: '프롬프트 보정', post: '보정 후 재평가', wrap: '기록 · 미확정분 재실행' }[p.phase] || p.phase), done: p.done || 0, total: p.total || 0 };
       },
       pilotBusy: false, pilotMsg: '', _pilotPollT: null,
       async loadPilot() {
