@@ -174,9 +174,34 @@ def normalize_image_urls(v) -> list:
     return out
 
 
+def _raw_key(v):
+    """발행 키 필드 원문 보존: 문자열이면 그대로, 없으면 None. 숫자 키는 문자열로만 받는다."""
+    return v if isinstance(v, str) else (str(v) if isinstance(v, (int, float)) else None)
+
+
+# 인식 프리픽스 9종(511607345 · 2026-09-22 관측 집계). 대소문자 원문 비교 —
+# 'HAMNY-123' 은 소문자화해 hamny 로 치환하지 않는다(정책 명시 금지).
+SOURCE_PREFIXES = ("tv", "hamny", "cafe", "tstory", "vod", "short", "video", "melon", "table")
+
+
+def source_prefix(item_unique_key) -> str:
+    """item_unique_key 의 첫 하이픈 앞 = 출처 구분값. 추출 불가면 "".
+
+    원문 보존 계약(511607345 '프리픽스별 발행 계약'): trim·소문자화·재조합 금지 —
+    앞부분을 잘라 내기만 한다. 빈값·null·하이픈 없음('hamny')·앞부분 없음('-abc')은
+    추출 불가로 ""('원문 키 예시와 오류 처리' 표), 'hamny-' 는 hamny 를 관찰값으로 낸다.
+    미등록 프리픽스('other-123')는 관찰값 그대로 내고 unknown 으로 대체하지 않는다 —
+    등록 여부는 호출자가 SOURCE_PREFIXES 멤버십으로 구분한다."""
+    k = item_unique_key if isinstance(item_unique_key, str) else ""
+    return k.split("-", 1)[0] if "-" in k else ""
+
+
 @dataclass
 class Content:
-    """입력 4필드 고정. 4필드 외는 받지도 추론하지도 않는다."""
+    """입력 4필드 고정. 4필드 외는 받지도 추론하지도 않는다.
+
+    발행 키 3필드(item_unique_key·service_code·cp_type)는 발행·라우팅 정보라
+    모델 입력·해시에 들어가지 않는다(511607345 '입출력·운영 계약')."""
     displayServiceName: str
     title: str
     subtitle: str = ""
@@ -185,6 +210,11 @@ class Content:
     # 참조용 이미지 URL 목록(추출 입력 아님 · source_url 과 같은 참조 패턴 ·
     # 회원 전용 원문의 사진 확인용으로 검수 상세에 표시). 해시·정체성(4필드)에는 불포함.
     image_urls: list = field(default_factory=list)
+    # 발행 키(선택 · 원천 레코드 값 그대로 · 정규화 금지). 없으면 None 으로 부재를 남긴다.
+    # ponytail: 부재와 null 을 모두 None 으로 합친다 · 둘을 갈라야 하면 ref() 에서 부재 키를 빼는 쪽으로.
+    item_unique_key: str | None = None
+    service_code: str | None = None      # 'unknown' 도 원문 그대로(프리픽스에서 역추론 금지)
+    cp_type: str | None = None
 
     @classmethod
     def from_dict(cls, d: dict) -> "Content":
@@ -197,6 +227,10 @@ class Content:
             body=normalize_rich_text(d.get("body", "")),
             source_url=normalize_text(d.get("source_url", "") or d.get("url", "")),
             image_urls=normalize_image_urls(d.get("image_urls") or d.get("images")),
+            # 발행 키는 원문 보존 — normalize_text(NFC·공백 정리·trim)를 태우지 않는다.
+            item_unique_key=_raw_key(d.get("item_unique_key")),
+            service_code=_raw_key(d.get("service_code")),
+            cp_type=_raw_key(d.get("cp_type")),
         )
 
     def body_hash(self) -> str:
@@ -211,6 +245,9 @@ class Content:
             "image_urls": list(self.image_urls or []),
             "body": self.body,
             "body_hash": self.body_hash(),
+            "item_unique_key": self.item_unique_key,
+            "service_code": self.service_code,
+            "cp_type": self.cp_type,
         }
 
 
