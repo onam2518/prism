@@ -39,3 +39,10 @@ Python 모듈 68개에 문법·정적 검사를 적용하고, 자체 JavaScript 
 롤백 시험에서 팀 간 충돌의 배치 전체 롤백, 최신 운영 플래그·수동값·원천값 보존, 잘못된/빈 정답 교체의 기존값 보존, 정상 교체·중복 제거·이력 보존을 검증했다. 다중 프로세스 동시 실행 부하 시험은 수행하지 않았다.
 
 DNM 발행 전체 전환의 남은 조건은 [공통 메타 전환 문서](POLICY_CONTRACT_ROLLOUT.md)에 별도로 유지한다. 원천 레지스트리 없이 대상 여부를 추정하거나 과거 정답을 일괄 재확정하지 않는다. 원천 식별자를 기준으로 한 발행 revision·지연 응답 선택, 실행 전체 설정 고정, 토픽 미리보기/되돌리기 버전 검사는 이번 런타임 보완의 완료 항목에 포함하지 않는다.
+
+
+## DB 후속 검사
+
+`20260929102621_harden_aggregate_paths_and_foreign_keys.sql`로 정답 이력·배정·MCP 키·팀의 외래키 인덱스 4개를 추가하고 기존 집계 함수 3개의 검색 경로를 고정했다. 변경 전후 집계 결과 지문이 일치했다. Supabase의 외래키 인덱스 누락 4건과 변경 가능한 검색 경로 3건 권고는 해소됐다. 신규 인덱스의 미사용 INFO는 사용량이 쌓이기 전의 관찰값이므로 삭제 근거로 삼지 않았다.
+
+기존 권고는 남아 있다: [RLS의 행별 인증 함수 평가](https://supabase.com/docs/guides/database/database-linter?lint=0003_auth_rls_initplan) 2건, [중복 허용 정책](https://supabase.com/docs/guides/database/database-linter?lint=0006_multiple_permissive_policies) 10건, prism_my_team의 [익명 실행](https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable)·[인증 사용자 실행](https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable) 권한, [유출 비밀번호 차단 비활성](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection). 기존 사용자 접근 정책과 인증 설정은 이번 변경에서 재정의하지 않았다.
