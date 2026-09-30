@@ -85,6 +85,29 @@ class TestEntityPatchRoundtrip(EntityEditBase):
 
 
 class TestGoldenIncludesEntities(EntityEditBase):
+    def test_rebuild_preserves_existing_answers_and_confirmation(self):
+        serve, st = self._with_store()
+        ch = self._put_reviewed(st, "기존 정답 보존", [("A", "good"), ("B", "good")])
+        content = next(r['content_ref'] for r in serve.results_rows() if r['content_ref']['title'] == '기존 정답 보존')
+        expected = {'finalGrade': 'G', 'reasons': [], 'intent': ['리뷰'], 'intent_review': 'confirmed',
+                    'intent_confirmed_at': 100, 'summary': '이미 확정된 리드문',
+                    'entities': ['정답개체'], 'content_category': ['News'], 'meta_recovery_id': 'test'}
+        st.upsert_golden(ch, content, expected)
+        st.log_patch(ch, 'A', 'intent', {}, {'intent': ['이전 교정값']})
+        result = serve.build_golden_from_reviews()
+        self.assertTrue(result['ok'])
+        self.assertEqual(st.get_golden(None)[0]['expected'], expected)
+        self.assertEqual(result['new'], 0)
+
+    def test_failed_existing_gold_read_never_overwrites_answers(self):
+        from unittest.mock import patch
+        serve, st = self._with_store()
+        self._put_reviewed(st, "조회 오류", [("A", "good"), ("B", "good")])
+        with patch.object(st, 'golden_entries', side_effect=RuntimeError('connection lost')), \
+             patch.object(st, 'upsert_golden') as write:
+            self.assertFalse(serve.build_golden_from_reviews()['ok'])
+            write.assert_not_called()
+
     def test_uncorrected_meta_is_not_copied_into_golden(self):
         """교정이 없으면 메타 4축은 정답에 담기지 않는다.
 

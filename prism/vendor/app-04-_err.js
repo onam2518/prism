@@ -345,12 +345,12 @@ window.PRISM_APP_PARTS.push(() => ({
       evalExpectedNote(status) {
         return { missing: '정답 미등록 · 채점 제외', empty: '빈 정답 · 채점 제외',
           pending: '재확정 필요 · 채점 제외', excluded: '채점 대상 아님',
-          unrecorded: '과거 상세 미저장' }[status] || '';
+          unrecorded: '과거 상세 미저장', recovered: '복구한 정답 · 당시 점수에는 미반영' }[status] || '';
       },
       get evalExpectedCoverage() {
         const coverage = this.evalDetail && this.evalDetail.expected_coverage;
         if (!coverage || coverage.legacy || !coverage.total) return '';
-        return '채점 가능한 메타 정답 · ' + this.evalItemFields.slice(2).map(([key, label]) =>
+        return '평가 당시 채점 가능한 메타 정답 · ' + this.evalItemFields.slice(2).map(([key, label]) =>
           label + ' ' + (coverage.fields[key] || 0) + '/' + coverage.total + '건').join(' · ');
       },
       get evalFilteredItems() {
@@ -363,7 +363,12 @@ window.PRISM_APP_PARTS.push(() => ({
         });
       },
       get evalItems() { return this.evalFilteredItems.slice(0, this.evalItemLimit); },
-      evalItemCells(it) { return [{ model: '정답', expected: true, status: it.expected_status || {}, data: it.expected || {} }, ...this.evalCols.map(m => ({ model: m.model, status: {}, data: (it.got || {})[m.model] || {} }))]; },
+      evalItemCells(it) {
+        const values = (it.expected_recovery || {}).values || {}, status = { ...(it.expected_status || {}) };
+        for (const key of Object.keys(values)) if (!(key in (it.expected || {}))) status[key] = 'recovered';
+        return [{ model: '정답', expected: true, status, data: { ...values, ...(it.expected || {}) } },
+          ...this.evalCols.map(m => ({ model: m.model, status: {}, data: (it.got || {})[m.model] || {} }))];
+      },
       evalCellStatus(data) { return data.empty ? '산출 실패' : data.ok === false ? '등급 불일치' : data.ok === true ? '등급 일치' : ''; },
       evalModel: '', evalScope: 'all',        // 평가 기준: 기준 모델 · 대상 콘텐츠 풀(all=전체 정답셋 | eval=평가용 홀드아웃)
       // 평가 런(이력 영속 · Atelier 이식): 시작 → 백그라운드 실행 → 폴링으로 진행률·리포트
