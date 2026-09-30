@@ -27,6 +27,7 @@ from __future__ import annotations
 import datetime as _dt
 import json
 import os
+import time
 import urllib.request
 
 _SV = None            # serve 모듈 역참조(순환 import 회피 · serve 가 주입)
@@ -52,6 +53,15 @@ def _cfg():
     return Config.load()
 
 
+def _collection_status(st, team):
+    from datetime import datetime, timedelta
+    from .opsreview import KST
+    monday = datetime.now(KST).date()
+    monday -= timedelta(days=monday.weekday())
+    report = st.get_report("ops_collection_" + monday.isoformat(), team) if st else None
+    return {k:v for k,v in (report or {}).items() if k not in ("keys", "item_keys", "events")}
+
+
 def mq_status(team=None) -> dict:
     """설정·연결 상태(키 실값 미포함). 화면이 미설정 안내를 띄우는 근거."""
     cfg = _cfg()
@@ -73,6 +83,7 @@ def mq_status(team=None) -> dict:
             "queryConfigured": bool(query), "mock": mock,
             "configured": mock or bool(url and db_id and _api_key() and query),
             "staged": staged, "stageTtlDays": _STAGE_TTL_DAYS, "services": services, "facets": facets,
+            "collection": _collection_status(st, team),
             "columns": list(COLUMNS)}
 
 
@@ -145,7 +156,8 @@ def _row_content(row: dict) -> dict:
             "subtitle": str(row.get("subtitle") or ""),
             "body": str(row.get("body") or ""),
             "source_url": _SV._safe_url(str(row.get("url") or "")),
-            "image_urls": []}
+            "image_urls": [],
+            "source_fields": row.get("source_fields") if isinstance(row.get("source_fields"), dict) else {}}
 
 
 def _row_hash(row: dict) -> str:
@@ -272,11 +284,16 @@ def mq_search(data: dict, team=None) -> dict:
             known = st.existing_hashes(hashes, team=team) or {}
         except Exception:
             known = {}
+    native_hashes = [ch for r,ch in zip(rows,hashes) if ch in known and (r.get("source_fields") or {}).get("input_revision")]
+    origins = st.origin_meta_for(native_hashes, team=team) if native_hashes else {}
     out = []
     for r, ch in zip(rows, hashes):
         row = {k: r.get(k) for k in COLUMNS}
         row["hash"] = ch
-        row["registered"] = ch in known
+        row["source_fields"] = r.get("source_fields") or {}
+        native = row["source_fields"]
+        current = (origins.get(ch) or {}).get("item_meta") or {}
+        row["registered"] = ch in known and not (native.get("input_revision") and native.get("policy_version") and any(native.get(k) != current.get(k) for k in ("input_revision", "policy_version", "publication_revision")))
         if r.get("staged_at") is not None:
             row["staged_at"] = r.get("staged_at")
         out.append(row)
@@ -301,6 +318,7 @@ def mq_stage(data: dict, team=None) -> dict:
             empty += 1
             continue
         row = {k: r.get(k) for k in COLUMNS}
+        row["source_fields"] = c["source_fields"]
         row["url"] = c["source_url"]                      # 스킴 화이트리스트 통과분만 보관
         for k in ("entities", "intent", "category"):      # 목록 필드는 리스트로 통일(필터·표시 일관)
             row[k] = _as_list(r.get(k))
@@ -315,6 +333,27 @@ def mq_stage(data: dict, team=None) -> dict:
         res = st.stage_put(items, team=team)
         purged = int(st.stage_purge(_STAGE_TTL_DAYS, team=team) or 0)
         staged = int(st.stage_count(team=team))
+        from .opsreview import digest, KST
+        from datetime import datetime, timedelta
+        now = time.time()
+        monday = datetime.now(KST).date()
+        monday -= timedelta(days=monday.weekday())
+        key = "ops_collection_" + monday.isoformat()
+        identities = [digest([h, r.get("source_fields"), r.get("summary"), r.get("entities"), r.get("intent"), r.get("category")]) for h,r in items]
+        item_keys = [str((r.get("source_fields") or {}).get("item_unique_key") or h) for h,r in items]
+        periods = [str(r.get("published_at")) for _,r in items if r.get("published_at")]
+        event = {"ts": now, "records": len(items), "period_from": min(periods) if periods else "", "period_to": max(periods) if periods else ""}
+        for attempt in range(3):
+            old = st.get_report(key, team)
+            new = dict(old or {"events": [], "keys": [], "item_keys": []})
+            new["events"] = new["events"] + [event]
+            new["keys"] = list(dict.fromkeys(new["keys"] + identities))
+            new["item_keys"] = list(dict.fromkeys(new.get("item_keys", []) + item_keys))
+            new.update(week=monday.isoformat(), last_ts=now, unique_records=len(new["item_keys"]), unique_versions=len(new["keys"]), target=4000)
+            if st.compare_report(key, old, new, team):
+                break
+        else:
+            return {"ok": False, "stage_saved": True, "error": "원천 적재 완료 · 주간 확보 이력 저장 충돌. 확보 실적 재확인 필요"}
     except Exception as e:
         return {"ok": False, "error": "스테이징 저장 실패 · 표(prism_mq_stage) 생성 여부를 확인하세요 (SUPABASE_MIGRATION.md) · "
                 + str(e)[:120]}
@@ -362,7 +401,11 @@ def _row_out(row: dict, team=None) -> dict:
     model = str(row.get("model") or "").strip() or "metabase"
     trace = {"model": "dev:" + model, "version": ver,
              "source_id": str(row.get("id") or "")}
-    return {"item_meta": item, "quality_meta": quality, "trace": trace}
+    source = row.get("source_fields") or {}
+    if isinstance(source, dict):
+        for key in ("item_unique_key", "input_revision", "policy_version", "publication_revision"):
+            if source.get(key) is not None: item[key] = source[key]
+    return {"item_meta": item, "quality_meta": quality, "trace": trace, "content_ref": {"source_fields": source}}
 
 
 def mq_register(data: dict, team=None) -> dict:
@@ -381,9 +424,6 @@ def mq_register(data: dict, team=None) -> dict:
             empty += 1
             continue
         out = _row_out(r, team)
-        if not (out["item_meta"] or out["quality_meta"].get("finalGrade")):
-            empty += 1                      # 발행 메타가 전혀 없으면 초안이 아니다
-            continue
         pairs.append((c, out))
         hashes.append(_row_hash(r))
     if not pairs:
@@ -395,7 +435,20 @@ def mq_register(data: dict, team=None) -> dict:
             known = st.existing_hashes(hashes, team=team) or {}
         except Exception:
             known = {}
-    fresh = [(p, h) for p, h in zip(pairs, hashes) if h not in known]
+    origins = st.origin_meta_for([h for h in hashes if h in known], team=team) if st and known else {}
+    for pair,h in zip(pairs,hashes):
+        incoming = pair[1].get("item_meta") or {}
+        current = (origins.get(h) or {}).get("item_meta") or {}
+        for key in ("input_revision", "publication_revision"):
+            if isinstance(incoming.get(key), int) and isinstance(current.get(key), int) and incoming[key] < current[key]:
+                return {"ok":False,"error":"이미 저장된 원천 버전보다 오래된 자료입니다 · 최신 발행본을 확인하세요"}
+    def changed_native(pair, h):
+        values = pair[1].get("item_meta") or {}
+        if not values.get("input_revision") or not values.get("policy_version"):
+            return False
+        current = (origins.get(h) or {}).get("item_meta") or {}
+        return any(values.get(k) != current.get(k) for k in ("input_revision", "policy_version", "publication_revision"))
+    fresh = [(p, h) for p, h in zip(pairs, hashes) if h not in known or changed_native(p, h)]
     added_hashes = [h for _, h in fresh]
     if fresh:
         saved = _SV.store_save([p for p, _ in fresh], source="메타베이스", team=team)
@@ -407,5 +460,5 @@ def mq_register(data: dict, team=None) -> dict:
                 st.set_purpose(added_hashes, "eval", team=team)
         except Exception:
             pass
-    return {"ok": True, "added": len(fresh), "existing": len(pairs) - len(fresh),
+    return {"ok": True, "added": sum(h not in known for _, h in fresh), "updated": sum(h in known for _, h in fresh), "existing": len(pairs) - len(fresh),
             "skipped_empty": empty, "hashes": added_hashes}

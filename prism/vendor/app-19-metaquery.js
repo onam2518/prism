@@ -151,7 +151,7 @@ window.PRISM_APP_PARTS.push(() => ({
         body: JSON.stringify({ rows: rows, purpose: this.mqPurpose }) });
       const j = await r.json();
       if (!r.ok || j.error) { this.mqMsg = '오류: ' + (j.error || r.status); return; }
-      this.mqMsg = '✓ 지정 ' + j.added + '건' + (j.existing ? ' · 이미 인입 ' + j.existing + '건' : '')
+      this.mqMsg = '✓ 신규 지정 ' + j.added + '건' + (j.updated ? ' · 원천 버전 갱신 ' + j.updated + '건' : '') + (j.existing ? ' · 이미 인입 ' + j.existing + '건' : '')
         + (j.skipped_empty ? ' · 제외 ' + j.skipped_empty + '건' : '');
       this.mqRows.forEach((row) => { if (this.mqSel[row.hash]) row.registered = true; });
       this.mqSel = {};

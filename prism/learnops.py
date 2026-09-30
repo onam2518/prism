@@ -428,12 +428,26 @@ def build_golden_from_reviews(team=None) -> dict:
         fb = fmap.get(ch)
         if not fb:
             continue
+        from .opsreview import basis, read_row
+        managed = st.get_report("ops_review_" + ch, team)
+        current_token = basis(read_row(st, ch, team))["token"] if managed else None
+        if managed:
+            latest = {v["by"]:v for v in managed.get("reviews", []) if v["basis"]["token"] == current_token}
+            current_votes = []
+            for v in latest.values():
+                statuses = [axis["status"] for axis in v.get("axes", {}).values()]
+                if len(statuses) != 4 or "hold" in statuses:
+                    continue
+                current_votes.append({"reviewer":v["by"], "verdict":"good" if all(x == "accurate" for x in statuses) else "bad"})
+            fb = {"verdicts": current_votes, "good":sum(v["verdict"] == "good" for v in current_votes), "bad":sum(v["verdict"] == "bad" for v in current_votes)}
         # 신뢰도 가중 다수결: 골드 정확도 기반 가중치(없으면 전원 1.0 = 기존 다수결과 동일)
         gw = sum(weights.get(v.get("reviewer_id") or v.get("reviewer"), 1.0)
                  for v in fb.get("verdicts", []) if v.get("verdict") == "good")
         bw = sum(weights.get(v.get("reviewer_id") or v.get("reviewer"), 1.0)
                  for v in fb.get("verdicts", []) if v.get("verdict") == "bad")
         fv = (finals.get(ch) or {}).get("verdict")     # 리드 최종판정(있으면 다수결보다 우선)
+        if managed and (finals.get(ch) or {}).get("basis_token") != current_token:
+            fv = None
         if fv == "bad":                                # 리드가 '수정 필요' 확정 → 승격 금지 + 검수 유래 골든 강등
             disagree += 1
             if ch in existing and by_source.get(ch, "review") == "review":
@@ -462,7 +476,10 @@ def build_golden_from_reviews(team=None) -> dict:
                               "service": content.get("displayServiceName", "")})
             continue
         exp = {"finalGrade": grade, "reasons": qm.get("reasons", []) or []}
-        exp.update(fixed.get(ch) or {})           # 사람이 고친 축만 정답으로 · 안 고친 축은 키를 빼서 채점 분모에서 제외
+        from .opsreview import human_expected
+        if st.get_report("ops_review_" + ch, team) is None:
+            exp.update(fixed.get(ch) or {})
+        exp.update(human_expected(st, ch, team))           # 사람이 고친 축만 정답으로 · 안 고친 축은 키를 빼서 채점 분모에서 제외
         entries.append({"hash": ch, "content": content, "expected": exp})
         contributors[ch] = [v.get("reviewer_id") or v.get("reviewer")
                             for v in fb.get("verdicts", []) if v.get("verdict") == "good"]

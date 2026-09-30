@@ -145,8 +145,42 @@ class TestMetaqueryRegister(MetaqueryBase):
         self.assertFalse(MQ.mq_register({"rows": [{"title": "", "body": ""}]})["ok"])
         bare = {"id": "x", "service": "뉴스", "title": "제목만", "body": "본문",
                 "grade": "", "summary": "", "entities": "", "intent": "", "category": ""}
-        self.assertFalse(MQ.mq_register({"rows": [bare]})["ok"])   # 발행 메타 전무 = 초안 아님
-        self.assertEqual(serve.results_rows(), [])
+        self.assertTrue(MQ.mq_register({"rows": [bare]})["ok"])    # 메타 누락도 집중 검수 대상
+        self.assertEqual(len(serve.results_rows()), 1)
+        self.assertEqual(serve.results_rows()[0]["item_meta"], {})
+
+    def test_native_versions_survive_search_and_refresh(self):
+        from prism import metaquery as MQ
+        serve=self._serve()
+        row=MQ.mq_search({"source":"metabase"})["rows"][0]
+        row["source_fields"]={"item_unique_key":"test-item","input_revision":1,"policy_version":"policy-1","publication_revision":1}
+        self.assertEqual(MQ.mq_register({"rows":[row]})["added"],1)
+        MQ.mq_stage({"rows":[row]})
+        result=MQ.mq_search({"source":"stage"})["rows"][0]
+        self.assertEqual(result["source_fields"]["input_revision"],1)
+        self.assertTrue(result["registered"])
+        row["source_fields"]["input_revision"]=2
+        row["source_fields"]["publication_revision"]=2
+        MQ.mq_stage({"rows":[row]})
+        result=MQ.mq_search({"source":"stage"})["rows"][0]
+        self.assertFalse(result["registered"])
+        self.assertEqual(MQ.mq_register({"rows":[result]})["updated"],1)
+        self.assertEqual(serve.results_rows()[0]["item_meta"]["input_revision"],2)
+        row["source_fields"]["input_revision"]=1
+        self.assertFalse(MQ.mq_register({"rows":[row]})["ok"])
+
+    def test_source_supply_counts_unique_items_separately_from_versions(self):
+        from prism import metaquery as MQ
+        self._serve()
+        row=MQ.mq_search({"source":"metabase"})["rows"][0]
+        row["source_fields"]={"item_unique_key":"test-item","input_revision":1}
+        self.assertTrue(MQ.mq_stage({"rows":[row]})["ok"])
+        self.assertTrue(MQ.mq_stage({"rows":[row]})["ok"])
+        row["source_fields"]["input_revision"]=2
+        self.assertTrue(MQ.mq_stage({"rows":[row]})["ok"])
+        counts=MQ.mq_status()["collection"]
+        self.assertEqual(counts["unique_records"],1)
+        self.assertEqual(counts["unique_versions"],2)
 
     def test_source_url_scheme_whitelisted(self):
         from prism import metaquery as MQ
