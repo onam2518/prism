@@ -336,22 +336,34 @@ window.PRISM_APP_PARTS.push(() => ({
         return text + (row[3] ? ' · ' + model[row[3]] + '건' : '');
       },
       evalItemFields: [['grade', '등급'], ['reasons', '사유'], ['intent', '인텐트'], ['content_category', '카테고리'], ['entities', '엔티티'], ['summary', '리드문']],
-      evalMetaText(data, key) {
+      evalMetaText(data, key, expected = false) {
         const value = data && data[key];
-        if (value == null) return '기록 없음';
+        if (value == null) return expected ? '·' : '기록 없음';
         if (Array.isArray(value)) return value.map(v => typeof v === 'object' && v ? (v.name ? v.name + (v.type ? ' (' + v.type + ')' : '') : [v.tier1, v.tier2].filter(Boolean).join(' / ')) : String(v)).join(', ') || '없음';
         return String(value) || '없음';
+      },
+      evalExpectedNote(status) {
+        return { missing: '정답 미등록 · 채점 제외', empty: '빈 정답 · 채점 제외',
+          pending: '재확정 필요 · 채점 제외', excluded: '채점 대상 아님',
+          unrecorded: '과거 상세 미저장' }[status] || '';
+      },
+      get evalExpectedCoverage() {
+        const coverage = this.evalDetail && this.evalDetail.expected_coverage;
+        if (!coverage || coverage.legacy || !coverage.total) return '';
+        return '채점 가능한 메타 정답 · ' + this.evalItemFields.slice(2).map(([key, label]) =>
+          label + ' ' + (coverage.fields[key] || 0) + '/' + coverage.total + '건').join(' · ');
       },
       get evalFilteredItems() {
         const search = this.evalItemSearch.trim().toLowerCase();
         return ((this.evalDetail && this.evalDetail.items) || []).filter(it => {
           const cells = Object.values(it.got || {});
-          const match = this.evalItemFilter === 'all' || (this.evalItemFilter === 'split' ? it.split : cells.some(c => c.empty || c.ok === false));
+          const match = this.evalItemFilter === 'all' || (this.evalItemFilter === 'split' ? it.split :
+            this.evalItemFilter === 'expected' ? Object.values(it.expected_status || {}).some(s => s !== 'scored') : cells.some(c => c.empty || c.ok === false));
           return match && (!search || (it.title + ' ' + it.hash).toLowerCase().includes(search));
         });
       },
       get evalItems() { return this.evalFilteredItems.slice(0, this.evalItemLimit); },
-      evalItemCells(it) { return [{ model: '정답', data: it.expected || {} }, ...this.evalCols.map(m => ({ model: m.model, data: (it.got || {})[m.model] || {} }))]; },
+      evalItemCells(it) { return [{ model: '정답', expected: true, status: it.expected_status || {}, data: it.expected || {} }, ...this.evalCols.map(m => ({ model: m.model, status: {}, data: (it.got || {})[m.model] || {} }))]; },
       evalCellStatus(data) { return data.empty ? '산출 실패' : data.ok === false ? '등급 불일치' : data.ok === true ? '등급 일치' : ''; },
       evalModel: '', evalScope: 'all',        // 평가 기준: 기준 모델 · 대상 콘텐츠 풀(all=전체 정답셋 | eval=평가용 홀드아웃)
       // 평가 런(이력 영속 · Atelier 이식): 시작 → 백그라운드 실행 → 폴링으로 진행률·리포트

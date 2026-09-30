@@ -208,14 +208,16 @@
                 <div class="panel-bd space-y-4">
                   <p class="text-xs text-muted" x-show="evalDetail.detail_mode!=='all'" x-text="evalDetail.detail_mode==='mismatches' ? '이 과거 회차에는 등급 불일치 건만 저장되어 있습니다. 나머지 건과 메타 상세는 기록이 없습니다.' : '이 과거 회차에는 건별 결과가 저장되지 않았습니다. 위 요약 지표만 확인할 수 있습니다.'"></p>
                   <div class="control-row">
-                    <label class="selctl"><span class="selctl__lbl">필터</span><select class="field" x-model="evalItemFilter" x-on:change="evalItemLimit=50"><option value="all">전체</option><option value="miss">등급 불일치·산출 실패</option><option value="split" x-bind:disabled="evalCols.length < 2">모델 간 등급 차이</option></select></label>
+                    <label class="selctl"><span class="selctl__lbl">필터</span><select class="field" x-model="evalItemFilter" x-on:change="evalItemLimit=50"><option value="all">전체</option><option value="miss">등급 불일치·산출 실패</option><option value="expected">메타 정답 보완 필요</option><option value="split" x-bind:disabled="evalCols.length < 2">모델 간 등급 차이</option></select></label>
                     <label class="selctl"><span class="selctl__lbl">콘텐츠 검색</span><input type="search" class="field" x-model="evalItemSearch" x-on:input="evalItemLimit=50" placeholder="제목 또는 해시"></label>
                     <span class="text-xs text-muted" x-text="evalFilteredItems.length + '건'"></span>
                   </div>
-                  <p class="text-xs text-muted">등급이 없는 평가는 등급 일치 여부를 판정하지 않습니다. 항목을 펼치면 당시 저장된 인텐트·카테고리·엔티티·리드문을 볼 수 있습니다.</p>
-                  <div class="overflow-auto"><table class="ds-table item-compare-table item-compare-table--metadata" x-bind:style="'--compare-model-count:' + evalCols.length"><colgroup><col class="item-compare-content"><col><template x-for="m in evalCols" x-bind:key="m.model"><col></template></colgroup><thead><tr><th>콘텐츠</th><th>정답</th><template x-for="m in evalCols" x-bind:key="m.model"><th x-text="m.model"></th></template></tr></thead><tbody>
+                  <p class="text-xs" x-show="evalExpectedCoverage" x-text="evalExpectedCoverage"></p>
+                  <p class="text-xs text-muted">위 건수는 저장된 결과 기준입니다. 정답은 평가 시작 당시 값이며, 검수로 확정하지 않은 메타는 정답이 없을 수 있습니다. 정답이 없거나 재확정이 필요한 항목은 해당 메타 점수에서 제외됩니다. 등급 일치는 메타의 정확성을 뜻하지 않습니다.</p>
+                  <div class="overflow-auto"><table class="ds-table item-compare-table item-compare-table--metadata" x-bind:style="'--compare-model-count:' + evalCols.length"><colgroup><col class="item-compare-content"><col><template x-for="m in evalCols" x-bind:key="m.model"><col></template></colgroup><thead><tr><th>콘텐츠</th><th>평가 당시 정답</th><template x-for="m in evalCols" x-bind:key="m.model"><th x-text="m.model"></th></template></tr></thead><tbody>
                     <template x-for="it in evalItems" x-bind:key="it.hash"><tr>
                       <td><span x-text="it.title || it.hash"></span><div class="text-xs text-muted" x-text="it.hash.slice(0,12)"></div>
+                        <div class="control-row control-row--compact"><button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="opsOpenCase({hash:it.hash})">현재 콘텐츠·검수 보기</button></div>
                         <template x-if="it.judgment"><div class="control-row control-row--compact">
                           <button type="button" class="verdictbtn verdictbtn--good" x-bind:class="myEvalVote(it.judgment)==='adopt' ? 'is-on' : ''" x-on:click="evalJudge(it.judgment, 'adopt')">모델이 맞음</button>
                           <button type="button" class="verdictbtn verdictbtn--bad" x-bind:class="myEvalVote(it.judgment)==='reject' ? 'is-on' : ''" x-on:click="evalJudge(it.judgment, 'reject')">정답 유지</button>
@@ -226,7 +228,7 @@
                         <span class="text-xs" x-text="evalCellStatus(cell.data)"></span>
                         <p class="text-xs text-muted" x-show="cell.data.error" x-text="cell.data.error"></p>
                         <details><summary x-text="(cell.data.grade || '메타') + ' · 상세'"></summary>
-                          <dl><template x-for="field in evalItemFields" x-bind:key="field[0]"><div><dt class="text-xs text-muted" x-text="field[1]"></dt><dd style="margin:0 0 var(--ds-space-2);white-space:pre-wrap;overflow-wrap:anywhere" x-text="evalMetaText(cell.data, field[0])"></dd></div></template></dl>
+                          <dl><template x-for="field in evalItemFields" x-bind:key="field[0]"><div><dt class="text-xs text-muted" x-text="field[1]"></dt><dd style="margin:0 0 var(--ds-space-2);white-space:pre-wrap;overflow-wrap:anywhere"><span x-text="evalMetaText(cell.data, field[0], cell.expected)"></span><div class="text-xs text-muted" x-show="cell.expected && evalExpectedNote(cell.status[field[0]])" x-text="evalExpectedNote(cell.status[field[0]])"></div></dd></div></template></dl>
                           <p class="text-xs text-muted" x-show="cell.data.rubric && cell.data.rubric.note" x-text="cell.data.rubric ? cell.data.rubric.note : ''"></p>
                         </details>
                       </td></template>

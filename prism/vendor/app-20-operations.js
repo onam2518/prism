@@ -72,7 +72,7 @@ window.PRISM_APP_PARTS.push(() => ({
       const r=await this.opsRequest(this.opsUrl(c.hash)); const b=r.basis.snapshot, im=b.item_meta||{}, qm=b.quality_meta||{};
       if(c.legacy){await this.opsRequest('/ops-review',{action:'import_legacy',hash:c.hash,revision:r.revision,basis_token:r.basis.token});}
       this.openDetail({hash:c.hash,title:b.title,body:b.body,service:b.service,model:b.model,summary:im.summary||'',
-        entities:(im.entities||[]).map(e=>typeof e==='string'?e:e.name),intent:im.intent||[],category:(im.content_category||[]).map(e=>typeof e==='string'?e:e.path),grade:qm.finalGrade||'',reasons:qm.reasons||[]});
+        entities:(im.entities||[]).map(e=>typeof e==='string'?e:e.name),intent:im.intent||[],category:this._categoryPaths(im.content_category),grade:qm.finalGrade||'',reasons:qm.reasons||[]});
     } catch(e) { this._err(e.message); }
   },
   get opsMySession() {

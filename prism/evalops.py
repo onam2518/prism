@@ -841,6 +841,43 @@ def eval_run_report(run_id: int, team=None) -> dict:
     return out
 
 
+def _history_expected(items, legacy=False):
+    """저장된 기대값만으로 채점 가능 여부를 설명한다. 현재 정답·모델 산출은 섞지 않는다."""
+    from . import abtest
+    fields = (("intent", "intent_n"), ("content_category", "cat_n"),
+              ("entities", "ent_n"), ("summary", "sum_pairs"))
+    coverage = {key: 0 for key, _ in fields}
+    annotated = []
+    for item in items:
+        exp = item.get("expected") or {}
+        unrecorded = legacy or set(exp).issubset({"grade", "reasons"})
+        counts, statuses = {}, {}
+        if not unrecorded:
+            # 실제 채점과 같은 정규화·재확정·no_value 규칙을 사용한다. 모델 호출 없음.
+            abtest.intent_tally(counts, exp, None)
+            ME.meta_tally(counts, exp, None)
+        for key, counter in fields:
+            if unrecorded:
+                status = "unrecorded"
+            elif key == "intent" and exp.get("intent_review") == "needed":
+                status = "pending"
+            elif counts.get(counter):
+                status = "scored"
+                coverage[key] += 1
+            elif (exp.get("meta_status") or {}).get(key) not in (None, "success", "no_value"):
+                status = "excluded"
+            elif exp.get(key) is None:
+                status = "missing"
+            elif not exp.get(key):
+                status = "empty"
+            else:
+                status = "excluded"
+            statuses[key] = status
+        annotated.append({**item, "expected_status": statuses})
+    return {"items": annotated, "expected_coverage": {"total": len(items), "fields": coverage,
+            "legacy": legacy or bool(items) and all(i["expected_status"]["intent"] == "unrecorded" for i in annotated)}}
+
+
 def eval_history_detail(kind, run_id=0, round_no=0, key="", team=None):
     """세 종류의 저장된 평가를 같은 모델 열·건별 행 계약으로 읽는다. 모델 호출 없음."""
     from . import learnops as LO
@@ -853,6 +890,7 @@ def eval_history_detail(kind, run_id=0, round_no=0, key="", team=None):
         if not rep.get("ok"):
             return missing
         return {**rep, "kind": kind, "id": "c" + key, "status": "done",
+                **_history_expected(rep.get("items") or []),
                 "version": rep.get("prompt_snapshot_version"), "detail_mode": "all"}
     if kind == "eval":
         rep = eval_run_report(run_id, team)
@@ -873,7 +911,7 @@ def eval_history_detail(kind, run_id=0, round_no=0, key="", team=None):
                           "all_ok": passed, "split": False, "judgment": judges.get(row["hash"])})
         metrics = {k: v for k, v in rep.items() if k != "detail"}
         return {**rep, "kind": kind, "models": [{**metrics, "model": model, "n": rep["evaluated"]}],
-                "items": items, "detail_mode": "all", "scope": rep["basis"]["scope"],
+                **_history_expected(items), "detail_mode": "all", "scope": rep["basis"]["scope"],
                 "version": rep["basis"]["version"]}
     if kind != "pilot" or not st or not hasattr(st, "autopilot_get"):
         return missing
@@ -905,7 +943,8 @@ def eval_history_detail(kind, run_id=0, round_no=0, key="", team=None):
     return {"ok": True, "kind": kind, "id": f"p{run_id}-{round_no}", "pilot_id": run_id,
             "round": round_no, "ts": hh.get("ts") or run.get("ts"), "version": hh.get("version"),
             "status": "reverted" if hh.get("reverted") else "applied", "scope": "fixed",
-            "total": len(run.get("golden_hashes") or []), "models": [metrics], "items": items,
+            "total": len(run.get("golden_hashes") or []), "models": [metrics],
+            **_history_expected(items, legacy=mode != "all"),
             "detail_mode": mode, "pre": hh.get("pre"), "delta": hh.get("delta")}
 
 
