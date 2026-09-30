@@ -153,7 +153,15 @@ class TestEvalRunFlow(unittest.TestCase):
         st.eval_results_add(rid, [{"hash": h, "title": "", "expected": {"finalGrade": "G", "reasons": []},
                                    "got": {"finalGrade": "G", "reasons": []}, "passed": True, "error": ""}
                                   for h in hashes[:2]])
-        st.eval_run_update(rid, cursor=2, metrics={"basis_fingerprint": evalops._eval_basis(st.get_golden(None), "", None),
+        from prism import execution as EX
+        rows = st.get_golden(None)
+        from prism.config import Config
+        _, frozen = EX.capture(serve.make_text_llm(Config.load(), True), rows)
+        snapshot = {"rows": rows, "execution": frozen, "model": "", "scope": "all"}
+        st.save_report("eval_snapshot_" + str(rid), snapshot)
+        # Live golden edits cannot change the remainder of this run.
+        st.register_golden(None, [{"content": {"title": "changed"}, "expected": {"summary": "new"}}])
+        st.eval_run_update(rid, cursor=2, metrics={"basis_fingerprint": EX.digest(snapshot),
                                                    "n": 2, "grade_hit": 2, "reason_exact": 2,
                                                    "jaccard_sum": 2.0, "harm_miss": 0, "empty": 0,
                                                    "cost_usd": 0.0, "tok_in": 0, "tok_out": 0,

@@ -1,0 +1,66 @@
+# DNM 전환 구현과 운영 인입 계약
+
+이 문서는 코드 구현과 실제 운영 전환을 구분한다. 등록표·검증 기록이 없는 상태는 운영 전환 완료가 아니다. 기존 실험용 추출은 유지되며, DNM 준수 실행은 관리자 `/dnm` API로 명시적으로 요청한다. 일반 실험 결과에 DNM 정책 버전이나 대상 여부를 소급 부여하지 않는다.
+
+## 실행 순서
+
+1. `POST /dnm`에 `action=prepare_policy`, `model`을 보내 실제 네 호출의 프롬프트·모델·추론 설정을 준비한다. 응답의 `policy`를 검토한다. 자격증명은 저장하지 않는다.
+2. `action=configure`, `expected_revision`, `registry`, `policy`로 승인된 경로 등록표와 검토한 실행 명세를 등록한다. 최초 revision은 0이다. 발급한 등록표·정책 버전은 내용을 바꿀 수 없다. 설정 변경은 새 버전으로 기록한다.
+3. `action=event`, `event`로 원천 이벤트를 전달한다. 미등록 경로는 `pending_source`, 비대상은 `skipped_out_of_scope`, 잘못된 키는 `pending_source_key`로 보류한다. 일반 콘텐츠 전달은 이 API가 변경하지 않는다.
+4. `action=manual`로 현재 `item_unique_key`, `field`, `value`, `input_revision`, `policy_version`을 명시하여 확정한다. 확정자는 인증된 관리자다. 새 입력·정책에서는 이전 수동값을 발행하지 않고 재확정을 요구한다. `automatic=true`로 자동 처리 전환도 명시할 수 있다.
+5. `action=golden`과 `item_unique_key`로 현재 수동 확정 항목만 정답에 등록한다. SFT도 현재 정책·입력·사전 버전과 확정 근거가 맞는 항목만 사용한다.
+6. `POST /eval-run-start`에 `policy_version`과 평가 전에 합의한 `protocol`을 전달한다. 정답·실행 명세·목표·허용 오차를 저장하며 재개할 때 현재 설정이나 정답셋으로 바꾸지 않는다.
+7. 검증 완료 후 `action=approve`, `expected_revision`, `evidence`로 담당자 확인과 결과를 등록한다. 모의 모델, 미완료 평가, 다른 정책, 목표 미달은 운영 발행 승인을 거절한다.
+8. `GET /dnm?item_unique_key=...`로 현재 결과를 읽는다. `publishable=true`인 현재 입력·정책 묶음만 소비할 수 있다. `history=1`은 관리자 이력 조회다.
+
+## 원천 이벤트와 등록표
+
+원천 이벤트의 필수 값은 `event_id`(실제 이벤트 식별자), `source_revision`(원천의 단조 증가 정수), `route_id`(실제 경로 식별자), `content`, `source_fields`다. 임의 원천키·원천 revision을 생성해서는 안 된다. 제목·본문과 실제 투영 보조 입력으로 입력 지문을 계산한다. 표시 출처만 바뀌면 입력 버전은 바뀌지 않는다.
+
+등록표는 `version`, `entries`로 구성한다. 경로별 필수 값:
+
+| 필드 | 의미 |
+|---|---|
+| route_id | 검증된 실제 인입 경로 |
+| ingestion_class | partner_news / search_news / other |
+| matches | 원천 필드별 `{provided: boolean, value: ...}`. 미제공·null·빈 문자열·unknown 구별 |
+| effective_from | 시간대를 포함한 적용 시작 시각 |
+| owner / evidence | 담당자와 표본·매핑 검증 근거 |
+| approved_by / approved_at | 실제 승인자와 확인 시각 |
+| unique_key_verified | 미등록 프리픽스 키의 유효성·유일성 검증 여부 |
+
+프리픽스·표시 서비스명으로 수집 분류를 추정하지 않는다. 실제 매핑은 배포물에 포함하지 않으며 등록표 관리자에게 받은 근거로 등록한다. 같은 원천 revision에 다른 이벤트를 보내면 충돌이다. 새 revision 없이 원문을 조용히 교체하지 않는다.
+
+## 작업과 발행
+
+원천키·입력 지문·정책 버전·메타 항목이 작업을 식별한다. 호출 전 DB에 시도를 예약하여 중복 실행을 막는다. 최초 포함 최대 3회이며 프로세스 재시작·대상 복귀도 횟수를 초기화하지 않는다. 네트워크 라이브러리의 추가 재시도와 모델 자동 대체는 이 경로에서 사용하지 않는다. 만료된 실행 예약의 이전 응답은 이력만 남긴다.
+
+네 항목은 독립 실행된다. 완료 항목은 즉시 상태에 반영하고 미완료 항목을 기다리지 않는다. 현재 입력·정책이 달라진 응답은 해당 묶음 이력에만 저장한다. 결과 변경·대상 철회·복귀는 `publication_revision`을 증가시킨다. 등록표·정책 변경은 현재 조회 또는 이벤트 처리 시 재검증하며, 승인 갱신 전에는 `publishable=false`다.
+
+`dnm.consumer_row`는 소비처가 확인한 현재 원천키·입력·정책과 발행 결과를 결속한다. 토픽은 이 결속이 없거나 발행 보류·철회 상태인 DNM 결과를 사용하지 않는다. 원천 삭제·제재·운영 홀드는 별도 필수 제한이다. 물리적인 외부 이벤트 발송과 벨루가 소비처의 구독 연결은 이 저장소의 관리자 API와 별개이며 실제 경로 매핑 검증이 필요하다.
+
+되돌리기는 `action=rollback`, `item_unique_key`, `policy_version`, `expected_publication_revision`이다. 승인 기록의 되돌릴 정책이면서 **현재 입력**에 해당하는 묶음만 선택하고 새 발행 순번을 발급한다. 원문이 다른 과거 결과는 복구하지 않는다.
+
+## 평가와 승인 증빙
+
+`protocol`은 실제 `sample_size`, `targets`, `tolerances`를 포함한다. 목표는 지표별 `{min: 수치}` 또는 `{max: 수치}`, 허용 오차는 같은 지표별 0 이상의 수치다. 필수 지표는 `intent_f1`, `cat_hf1`, `ent_f1`, `summary_sim`, `empty_rate`, `cost_usd`, `latency_p95_ms`다. 승인된 목표 없이 기본 수치를 넣지 않는다. 라벨별 오탐·누락·대표값·무값과 경계 표본은 평가 상세와 담당자 결과 링크로 검수한다.
+
+`evidence`는 동일한 표본·목표·허용 오차, `evaluation_run`, `policy_version`, `source_registry_version`, `applies_at`, `rollback_policy_version`, `rollback_result`를 포함한다. `platform_planning`과 `datahub` 각각에 `owner`, `result_link`, `confirmed_at`을 기록한다. 시각은 시간대가 있는 ISO 형식이다. 입력은 담당자가 제공한 기록이며 도구가 담당자 확인을 대신하지 않는다.
+
+실행 코드는 배포 파일의 지문까지 고정한다. 재개 시 코드가 바뀌거나 모델 연결 주소가 달라졌으면 새 평가를 요구한다. 런 시작 이후 일반 프롬프트·설정·정답 변경은 진행 중 런에 반영되지 않는다. 새 고정 평가의 리드문 지표는 `bigram_f1`로 명시·고정한다. 리포트를 조회할 때 임베딩 모델을 새로 호출하거나 점수 방식을 바꾸지 않는다. 이 방식의 한계를 검토한 뒤 목표를 합의해야 하며, 과거 임베딩 점수와 직접 비교하지 않는다. DNM 정답과 평가 결과는 원천키·입력·정책으로 식별하여 본문이 같은 다른 원천을 합치지 않는다.
+
+## 토픽 승인과 되돌리기
+
+토픽 쓰기는 먼저 `action=preview_action`, `request={action,...,expected_revision}`로 변경 후 조건·상태·후보·표본·ID 별칭·등록된 외부 참조를 확인한다. 실제 요청은 같은 내용에 `preview_token`을 추가한다. 설정·후보·사전·기간이 바뀌면 다시 확인해야 하며 DB도 이전 설정과 일치할 때만 원자적으로 저장한다.
+
+변경 응답의 `undo_revision`을 `action=undo`, `expected_revision`, `undo_revision`에 전달한다. 이후 편집이 있으면 되돌리지 않는다. 병합은 전체 조건 묶음의 OR를 보존하고 초안으로 저장한다. 다른 기간·원천·개체 속성 조건은 먼저 조정해야 한다. 등록된 외부 참조는 표시·보존하며 외부 서비스를 자동 변경하지 않는다.
+
+복합 자연어는 all/any/not 구조를 보존한다. 필수 CP 미등록·조건 미확정·비중 조절 요청은 확인 대기로 남긴다. 비중 조절을 포함/제외로 자동 바꾸지 않는다. 자동 비활성 기간은 운영자가 설정했을 때 적용한다.
+
+## DB 설치와 검증 범위
+
+배포 전에 `supabase/migrations/20260930004533_versioned_policy_state.sql`을 적용해야 한다. 기존 보고서 테이블에 서비스 역할 전용 compare-and-swap 함수를 추가하며 기존 행은 다시 쓰지 않는다. 공개·인증 사용자 역할에는 실행 권한을 부여하지 않는다. 함수가 없거나 저장 충돌이 나면 직접 REST 쓰기로 우회하지 않는다.
+
+`20260930005147_restrict_direct_table_access.sql`은 실제 앱 구조에 맞춰 `public.prism_*` 표와 시퀀스를 서버의 `service_role` 전용으로 제한한다. 브라우저는 JWT를 검증하는 Python API를 사용한다. 구형 직접 접근 정책의 `USING (true)`와 사용자 자신의 역할·팀을 바꿀 수 있던 경로를 제거하며 RLS는 유지한다. 새 Prism 표도 같은 권한 경계를 적용해야 한다. 실행 SQL 검증은 `supabase/tests/`에 있다.
+
+DNM 상태는 기존 팀별 reports 저장소를 사용한다. 원천 이벤트 전체를 일반 콘텐츠 표에 자동 등록하지 않는다. 원천별 이력량·상태 JSON 크기·경합률은 실제 인입 규모가 확정되면 측정해야 하며 대량 이력 분리와 보관 기간은 원천 운영 정책에 맞춰 정한다. 합성 회귀 테스트는 모델 품질이나 실제 운영 지연·비용의 승인 근거가 아니다.

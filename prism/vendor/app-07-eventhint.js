@@ -30,6 +30,8 @@ window.PRISM_APP_PARTS.push(() => ({
       // ── 말로 만들기(스펙 132112 화면 1): 문장 → suggest → preview → 칩 · 건수 · 표본 · 문장을 보태 다듬기 ──
       _applySuggest(s) {
         const st = this.studio; let negN = 0;
+        st.condition_expr = s.condition_expr || null;
+        if (st.condition_expr) ['cats', 'intents', 'keywords', 'srcs'].forEach(k => { st[k] = []; st.req[k] = []; st.neg[k] = []; });
         ['cats', 'intents', 'keywords', 'srcs'].forEach(dim => {
           st[dim] = st[dim] || []; st.req[dim] = st.req[dim] || []; st.neg[dim] = st.neg[dim] || [];
           (s[dim] || []).forEach(v => { if (!st[dim].includes(v)) st[dim].push(v); });
@@ -66,7 +68,8 @@ window.PRISM_APP_PARTS.push(() => ({
         return out;
       },
       _chipRemove(c) {
-        if (c.fixed) return;                 // 기본 제외 칩(2-19): 늘 보이고 문장으로만 풀린다
+        if (this.studio.condition_expr && !c.feed) { this.studioMsg = '묶음 조건은 말로 다듬거나 새로 만들기로 변경하세요'; return false; }
+        if (c.fixed) return false;                 // 기본 제외 칩(2-19): 늘 보이고 문장으로만 풀린다
         const st = this.studio;
         if (c.feed) { const fd = Object.assign({}, st.feed || {}); const cur = fd[c.f]; if (Array.isArray(cur)) fd[c.f] = cur.filter(x => x !== c.x); else if (c.f === 'base_excl') fd.base_excl = true; else fd[c.f] = (typeof cur === 'number') ? 0 : ''; st.feed = fd; }
         else if (c.dim === 'eattrs') st.eattrs = st.eattrs.filter(x => x !== c.v);
@@ -99,6 +102,7 @@ window.PRISM_APP_PARTS.push(() => ({
         try {
           // 누적 해석: 문장 전체를 다시 풀되, 사용자가 뺀 칩은 되살리지 않는다
           const r = await this._studioPost({ action: 'suggest', text: sentences.join(' '), model: mid });
+          if (!r || !r.ok) { this.studioMsg = (r && r.error) || '조건을 확인해 주세요'; this.talk.busy = false; return; }
           const prevKeys = new Set(this._talkChips().map(c => c.key));   // 직전 턴 상태(새 칩 표시용)
           this._applySuggest((r && r.suggest) || {});
           if (!this.studio.name.trim()) this.studio.name = s.replace(/[.。!?]+$/, '').slice(0, 40);
@@ -113,7 +117,7 @@ window.PRISM_APP_PARTS.push(() => ({
         } catch (e) { this.studioMsg = '해석 실패 · 다시 시도하세요'; }
         this.talk.busy = false;
       },
-      async talkDrop(c) { this._chipRemove(c); this.talk.dropped.push(c); await this._talkRefresh(); },
+      async talkDrop(c) { if (this._chipRemove(c) === false) return; this.talk.dropped.push(c); await this._talkRefresh(); },
       talkReset() { this.talk = { turns: [], input: '', busy: false, dropped: [], help: false }; this.studioReset(); },
       talkEdit(g) {
         this.studioEdit(g); this.studioManual = false;
@@ -192,12 +196,19 @@ window.PRISM_APP_PARTS.push(() => ({
             const sv = res.saved || {};
             this.topicMsg = sv.locked ? '지금 데이터에 0건이라 켤 수 없어요 · 초안 그대로' : ({ paused: '일시정지했어요 · 건수는 계속 세고 유통만 멈춰요', active: '켰어요', archived: '보관했어요 · 보관 필터에서 복구', draft: '초안으로 돌렸어요' }[sv.status] || '');
             // 되돌리기(4-42): 확인창 없이 바로 바꾸는 대신 알림줄에서 직전 상태로 돌린다
-            this.topicUndo = (!undo && !sv.locked && sv.status !== from) ? { id, from } : null;
+            this.topicUndo = (!undo && !sv.locked && sv.status !== from) ? { id, from, revision: res.undo_revision } : null;
           } else this.topicMsg = (res && res.error) || '상태 변경 실패';
         } catch (e) { this.topicMsg = '상태 변경 실패 · 다시 시도하세요'; }
         this.topicBusy = '';
       },
-      topicUndoDo() { const u = this.topicUndo; if (!u) return; this.topicUndo = null; return this.topicStatusSet({ id: u.id }, u.from, true); },
+      async topicUndoDo() {
+        const u = this.topicUndo; if (!u) return;
+        try {
+          const r = await this._studioPost({ action: 'undo', undo_revision: u.revision, expected_revision: u.revision });
+          if (r.error) this.topicMsg = r.error;
+          else { this.topicData = r; this.topicUndo = null; this.topicMsg = '되돌렸습니다'; }
+        } catch (e) { this.topicMsg = '되돌리기 실패'; }
+      },
       // ── 현황 행 펼침(4-41): 조건 · 기록 · 개별 제외 · 최근 샘플 3건 · 동작 ──
       topicOpenToggle(g) { const id = g.id || g.cluster_id; this.topicOpen = (this.topicOpen === id) ? '' : id; this.topicRenameDraft = g.name || ''; this.topicMergeInto = ''; },
       topicExcl(id) { return this.exclusionRows().filter(e => e.tid === id); },
@@ -230,7 +241,7 @@ window.PRISM_APP_PARTS.push(() => ({
         const def = (this.topicData.customDefs || []).find(d => d.id === g.id) || {};
         const rq = def.req || { cats: [], intents: [], keywords: [] };
         const ng = def.neg || { cats: [], intents: [], keywords: [] };
-        this.studio = { name: def.name || g.name || '', prompt: def.prompt || g.prompt || '', cats: [...(def.cats || [])], intents: [...(def.intents || [])], keywords: [...(def.keywords || [])], srcs: [...(def.srcs || [])], feed: Object.assign({}, def.feed || {}), eattrs: [...(def.eattrs || [])], kwInput: '', eaKey: 'gender', eaVal: '', editId: g.id, auto: { cats: [], intents: [], keywords: [] }, req: { cats: [...(rq.cats || [])], intents: [...(rq.intents || [])], keywords: [...(rq.keywords || [])], srcs: [...(rq.srcs || [])] }, neg: { cats: [...(ng.cats || [])], intents: [...(ng.intents || [])], keywords: [...(ng.keywords || [])], srcs: [...(ng.srcs || [])] } };
+        this.studio = { condition_expr: def.condition_expr || null, external_refs: def.external_refs || [], name: def.name || g.name || '', prompt: def.prompt || g.prompt || '', cats: [...(def.cats || [])], intents: [...(def.intents || [])], keywords: [...(def.keywords || [])], srcs: [...(def.srcs || [])], feed: Object.assign({}, def.feed || {}), eattrs: [...(def.eattrs || [])], kwInput: '', eaKey: 'gender', eaVal: '', editId: g.id, auto: { cats: [], intents: [], keywords: [] }, req: { cats: [...(rq.cats || [])], intents: [...(rq.intents || [])], keywords: [...(rq.keywords || [])], srcs: [...(rq.srcs || [])] }, neg: { cats: [...(ng.cats || [])], intents: [...(ng.intents || [])], keywords: [...(ng.keywords || [])], srcs: [...(ng.srcs || [])] } };
         this.studioMsg = ''; this.studioPreviewNow();
         try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) {}
       },

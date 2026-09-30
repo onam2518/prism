@@ -6,6 +6,7 @@ import os
 import sys
 import tempfile
 import unittest
+from tests.topic_support import approved_action
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -43,7 +44,7 @@ class TestTalkRecordContract(unittest.TestCase):
     def test_turns_model_reason_and_similar(self):
         from prism.config import Config
         S = self.S
-        td = S.topic_studio_action({"action": "save", "talk": True, "def": {
+        td = approved_action({"action": "save", "talk": True, "def": {
             "name": "경제 심층분석", "prompt": "경제 심층분석만 / 광고는 빼줘",
             "cats": ["Business and Finance"], "keywords": ["삼성전자"],
             "turns": [{"text": "경제 심층분석만", "model": "", "via": "llm",
@@ -58,12 +59,12 @@ class TestTalkRecordContract(unittest.TestCase):
         self.assertEqual(d["turns"][0]["via"], "llm")
         # 4-45: 해석 모델 기록이 빈 문자열이 되지 않는다(마지막 턴 모델 · 없으면 시스템 기본)
         self.assertEqual(d["talk_model"], "solar-pro2")
-        d2 = S.topic_studio_action({"action": "save", "talk": True, "def": {
+        d2 = approved_action({"action": "save", "talk": True, "def": {
             "name": "무모델", "cats": ["Business and Finance"]}})["customDefs"]
         self.assertEqual(next(x for x in d2 if x["name"] == "무모델")["talk_model"], Config.load().model)
 
         # 4-44: 저장 전(미리보기)에도 걸린 이유와 가까운 기존 토픽이 응답에 실린다
-        out = S.topic_studio_action({"action": "preview", "similar": True, "def": {
+        out = approved_action({"action": "preview", "similar": True, "def": {
             "name": "경제 심층분석 모음", "prompt": "경제 심층분석만 / 광고는 빼줘",
             "cats": ["Business and Finance"], "keywords": ["삼성전자"]}})
         pv = out["preview"]
@@ -71,24 +72,24 @@ class TestTalkRecordContract(unittest.TestCase):
         self.assertTrue(core["samples"][0]["why"])
         self.assertEqual([s["name"] for s in pv["similar"]], ["경제 심층분석"])
         # 요청하지 않으면 유사도 계산을 돌리지 않는다(임베딩 호출 절약)
-        self.assertNotIn("similar", S.topic_studio_action(
+        self.assertNotIn("similar", approved_action(
             {"action": "preview", "def": {"name": "x", "cats": ["Business and Finance"]}})["preview"])
 
     def test_turns_history_is_preserved_on_resave(self):
         """재저장(말로 다듬기·직접 손보기)해도 저장된 대화 기록은 사라지지 않고 새 턴만 뒤에 붙는다(4-38)."""
         S = self.S
         first = [{"text": "경제 심층분석만", "model": "solar-pro2", "via": "llm", "before": ["cats:Business and Finance"], "after": ["cats:Business and Finance"]}]
-        td = S.topic_studio_action({"action": "save", "talk": True, "def": {
+        td = approved_action({"action": "save", "talk": True, "def": {
             "name": "기록 보존", "cats": ["Business and Finance"], "turns": first}})
         d = next(x for x in td["customDefs"] if x["name"] == "기록 보존")
         # 말로 다듬기: 클라이언트가 기존 턴을 이어 보내도 중복 없이 · 새 턴만 추가
-        td2 = S.topic_studio_action({"action": "save", "talk": True, "def": {
+        td2 = approved_action({"action": "save", "talk": True, "def": {
             "id": d["id"], "name": "기록 보존", "cats": ["Business and Finance"],
             "turns": first + [{"text": "광고는 빼줘", "model": "solar-pro2", "via": "heuristic", "before": [], "after": []}]}})
         d2 = next(x for x in td2["customDefs"] if x["id"] == d["id"])
         self.assertEqual([t["text"] for t in d2["turns"]], ["경제 심층분석만", "광고는 빼줘"])
         # 직접 손보기(turns 없이 저장): 기록이 지워지지 않는다
-        td3 = S.topic_studio_action({"action": "save", "def": {"id": d["id"], "name": "기록 보존(손봄)", "cats": ["Business and Finance"]}})   # 데이터 없는 분야를 더하면 0건 잠금(초안)이라 이름만 바꾼다
+        td3 = approved_action({"action": "save", "def": {"id": d["id"], "name": "기록 보존(손봄)", "cats": ["Business and Finance"]}})   # 데이터 없는 분야를 더하면 0건 잠금(초안)이라 이름만 바꾼다
         d3 = next(x for x in td3["customDefs"] if x["id"] == d["id"])
         self.assertEqual([t["text"] for t in d3["turns"]], ["경제 심층분석만", "광고는 빼줘"])
 

@@ -180,6 +180,8 @@ class LLMClient:
     _PARAM_ADAPT = {}                          # {bare_model: set(적응)} · 프로세스 전역(멱등 갱신이라 GIL 로 충분)
 
     def _learn_param(self, name: str):
+        if getattr(self, "frozen_parameters", False):
+            return
         self._adapt.add(name)
         bare = str(self.model or "").split("/")[-1]
         LLMClient._PARAM_ADAPT.setdefault(bare, set()).add(name)
@@ -294,7 +296,7 @@ class LLMClient:
                         # 원인 미상 400 이면 그것부터 빼고 1회 재시도한다(보수적 = 종전 동작 복귀).
                         # 콘텐츠 필터·입력 초과로 분류되는 400 은 여기 오지 않는다(오탐 방지).
                         learned = "no_cache_key"
-                    if learned:
+                    if learned and not getattr(self, "frozen_parameters", False):
                         self._learn_param(learned)
                         retries += 1
                         last_err = e

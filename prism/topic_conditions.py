@@ -23,24 +23,26 @@ def sanitize(expr, depth=0):
     field = _ALIASES.get(expr.get("field"), expr.get("field"))
     op = expr.get("op", "in")
     values = expr.get("values", [expr["value"]] if "value" in expr else [])
-    if field not in _FIELDS or op not in ("in", "eq") or not isinstance(values, list):
+    if field not in _FIELDS or op not in ("in", "eq", "entity_match") or not isinstance(values, list):
         raise ValueError("지원하지 않는 조건 필드·연산자입니다")
     if not 1 <= len(values) <= 50 or any(not isinstance(v, str) or not v.strip() for v in values):
         raise ValueError("조건값은 비어 있지 않은 문자열 목록이어야 합니다")
+    if op == "entity_match" and field != "entities":
+        raise ValueError("entity_match는 엔티티 조건에만 사용할 수 있습니다")
     if op == "eq" and len(values) != 1:
         raise ValueError("eq 조건은 값 하나만 사용합니다")
     return {"field": field, "op": op, "values": list(dict.fromkeys(values))}
 
 
-def evaluate(expr, row):
+def evaluate(expr, row, ent_keys=None):
     if "all" in expr or "any" in expr:
         k = "all" if "all" in expr else "any"
-        vals = [evaluate(e, row) for e in expr[k]]
+        vals = [evaluate(e, row, ent_keys) for e in expr[k]]
         if k == "all":
             return False if False in vals else None if None in vals else True
         return True if True in vals else None if None in vals else False
     if "not" in expr:
-        v = evaluate(expr["not"], row)
+        v = evaluate(expr["not"], row, ent_keys)
         return None if v is None else not v
     im = row.get("item_meta") or {}
     field = expr["field"]
@@ -51,8 +53,7 @@ def evaluate(expr, row):
     else:
         # 명시된 상태·정책이 미확정/구버전이면 값이 남아 있어도 활용하지 않는다.
         status = (im.get("meta_status") or {}).get(field)
-        version = im.get("policy_version")
-        if status not in (None, "success") or (version and version != "dnm-common-2026-09-29-r3"):
+        if status not in (None, "success") or not MC.current_meta(row):
             return None
         values = (set(MC.entity_names(im.get(field))) if field == "entities" else
                   set(MC.category_paths(im.get(field))) if field == "content_category" else
@@ -61,4 +62,25 @@ def evaluate(expr, row):
             values |= {v.split(" / ")[0] for v in values}
     if not values:
         return None
+    if field == "entities" and expr.get("op") == "entity_match":
+        keys = ent_keys or {}
+        ids = {keys[v] for v in values if v in keys}
+        return any((keys[v] in ids if v in keys else any(v.lower() in name.lower() for name in values))
+                   for v in expr["values"])
+    if field == "source":
+        return bool({v.lower() for v in values}.intersection(v.lower() for v in expr["values"]))
     return bool(values.intersection(expr["values"]))
+
+
+def definition_expr(definition):
+    clauses = []
+    if definition.get("condition_expr"):
+        clauses.append(sanitize(definition["condition_expr"]))
+    else:
+        clauses.extend({"field": field, "op": "entity_match" if axis == "keywords" else "in", "values": [value]}
+                       for axis, field in _ALIASES.items() for value in definition.get(axis, []))
+    clauses.extend({"not": {"field": _ALIASES[axis], "op": "entity_match" if axis == "keywords" else "in", "values": values}}
+                   for axis, values in (definition.get("neg") or {}).items() if values and axis in _ALIASES)
+    if not clauses:
+        raise ValueError("비어 있는 토픽은 병합할 수 없습니다")
+    return sanitize({"all": clauses})

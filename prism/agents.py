@@ -25,8 +25,12 @@ def _evidence_text(obj) -> str:
 def run_quality(llm, content, routing, fewshot: str = "") -> tuple[QualityMeta, list]:
     """단일 좁힌 콜(기본). active set 으로 규칙 적재를 줄여 Solar 규칙망각 완화.
     fewshot: 쿡북 Ch4 few-shot 예시 블록(모델 레시피로 결정)."""
-    sys = P.quality_system(routing.active_quality_metas, routing.service_group,
-                           examples=fewshot)
+    execution = getattr(llm, "execution", None)
+    if execution is not None:
+        from .execution import quality_key
+        sys = execution["snapshot"]["quality"][quality_key(routing)]
+    else:
+        sys = P.quality_system(routing.active_quality_metas, routing.service_group, examples=fewshot)
     obj, res = llm.complete_json(sys, P.quality_user(content), tag="quality")
     grade = obj.get("finalGrade")
     ev = _evidence_text(obj)
@@ -101,9 +105,11 @@ def _retry_hint(what: str, bad_values: list, allowed: list) -> str:
 
 
 def run_item(llm, content, parallel: bool = False) -> tuple[ItemMeta, list]:
-    if META_CFG.get("four_calls", True):
+    execution = getattr(llm, "execution", None)
+    if (execution["snapshot"]["four_calls"] if execution is not None else META_CFG.get("four_calls", True)):
         return _run_item_calls(llm, content, parallel=parallel)
-    sys = P.item_system(content, getattr(llm, "model", "") or "")
+    sys = (execution["snapshot"]["single_system"] if execution is not None else
+           P.item_system(content, getattr(llm, "model", "") or ""))
     obj, res = llm.complete_json(sys, P.item_user(content), tag="item")
     im = ItemMeta(
         summary=obj.get("summary", ""),
@@ -145,12 +151,21 @@ def _run_item_calls(llm, content, parallel: bool = False) -> tuple[ItemMeta, lis
     revision = hashlib.sha256(json.dumps(input_snapshot, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     manifest = {"input_revision": revision, "input_aux": content.input_aux,
                 "response_schema_version": "common-meta-v2", "calls": {}}
+    execution = getattr(llm, "execution", None)
+    if execution is not None:
+        from .execution import digest
+        manifest["execution_version"] = digest(execution["snapshot"])
     statuses = {}
     routes, systems, config_errors = {}, {}, set()
     for call in CALL_ORDER:
         try:
-            routes[call] = _call_llm(llm, call)
-            systems[call] = P.call_system(content, call, getattr(routes[call], "model", "") or "")
+            execution = getattr(llm, "execution", None)
+            if execution is not None:
+                routes[call] = execution["routes"][call]
+                systems[call] = execution["snapshot"]["calls"][call]["system"]
+            else:
+                routes[call] = _call_llm(llm, call)
+                systems[call] = P.call_system(content, call, getattr(routes[call], "model", "") or "")
         except Exception:
             config_errors.add(call)
     sinks = {c: [] for c in CALL_ORDER}            # 호출별 트레이스(병렬이어도 적재 순서는 고정)

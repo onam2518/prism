@@ -192,10 +192,38 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       // ── 토픽 스튜디오 ──
       async _studioPost(payload) {
-        const r = await (await this._afetch('/topic-studio', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(payload) })).json();
-        return r;
+        const send = async p => (await this._afetch('/topic-studio', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(p) })).json();
+        if (['preview', 'suggest'].includes(payload.action)) return send(payload);
+        const request = Object.assign({ expected_revision: (this.topicData || {}).revision || 0 }, payload);
+        const p = await send({ action: 'preview_action', request });
+        if (!p || !p.ok) return p;
+        const states = { active: '활성', draft: '초안', paused: '일시정지', archived: '보관', deleted: '삭제' };
+        const topics = ((p.preview || {}).topics || []).filter(t => !request.id || [request.id, request.into].includes(t.id));
+        const lines = topics.map(t => {
+          const c = t.conditions || {};
+          const terms = ['cats', 'intents', 'keywords', 'srcs'].flatMap(k => c[k] || []);
+          const excluded = Object.values(c.neg || {}).flat();
+          return t.name + ' · ' + (states[t.status] || t.status) + ' · ' + t.count + '건' +
+            (terms.length ? '\n조건: ' + terms.join(' · ') : '') +
+            (c.condition_expr ? '\n묶음 조건: ' + this._conditionText(c.condition_expr) : '') +
+            (excluded.length ? '\n제외: ' + excluded.join(' · ') : '') +
+            (Object.keys(c.feed || {}).length ? '\n원천·기간: ' + (t.feed_labels || []).map(x => x.v).join(' · ') : '') +
+            (t.samples.length ? '\n표본: ' + t.samples.map(x => x.title).join(' / ') : '') +
+            (t.external_refs.length ? '\n연결된 참조: ' + t.external_refs.join(' · ') : '');
+        });
+        if (request.action === 'settings') {
+          const labels = { co_min: '사건형 최소 동시 출현 수', inactive_days: '자동 비활성 기간(일)', single_min: '엔티티형 최소 콘텐츠 수' };
+          lines.unshift('설정 변경\n' + Object.entries(request.settings || {}).map(([k, v]) => (labels[k] || k) + ': ' + v).join('\n'));
+        }
+        if (!window.confirm((lines.join('\n\n') || '토픽 설정 변경') + '\n\n이 미리보기대로 적용할까요?')) return { ok: false, error: '적용을 취소했습니다' };
+        return send(Object.assign(request, { preview_token: p.preview_token }));
       },
-      studioDef() { return { id: this.studio.editId, name: this.studio.name, prompt: this.studio.prompt, cats: this.studio.cats, intents: this.studio.intents, keywords: this.studio.keywords, srcs: this.studio.srcs || [], feed: this.studio.feed || {}, eattrs: this.studio.eattrs, req: this.studio.req, neg: this.studio.neg }; },
+      _conditionText(e) {
+        if (e.all || e.any) return '(' + (e.all || e.any).map(x => this._conditionText(x)).join(e.all ? ' 그리고 ' : ' 또는 ') + ')';
+        if (e.not) return '제외(' + this._conditionText(e.not) + ')';
+        return (e.values || []).join(' 또는 ');
+      },
+      studioDef() { return { id: this.studio.editId, name: this.studio.name, prompt: this.studio.prompt, cats: this.studio.cats, intents: this.studio.intents, keywords: this.studio.keywords, srcs: this.studio.srcs || [], feed: this.studio.feed || {}, eattrs: this.studio.eattrs, condition_expr: this.studio.condition_expr || undefined, external_refs: this.studio.external_refs || [], req: this.studio.req, neg: this.studio.neg }; },
       // 엔티티 속성 조건(개체 사전 축): 'key:value' · 항상 필수(같은 개체 AND · 예: 여성 스포츠인)
       eattrLabel(s) { const i = s.indexOf(':'); const ko = { type: '타입', gender: '성별', occupation: '직업', nationality: '국적', affiliation: '소속', org_kind: '조직', country: '국가', loc_kind: '장소', af_kind: '종류', ev_kind: '종류', domain: '도메인' }; return i < 0 ? s : (ko[s.slice(0, i)] || s.slice(0, i)) + '=' + s.slice(i + 1); },
       studioAddEattr(v) {
@@ -211,6 +239,7 @@ window.PRISM_APP_PARTS.push(() => ({
       // 조건 칩 4상태: off(후보) → sel(선택·관련 묶음) → req(필수·모든 묶음 공통) → neg(제외·걸리면 탈락) → off
       studioState(dim, val) { if ((this.studio.neg[dim] || []).includes(val)) return 'neg'; if (!this.studio[dim].includes(val)) return 'off'; return this.studio.req[dim].includes(val) ? 'req' : 'sel'; },
       studioCycle(dim, val) {
+        if (this.studio.condition_expr) { this.studioMsg = '묶음 조건은 말로 다듬거나 새로 만들기로 변경하세요'; return; }
         const sel = this.studio[dim], req = this.studio.req[dim], neg = this.studio.neg[dim];
         const st = this.studioState(dim, val);
         if (st === 'off') sel.push(val);                                              // off → 선택
@@ -228,6 +257,7 @@ window.PRISM_APP_PARTS.push(() => ({
       coreSamples() { const c = (this.studioPreview.bundles || []).find(b => b.kind === 'core'); return (c && c.samples) || []; },
       _escHtml(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); },
       bundleSummaryText() {
+        if (this.studio.condition_expr) return this._escHtml(this._conditionText(this.studio.condition_expr));
         const bs = (this.studioPreview.bundles) || [];
         const n = (this.topicData && this.topicData.n_contents) || 0;
         if (!bs.length) return '아직 조건이 없어요 · <b>전체 ' + n + '건</b>이 한 묶음입니다';
@@ -237,7 +267,7 @@ window.PRISM_APP_PARTS.push(() => ({
         const ngt = this._escHtml(this.negText());
         return base + '핵심 <b>' + ((core && core.count) || 0) + '건</b>' + (rel ? (' + 관련 묶음 <b>' + rel + '개</b>로 펼쳐집니다') : ' (선택 조건을 더하면 관련 묶음이 생겨요)') + (ngt ? (' · <b>✖ ' + ngt + '</b> 제외') : '');
       },
-      studioAddKw() { const k = (this.studio.kwInput || '').trim(); if (k) { const ni = this.studio.neg.keywords.indexOf(k); if (ni >= 0) this.studio.neg.keywords.splice(ni, 1); if (!this.studio.keywords.includes(k)) this.studio.keywords.push(k); } this.studio.kwInput = ''; this.schedulePreview(); },
+      studioAddKw() { if (this.studio.condition_expr) { this.studioMsg = '묶음 조건은 말로 다듬거나 새로 만들기로 변경하세요'; return; } const k = (this.studio.kwInput || '').trim(); if (k) { const ni = this.studio.neg.keywords.indexOf(k); if (ni >= 0) this.studio.neg.keywords.splice(ni, 1); if (!this.studio.keywords.includes(k)) this.studio.keywords.push(k); } this.studio.kwInput = ''; this.schedulePreview(); },
       topKw() { const sel = this.studio.keywords, ng = this.studio.neg.keywords || []; const all = (this.topicData && this.topicData.catalog && this.topicData.catalog.keywords) || []; return all.filter(k => !sel.includes(k.k) && !ng.includes(k.k)).slice(0, 12); },
       // 스텝 진행 상태 · 필터 요약 · 자동선택 표시
       tStepDone() { const s = this.studio; return (s.name.trim() ? 1 : 0) + (s.prompt.trim() ? 1 : 0) + ((s.cats.length || s.intents.length || s.keywords.length) ? 1 : 0); },
@@ -260,7 +290,8 @@ window.PRISM_APP_PARTS.push(() => ({
         const mid = String(this.studioModel || '').split('|').pop();
         try {
           const r = await this._studioPost({ action: 'suggest', text, model: mid });
-          const s = (r && r.suggest) || {};
+          if (!r || !r.ok) { this.studioMsg = (r && r.error) || "조건을 확인해 주세요"; this.studioSuggesting = false; return; }
+          const s = r.suggest || {};
           const { n } = this._applySuggest(s);   // 축 · 제외 · 필수 · 출처 · 원천 조건 반영(말로 만들기와 공용)
           const viaLlm = r && r.via === 'llm';
           const src = viaLlm ? ('모델(' + (mid || '기본') + ')') : '규칙';

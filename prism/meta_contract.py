@@ -77,7 +77,8 @@ def preserve_manual(previous, incoming):
         if field not in FIELDS:
             continue
         incoming[field] = previous.get(field, "" if field == "summary" else [])
-        if (evidence or {}).get("input_revision") != incoming.get("input_revision"):
+        if ((evidence or {}).get("input_revision") != incoming.get("input_revision")
+                or previous.get("policy_version") != incoming.get("policy_version")):
             if field not in required:
                 required.append(field)
             if field not in hold:
@@ -89,3 +90,14 @@ def preserve_manual(previous, incoming):
     incoming.update(manual_fields=manual, meta_status=statuses,
                     manual_review_required=required, hold_fields=hold)
     return incoming
+
+
+def current_meta(row):
+    im = row.get("item_meta") or {}
+    if im.get("contract_version") == "dnm-common-2026-09-29-r3":
+        return (im.get("publishable") is True and im.get("scope_status") == "eligible"
+                and bool(row.get("_dnm_policy_version"))
+                and im.get("policy_version") == row["_dnm_policy_version"]
+                and im.get("input_revision") == row.get("_dnm_input_revision")
+                and im.get("item_unique_key") == row.get("_dnm_item_unique_key"))
+    return not im.get("policy_version") or im["policy_version"] == "dnm-common-2026-09-29-r3"

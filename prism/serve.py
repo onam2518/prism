@@ -1654,6 +1654,20 @@ def _g_topic_drill(h, q):
                        reviewer=(h._bearer_uid() or q.get("reviewer", [""])[0]))
 
 
+@_get_route("/dnm", admin=True)
+def _g_dnm(h, q):
+    from .dnm import Runtime
+    runtime = Runtime(get_store(), h._req_team())
+    key = q.get("item_unique_key", [""])[0]
+    if key:
+        result = {"ok": True, "publication": runtime.current(key)}
+        if q.get("history", [""])[0] == "1":
+            result["history"] = (runtime._get(runtime._key(key)) or {}).get("bundles", {})
+        return result
+    return {"ok": True, "control": runtime._get("dnm_control") or {"revision": 0},
+            "status": "configured" if runtime._get("dnm_control") else "pending_configuration"}
+
+
 @_get_route("/topics")
 def _g_topics(h, q):
     team = h._req_team()
@@ -1812,7 +1826,7 @@ def _g_prompt_snapshot(h, q):
 
 def _with_quality(snap: dict) -> dict:
     """품질 프롬프트를 기록하기 전(2026-09-09 이전) 스냅샷·런 기록은 현재 기준 품질로 채우고 그렇게 표시한다."""
-    if snap.get("quality"):
+    if snap.get("quality") or snap.get("execution"):
         return snap
     try:
         q = LO.quality_prompts(snap.get("model") or "")
@@ -2536,7 +2550,8 @@ def _p_eval_run_start(h, body):
     data = json.loads(body or b"{}")
     return eval_run_start(h._req_team(), model=(data.get("model") or "").strip(),
                           scope=(data.get("scope") or "all").strip(),
-                          created_by=h._bearer_uid() or "")
+                          created_by=h._bearer_uid() or "",
+                          policy_version=str(data.get("policy_version") or ""), protocol=data.get("protocol"))
 
 
 @_post_route("/eval-run-resume", gate="admin")       # 중단 런 재개(남은 건만 실행)
@@ -2945,6 +2960,17 @@ def _p_board(h, body):
         return None
     return board_action(data, team=h._req_team(), uid=h._bearer_uid() or "",
                         email=h._bearer_email())
+
+
+@_post_route("/dnm", gate="admin")
+def _p_dnm(h, body):
+    from . import dnmops
+    data = json.loads(body or b"{}")
+    if not isinstance(data, dict):
+        return {"ok": False, "error": "요청은 객체여야 합니다"}
+    return dnmops.action(sys.modules[__name__], data, h._req_team(),
+                         h._bearer_email() or ("local-admin" if not _supa() else ""),
+                         mock=Handler.server_mock)
 
 
 @_post_route("/topic-studio")                        # 토픽 스튜디오: 생성·삭제·튜닝(변경은 관리자) · 미리보기·제안(조회)

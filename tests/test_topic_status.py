@@ -3,6 +3,7 @@ import os
 import tempfile
 import time
 import unittest
+from tests.topic_support import approved_action
 
 
 def _row(title, grade="G", entities=(), intent=(), cats=(), svc="뉴스", src=None, imgs=None, ts=None):
@@ -87,7 +88,7 @@ class TestFeedAndSource(unittest.TestCase):
         from prism.topicops import _row_stats
         now = time.time()
         rows = [_row("옛글", ts=now - 20 * 86400), _row("새글", ts=now - 3600)]
-        old = _row_stats([0], rows, now)
+        old = _row_stats([0], rows, now, {"inactive_days": 14})
         self.assertEqual((old["inactive"], old["signal"]), (True, "비활성"))
         keep = _row_stats([0], rows, now, {"inactive_days": 60})          # 기간은 운영 설정
         self.assertEqual((keep["inactive"], keep["signal"]), (False, "정체 20일"))
@@ -133,7 +134,7 @@ class TestStatusActions(unittest.TestCase):
         self._tmp.cleanup()
 
     def _act(self, **data):
-        return self.S.topic_studio_action(data, mock=True, who="pete")
+        return approved_action(data, mock=True, who="pete")
 
     def _custom(self, r, cid):
         return next(g for g in r["custom"] if g["id"] == cid)
@@ -211,7 +212,8 @@ class TestStatusActions(unittest.TestCase):
         self.assertEqual(merged["status"], "draft")
         self.assertIn(b, merged["aliases"])
         self.assertEqual(set(merged["cats"]), {"Business and Finance", "Entertainment"})
-        self.assertEqual(merged["neg"]["intents"], ["팬덤·화제성"])
+        self.assertEqual(merged["neg"]["intents"], [])
+        self.assertIn("팬덤·화제성", str(merged["condition_expr"]))
         self.assertEqual(next(g["status"] for g in r["custom"] if g["id"] == b), "archived")
         ids = {i for bd in self._custom(r, a)["bundles"] for i in bd["content_ids"]}
         self.assertEqual(len(ids), 0)                 # 전체 조건 재검토 전에는 배포 후보 없음

@@ -60,6 +60,14 @@ class TestButtonsEndToEnd(unittest.TestCase):
         cls._cfg_mod.DEFAULT_CONFIG_PATH = cls._orig_cfg_path
 
     def ok(self, path, obj=None, **kw):
+        if path == "/topic-studio" and obj and obj.get("action") not in ("preview", "suggest", "preview_action"):
+            _, topics = _req(self.port, "/topics")
+            obj = dict(obj, expected_revision=topics.get("revision", 0))
+            _, preview = _req(self.port, path, {"action": "preview_action", "request": obj})
+            if preview.get("ok"):
+                obj["preview_token"] = preview["preview_token"]
+            else:
+                return preview
         status, body = _req(self.port, path, obj, **kw)
         self.assertEqual(status, 200, f"{path} -> HTTP {status}")
         return body
@@ -258,6 +266,8 @@ class TestButtonsEndToEnd(unittest.TestCase):
         snap = self.ok(f"/prompt-snapshot?run={run['id']}")["snapshot"]
         self.assertEqual(snap["run_id"], run["id"])
         self.assertNotIn("by_service", snap["calls"]["intent"])   # 인텐트는 출처 공통 하나(2026-09-22)
+        self.assertEqual(snap["calls"]["intent"]["system"], snap["execution"]["calls"]["intent"]["system"])
+        self.assertTrue(snap["calls"]["intent"]["system"])
         self.assertTrue(self.ok(f"/prompt-export?run={run['id']}").startswith("PK"))
         self.assertTrue(ev.get("ok"), ev)
         self.assertGreaterEqual(ev.get("evaluated", 0), 1)

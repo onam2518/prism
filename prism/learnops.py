@@ -946,6 +946,9 @@ def prompt_files(payload: dict, title: str) -> dict:
               "- 품질 판정만 콘텐츠의 서비스 묶음에 따라 일부가 달라집니다 · 공통부의 {서비스 분기} 자리에 파일 아래 서비스 블록 중 하나가 들어가면 그 묶음의 실제 프롬프트가 됩니다 · ③ 인텐트는 2026-09-22 부터 전 출처 공통 하나입니다",
               "- user 템플릿은 현재 코드 기준 자리표 · 품질의 few-shot 예시는 실행 시 모델별로 붙어 여기엔 없습니다", "",
               "| 파일 | 호출 | 모델 |", "|---|---|---|"] + [f"| {n} | {k} | {m} |" for n, k, m in rows]
+    if payload.get("execution"):
+        files["execution.json"] = json.dumps(payload["execution"], ensure_ascii=False, indent=2)
+        readme.insert(3, "- execution.json은 실행 시점에 고정한 실제 프롬프트·모델·설정입니다. DNM 실행에는 품질 판정 호출이 없습니다.")
     return {"README.md": "\n".join(readme) + "\n", **files}
 
 
@@ -1408,9 +1411,13 @@ def learn_spec_md(team=None, d=None) -> str:
     L.append("전체 서지·설계 근거: LEARNING_DESIGN.md")
     return "\n".join(L)
 
-def _training_expected(exp: dict) -> dict:
+def _training_expected(exp: dict, content=None, policy_version=None) -> dict:
     """학습 가능한 정답 축만 전달하고 검수·이관 표식은 출력 계약에서 제외한다."""
     from . import dictionaries as D
+    from .dnm import training_fields
+    bound = training_fields(content or {}, exp, policy_version)
+    if bound is not None:
+        return bound
     allowed = ("summary", "entities", "intent", "content_category", "finalGrade", "reasons")
     out = {k: exp[k] for k in allowed if k in exp}
     if (exp.get("intent_review") == "needed"
@@ -1429,8 +1436,8 @@ def _sft_system() -> str:
     카테고리 개편 시 재학습 불필요)."""
     from . import dictionaries as D
     return ("주어진 콘텐츠의 메타를 JSON 객체 하나로만 출력하라. 필드: summary(리드문 1문장), "
-            "entities(핵심 개체, 수량 상한 없음), intent(공통 사전의 핵심 분류, 수량 상한 없음), content_category(사전 값만: "
-            + ", ".join(D.IAB_TIER1) + " 또는 'Tier1 / Tier2' 경로), finalGrade(G|R), reasons(문제 사유 목록).")
+            "entities({name,type} 객체 배열, 수량 상한 없음), intent(공통 사전의 핵심 분류, 수량 상한 없음), content_category(사전 값만: "
+            + ", ".join(D.IAB_TIER1) + "의 {tier1,tier2} 객체 배열), finalGrade(G|R), reasons(문제 사유 목록).")
 
 def learn_export(kind: str, team=None):
     """학습데이터 JSONL 추출. kind = sft(골든→지시학습) | dpo(교정 전/후→선호쌍) | rationale(판단근거).
@@ -1441,11 +1448,13 @@ def learn_export(kind: str, team=None):
     lines = []
     if kind == "sft":                                  # LIMA · Llama Guard 방식
         sys_p = _sft_system()
+        control = st.get_report("dnm_control", team=team) if hasattr(st, "get_report") else {}
+        policy_version = ((control or {}).get("policy") or {}).get("policy_version")
         for g in (st.get_golden(team) if hasattr(st, "get_golden") else []):
             content, exp = g.get("content") or {}, g.get("expected") or {}
             if not (content.get("title") or content.get("body")):
                 continue
-            exp = _training_expected(exp)
+            exp = _training_expected(exp, content, policy_version)
             if not exp:
                 continue
             lines.append(json.dumps({"messages": [

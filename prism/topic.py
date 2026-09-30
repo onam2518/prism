@@ -108,6 +108,7 @@ def _hard_allowed(r) -> bool:
             and source_status.get("status") not in ("deleted", "DELETE")
             and source_status.get("state") != "gone"
             and im.get("scope_status") not in ("excluded", "unresolved")
+            and MC.current_meta(r)
             and not (r.get("quality_meta") or {}).get("ops_hold"))
 
 
@@ -294,7 +295,7 @@ def _content_dims(rows, service_names, ent_index=None, ent_keys=None):
         for field in ("entities", "intent", "content_category"):
             status = (im.get("meta_status") or {}).get(field)
             if (status not in (None, "success") or
-                    (im.get("policy_version") and im["policy_version"] != "dnm-common-2026-09-29-r3")):
+                    not MC.current_meta(r)):
                 im[field] = []
         c_cat.append(cat_values(MC.category_paths(im.get("content_category"))))
         c_int.append(set(im.get("intent") or []))
@@ -840,8 +841,11 @@ def _bundle(rows, dims, cid, kind, vs, sample=0, blocked=None, nondist=False, en
 
 def _expression_bundle(rows, dims, d, sample=0, ent_keys=None):
     from .topic_conditions import evaluate
-    blocked = {i for i, row in enumerate(rows) if evaluate(d["condition_expr"], row) is not True}
+    blocked = {i for i, row in enumerate(rows) if evaluate(d["condition_expr"], row, ent_keys) is not True}
     blocked |= _feed_blocked(dims, d.get("feed"))[0] | _neg_blocked(dims, d.get("neg") or {}, ent_keys)
+    if d.get("eattrs"):
+        allowed = set(_match_valueset(dims, [("eattrs", v) for v in d["eattrs"]], ent_keys=ent_keys))
+        blocked |= set(range(len(rows))) - allowed
     b = _bundle(rows, dims, (d.get("id") or "prev") + "-core", "core", [],
                 sample=sample, blocked=blocked, ent_keys=ent_keys)
     b["label"] = "조건식"
