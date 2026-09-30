@@ -841,7 +841,7 @@ def eval_run_report(run_id: int, team=None) -> dict:
     return out
 
 
-def _history_expected(items, legacy=False):
+def _history_expected(items, legacy=False, recovery=None):
     """저장된 기대값만으로 채점 가능 여부를 설명한다. 현재 정답·모델 산출은 섞지 않는다."""
     from . import abtest
     fields = (("intent", "intent_n"), ("content_category", "cat_n"),
@@ -873,7 +873,12 @@ def _history_expected(items, legacy=False):
             else:
                 status = "excluded"
             statuses[key] = status
-        annotated.append({**item, "expected_status": statuses})
+        recovered = ((recovery or {}).get("items") or {}).get(item.get("hash")) or {}
+        values = {k: v for k, v in (recovered.get("values") or {}).items()
+                  if k in dict(fields) and k not in exp}
+        annotated.append({**item, "expected_status": statuses,
+                          "expected_recovery": {"values": values, "id": (recovery or {}).get("id"),
+                                                "at": (recovery or {}).get("at")} if values else None})
     return {"items": annotated, "expected_coverage": {"total": len(items), "fields": coverage,
             "legacy": legacy or bool(items) and all(i["expected_status"]["intent"] == "unrecorded" for i in annotated)}}
 
@@ -882,6 +887,10 @@ def eval_history_detail(kind, run_id=0, round_no=0, key="", team=None):
     """세 종류의 저장된 평가를 같은 모델 열·건별 행 계약으로 읽는다. 모델 호출 없음."""
     from . import learnops as LO
     st = _SV.get_store()
+    def with_recovery(items, legacy=False):
+        recovery = _SV._agg_cached(("golden_meta_recovery", team),
+                                  lambda: st.get_report("golden_meta_recovery", team) or {})
+        return _history_expected(items, legacy=legacy, recovery=recovery)
     missing = {"ok": False, "error": "평가 기록을 찾을 수 없습니다"}
     if kind == "compare":
         if not key:
@@ -890,7 +899,7 @@ def eval_history_detail(kind, run_id=0, round_no=0, key="", team=None):
         if not rep.get("ok"):
             return missing
         return {**rep, "kind": kind, "id": "c" + key, "status": "done",
-                **_history_expected(rep.get("items") or []),
+                **with_recovery(rep.get("items") or []),
                 "version": rep.get("prompt_snapshot_version"), "detail_mode": "all"}
     if kind == "eval":
         rep = eval_run_report(run_id, team)
@@ -911,7 +920,7 @@ def eval_history_detail(kind, run_id=0, round_no=0, key="", team=None):
                           "all_ok": passed, "split": False, "judgment": judges.get(row["hash"])})
         metrics = {k: v for k, v in rep.items() if k != "detail"}
         return {**rep, "kind": kind, "models": [{**metrics, "model": model, "n": rep["evaluated"]}],
-                **_history_expected(items), "detail_mode": "all", "scope": rep["basis"]["scope"],
+                **with_recovery(items), "detail_mode": "all", "scope": rep["basis"]["scope"],
                 "version": rep["basis"]["version"]}
     if kind != "pilot" or not st or not hasattr(st, "autopilot_get"):
         return missing
@@ -944,7 +953,7 @@ def eval_history_detail(kind, run_id=0, round_no=0, key="", team=None):
             "round": round_no, "ts": hh.get("ts") or run.get("ts"), "version": hh.get("version"),
             "status": "reverted" if hh.get("reverted") else "applied", "scope": "fixed",
             "total": len(run.get("golden_hashes") or []), "models": [metrics],
-            **_history_expected(items, legacy=mode != "all"),
+            **with_recovery(items, legacy=mode != "all"),
             "detail_mode": mode, "pre": hh.get("pre"), "delta": hh.get("delta")}
 
 

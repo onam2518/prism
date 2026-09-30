@@ -391,13 +391,19 @@ def build_golden_from_reviews(team=None) -> dict:
     """검수 = 골든 생성: '정확' 신뢰도 가중 다수결 + 카테고리 채워진 콘텐츠 → 골든셋에 **누적**(upsert).
     전체 교체가 아니므로 관리자 등록분(source=manual)과 과거 확정분을 보존하고, 합의가 '수정필요'로
     뒤집힌 검수 유래 골든은 강등(제거)한다. 신규 확정 기여 검수자에게 1회 보상(지연 보상 · von Ahn 2004).
-    정답의 메타 4축(인텐트·분류·리드문·엔티티)은 검수자가 교정한 값만 싣는다(reviewer_fixed_meta).
+    기존 정답은 보존하고, 새 메타는 검수자가 교정·확정한 값만 추가한다.
     반환: 확정 총계·신규·강등·카테고리필요(목록 포함)·불일치·축별 정답 수(meta_n)."""
     from .store import content_hash
     st = _SV.get_store()
     if not (st and hasattr(st, "feedback_map") and hasattr(st, "upsert_golden")):
         return {"ok": False, "error": "지원하지 않는 저장소"}
     rows = _SV.results_rows(team=team)
+    try:
+        previous = {r["hash"]: r for r in st.golden_entries(team, limit=10000)}
+        if len(previous) != st.golden_count(team):
+            raise ValueError("정답셋 전체를 읽지 못했습니다")
+    except Exception:
+        return {"ok": False, "error": "기존 정답 조회 실패 · 정답셋을 변경하지 않았습니다"}
     try:
         fmap = st.feedback_map(team=team)
     except Exception:
@@ -412,11 +418,8 @@ def build_golden_from_reviews(team=None) -> dict:
         finals = _SV.final_verdicts(team)
     except Exception:
         finals = {}
-    try:
-        existing = st.golden_hashes(team)
-        by_source = {r["hash"]: r["source"] for r in st.golden_rows(team, limit=10000)} if hasattr(st, "golden_rows") else {}
-    except Exception:
-        existing, by_source = set(), {}
+    existing = set(previous)
+    by_source = {ch: r.get("source") or "review" for ch, r in previous.items()}
     entries, need_list, no_cat, no_grade, disagree = [], [], 0, 0, 0
     demote = []                                    # 합의가 뒤집힌 검수 유래 골든(강등 대상)
     contributors = {}                              # hash → 정확 판정 검수자 키 목록(신규 확정 보상)
@@ -475,10 +478,15 @@ def build_golden_from_reviews(team=None) -> dict:
             need_list.append({"hash": ch, "title": content.get("title", ""),
                               "service": content.get("displayServiceName", "")})
             continue
-        exp = {"finalGrade": grade, "reasons": qm.get("reasons", []) or []}
+        exp = dict((previous.get(ch) or {}).get("expected") or {})
+        exp.update(finalGrade=grade, reasons=qm.get("reasons", []) or [])
         from .opsreview import human_expected
         if st.get_report("ops_review_" + ch, team) is None:
-            exp.update(fixed.get(ch) or {})
+            corrected = dict(fixed.get(ch) or {})
+            # 정답셋에서 직접 재확정한 인텐트를 오래된 콘텐츠 교정 이력으로 되돌리지 않는다.
+            if exp.get("intent_review") in ("needed", "confirmed") and "intent" in exp:
+                corrected.pop("intent", None)
+            exp.update(corrected)
         exp.update(human_expected(st, ch, team))           # 사람이 고친 축만 정답으로 · 안 고친 축은 키를 빼서 채점 분모에서 제외
         entries.append({"hash": ch, "content": content, "expected": exp})
         contributors[ch] = [v.get("reviewer_id") or v.get("reviewer")

@@ -213,8 +213,8 @@
                     <span class="text-xs text-muted" x-text="evalFilteredItems.length + '건'"></span>
                   </div>
                   <p class="text-xs" x-show="evalExpectedCoverage" x-text="evalExpectedCoverage"></p>
-                  <p class="text-xs text-muted">위 건수는 저장된 결과 기준입니다. 정답은 평가 시작 당시 값이며, 검수로 확정하지 않은 메타는 정답이 없을 수 있습니다. 정답이 없거나 재확정이 필요한 항목은 해당 메타 점수에서 제외됩니다. 등급 일치는 메타의 정확성을 뜻하지 않습니다.</p>
-                  <div class="overflow-auto"><table class="ds-table item-compare-table item-compare-table--metadata" x-bind:style="'--compare-model-count:' + evalCols.length"><colgroup><col class="item-compare-content"><col><template x-for="m in evalCols" x-bind:key="m.model"><col></template></colgroup><thead><tr><th>콘텐츠</th><th>평가 당시 정답</th><template x-for="m in evalCols" x-bind:key="m.model"><th x-text="m.model"></th></template></tr></thead><tbody>
+                  <p class="text-xs text-muted">위 건수와 점수는 평가 당시 저장된 결과 기준입니다. 이후 원본에서 복구한 정답은 별도 표시하며, 당시 점수에는 반영하지 않습니다. 정답이 없거나 재확정이 필요한 항목은 해당 메타 점수에서 제외됩니다. 등급 일치는 메타의 정확성을 뜻하지 않습니다.</p>
+                  <div class="overflow-auto"><table class="ds-table item-compare-table item-compare-table--metadata" x-bind:style="'--compare-model-count:' + evalCols.length"><colgroup><col class="item-compare-content"><col><template x-for="m in evalCols" x-bind:key="m.model"><col></template></colgroup><thead><tr><th>콘텐츠</th><th>정답 · 복구 내역</th><template x-for="m in evalCols" x-bind:key="m.model"><th x-text="m.model"></th></template></tr></thead><tbody>
                     <template x-for="it in evalItems" x-bind:key="it.hash"><tr>
                       <td><span x-text="it.title || it.hash"></span><div class="text-xs text-muted" x-text="it.hash.slice(0,12)"></div>
                         <div class="control-row control-row--compact"><button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="opsOpenCase({hash:it.hash})">현재 콘텐츠·검수 보기</button></div>

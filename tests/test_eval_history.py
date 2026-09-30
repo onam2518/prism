@@ -13,6 +13,8 @@ from prism.store import Store
 
 class TestEvalHistory(unittest.TestCase):
     def setUp(self):
+        serve._agg_bump()
+        self.addCleanup(serve._agg_bump)
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.st = Store(str(Path(tmp.name) / 't.db'))
@@ -63,6 +65,20 @@ class TestEvalHistory(unittest.TestCase):
         self.assertEqual(item['got']['model']['summary'], '모델 산출')
         self.assertEqual(result['expected_coverage']['fields']['summary'], 0)
         self.assertEqual(self.st.eval_results_list(rid)[0]['expected'], original)
+
+    def test_recovered_reference_is_separate_from_frozen_answers(self):
+        rid = self.st.eval_run_create('', 'model', 'all', 1)
+        expected = {'finalGrade': 'G', 'intent': ['평가 당시 값']}
+        self.st.eval_results_add(rid, [{'hash': 'restored', 'expected': expected, 'got': {'summary': '모델 산출'}}])
+        self.st.save_report('golden_meta_recovery', {'id': 'repair-1', 'at': '2026-09-30', 'items': {
+            'restored': {'values': {'intent': ['다른 값'], 'summary': '원본에서 복구한 값', 'finalGrade': 'R'}}}})
+        detail = E.eval_history_detail('eval', rid)
+        item = detail['items'][0]
+        self.assertEqual(item['expected']['intent'], ['평가 당시 값'])
+        self.assertNotIn('summary', item['expected'])
+        self.assertEqual(item['expected_recovery']['values'], {'summary': '원본에서 복구한 값'})
+        self.assertEqual(detail['expected_coverage']['fields']['summary'], 0)
+        self.assertEqual(self.st.eval_results_list(rid)[0]['expected'], expected)
 
     def test_expected_coverage_uses_scoring_rules_and_keeps_values(self):
         items = [

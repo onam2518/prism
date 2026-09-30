@@ -47,6 +47,14 @@ async function run() {
   app.evalItemFilter = 'expected'; app.evalItemSearch = '';
   assert.equal(app.evalItems.length, 1);
   assert.equal(app.evalItemCells(app.evalItems[0])[0].expected, true);
+  const frozen = { intent: ['당시 값'] };
+  const recovered = app.evalItemCells({ expected: frozen, expected_status: { summary: 'missing' },
+    expected_recovery: { values: { summary: '복구한 값', intent: ['덮어쓰면 안 되는 값'] } } })[0];
+  assert.equal(recovered.data.summary, '복구한 값');
+  assert.equal(recovered.data.intent[0], '당시 값');
+  assert.equal(recovered.status.summary, 'recovered');
+  assert.equal(app.evalExpectedNote('recovered'), '복구한 정답 · 당시 점수에는 미반영');
+  assert.equal(frozen.summary, undefined);
   app.evalDetail.expected_coverage.legacy = true;
   assert.equal(app.evalExpectedCoverage, '');
   assert.equal(app.evalMetaText({ entities: [{ name: 'Prism', type: 'OG' }] }, 'entities'), 'Prism (OG)');
