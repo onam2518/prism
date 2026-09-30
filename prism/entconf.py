@@ -69,31 +69,31 @@ def _norm(s) -> str:
     return _STRIP.sub("", unicodedata.normalize("NFC", str(s or ""))).casefold()
 
 
-def entity_confidence(entity: str, content_ref: dict, item_meta: dict) -> float:
-    """엔티티 1개의 확신도(0~1). 모듈 독스트링의 산식 · 순수 함수(결정적)."""
-    e = _norm(entity)
+def _confidence(e, title, summary, body, first, rank):
     if not e:
         return 0.0
-    ref = content_ref or {}
-    im = item_meta or {}
     score = 0.0
-    title = _norm(ref.get("title", ""))
     if title and e in title:
         score += W_TITLE
-    summary = _norm(im.get("summary", ""))
     if summary and e in summary:
         score += W_SUMMARY
-    body = _norm(ref.get("body", ""))
     if body:
         freq = body.count(e)
         if freq:
             score += W_FREQ * min(freq, FREQ_CAP) / float(FREQ_CAP)
-        if e in body[:int(len(body) * FIRST_RATIO)]:
+        if e in first:
             score += W_FIRST
-    names = [_norm(x) for x in (MC.entity_names(im.get("entities")) or [])]
-    rank = names.index(e) if e in names else len(names)
     decay = max(RANK_FLOOR, 1.0 - RANK_STEP * rank)
     return round(min(1.0, score) * decay, 3)
+
+
+def entity_confidence(entity: str, content_ref: dict, item_meta: dict) -> float:
+    """엔티티 1개의 확신도(0~1). 모듈 독스트링의 산식 · 순수 함수(결정적)."""
+    e, ref, im = _norm(entity), content_ref or {}, item_meta or {}
+    body = _norm(ref.get("body", ""))
+    names = [_norm(x) for x in MC.entity_names(im.get("entities"))]
+    return _confidence(e, _norm(ref.get("title", "")), _norm(im.get("summary", "")),
+                       body, body[:int(len(body) * FIRST_RATIO)], names.index(e) if e in names else len(names))
 
 
 def scored_entities(item_meta: dict, content_ref: dict) -> list:
@@ -101,9 +101,18 @@ def scored_entities(item_meta: dict, content_ref: dict) -> list:
 
     entities 자체는 다운스트림 계약이라 건드리지 않고, 읽기 API 가 이 결과를
     별도 키(entities_scored)로 병행 노출한다(_detail_row · raw_rows)."""
-    im = item_meta or {}
+    im, ref = item_meta or {}, content_ref or {}
+    names = MC.entity_names(im.get("entities"))
+    if not names:
+        return []
+    # 같은 본문·제목·요약과 전체 이름 목록의 정규화는 콘텐츠당 한 번만 한다.
+    title, summary, body = _norm(ref.get("title", "")), _norm(im.get("summary", "")), _norm(ref.get("body", ""))
+    first = body[:int(len(body) * FIRST_RATIO)]
+    normalized = [_norm(name) for name in names]
+    ranks = {}
+    for i, e in enumerate(normalized):
+        ranks.setdefault(e, i)
     out = []
-    for e in (MC.entity_names(im.get("entities")) or []):
-        name = str(e)
-        out.append({"name": name, "conf": entity_confidence(name, content_ref, im)})
+    for name, e in zip(names, normalized):
+        out.append({"name": name, "conf": _confidence(e, title, summary, body, first, ranks[e])})
     return out

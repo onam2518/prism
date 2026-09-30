@@ -40,7 +40,7 @@ _REMAP = {
 
 def tier1_remap(cat: str) -> str:
     """현재 데이터의 카테고리 라벨을 자사 21개 Tier1 로 비파괴 정규화."""
-    c = str(cat or "").split("/")[0].strip()
+    c = MC.category_path(cat).split("/")[0].strip()
     if c in _REMAP:
         return _REMAP[c]
     if c in IAB_TIER1_KO:

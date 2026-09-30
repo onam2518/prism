@@ -31,6 +31,7 @@ import statistics
 import time
 
 from .store import day_key
+from . import meta_contract as MC
 
 _SV = None                      # serve 모듈 객체(컴포지션 루트) · serve import 시 주입
 
@@ -1377,8 +1378,8 @@ def content_categories(team=None) -> dict:
         out = {}
         for r in _SV.results_rows(team=team) or []:
             ch = _row_key(r.get("content_ref") or {})
-            cats = [str(c).split("/")[0].strip()
-                    for c in ((r.get("item_meta") or {}).get("content_category") or []) if c]
+            cats = dict.fromkeys(c.split("/")[0].strip()
+                                 for c in MC.category_paths((r.get("item_meta") or {}).get("content_category")))
             if ch:
                 out[ch] = [c for c in cats if c and c != "Unclassified"]
         return out

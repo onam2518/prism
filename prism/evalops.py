@@ -659,11 +659,21 @@ def _rubric_loop(run_id: int, pending: list, llm, team):
     """RUBRIC_CHUNK 배치로 저지 호출 → 건별 rubric 저장 → 커서 갱신 → 완료 시 축별 평균 집계.
     저지 호출·파싱 실패는 배치 단위로 건너뛰고 연속 3회면 failed(남은 건은 재실행으로)."""
     st = _SV.get_store()
-    from .store import content_hash
+    from .store import golden_hash
     try:
+        run = st.eval_run_get(run_id, team) or {}
+        basis = (run.get("metrics") or {}).get("basis_fingerprint")
+        if basis:
+            from . import execution as EX
+            snapshot = st.get_report("eval_snapshot_" + str(run_id), team=team)
+            if not isinstance(snapshot, dict) or EX.digest(snapshot) != basis:
+                raise ValueError("고정 실행 스냅샷이 없거나 손상됐습니다")
+            rows = snapshot["rows"]
+        else:
+            rows = st.get_golden(team) or []
         gmap = {}
-        for g in (st.get_golden(team) or []):
-            gmap[content_hash(g.get("content") or {})] = g.get("content") or {}
+        for g in rows:
+            gmap[golden_hash(g)] = g.get("content") or {}
         scored = fails = 0
         for i in range(0, len(pending), RUBRIC_CHUNK):
             if run_id in _RUBRIC_CANCEL:

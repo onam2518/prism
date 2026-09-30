@@ -950,8 +950,8 @@ def _lack_classes(team=None) -> set:
         per = {}
         try:
             for g in st.get_golden(team) or []:
-                t1s = {str(c).split("/")[0].strip()
-                       for c in ((g.get("expected") or {}).get("content_category") or []) if c}
+                t1s = {c.split("/")[0].strip()
+                       for c in MC.category_paths((g.get("expected") or {}).get("content_category"))}
                 for t1 in t1s:
                     per[t1] = per.get(t1, 0) + 1
         except Exception:
@@ -1193,14 +1193,14 @@ def _gold_drafts(ch: str, team=None) -> dict:
     empty = {"ok": True, "items": [], "n": 0}
     if not (under and st and hasattr(st, "get_golden")):
         return empty
-    from .store import content_hash as _chash
+    from .store import golden_hash
     try:
         rows = _golden_rows(st, team)
     except Exception:
         return empty
     for g in rows:
-        content, exp = g.get("content") or {}, g.get("expected") or {}
-        if _chash(content) != under:
+        exp = g.get("expected") or {}
+        if golden_hash(g) != under:
             continue
         om = (_gold_origin_meta(st, [under], team) or {}).get(under) or {}
         exp = gold_shown_meta(exp, om)                # 큐 행과 같은 화면값(빈 축 = 골드 표시 방지)
@@ -1317,15 +1317,16 @@ def _golden_rows(st, team):
 
 def _gold_origin_meta(st, hashes, team) -> dict:
     """골든 해시 → 원본 콘텐츠 행의 {"model","version","review","url"}.
-    조회 실패는 빈 dict(= 전 후보 탈락 · fail-closed). 캐시 키는 팀 단위 · 후보 목록은
-    검수자마다 다르지만 이 표는 팀에서 하나뿐이라 검수자별로 갈리지 않는다."""
+    조회 실패는 빈 dict(= 전 후보 탈락 · fail-closed). 팀과 조회 해시 집합을 함께
+    캐시 키에 넣어 다른 검수자의 후보가 이전 조회의 부분집합에 갇히지 않게 한다."""
     fn = getattr(st, "origin_meta_for", None)
     hs = sorted({h for h in (hashes or []) if h})
     if not (fn and hs):
         return {}
     try:
         if getattr(st, "REMOTE", False):
-            return _SV._agg_cached_store(("goldorigin", team), st, lambda: fn(hs, team=team), content=True) or {}
+            return _SV._agg_cached_store(("goldorigin", team, tuple(hs)), st,
+                                        lambda: fn(hs, team=team), content=True) or {}
         return fn(hs, team=team) or {}
     except Exception:
         return {}
@@ -1338,7 +1339,7 @@ def gold_shown_meta(exp: dict, om: dict) -> dict:
     im = om.get("item_meta") or {}
     out = dict(exp or {})
     for k in ("summary", "entities", "intent", "content_category"):
-        if not out.get(k):
+        if k not in out:
             out[k] = im.get(k) or ("" if k == "summary" else [])
     return out
 
@@ -1353,11 +1354,11 @@ def _gold_candidates(st, team, answered) -> list:
         그 218건은 전부 model·version·review·source_url 을 갖고 있다).
       · 해시 홀짝이 '뒤집기' 인데 카테고리를 뒤집을 수 없는 골든: 뒤집지 않은 채 정답만
         '수정필요' 로 매기면 채점이 거짓이 된다."""
-    from .store import content_hash as _chash
+    from .store import golden_hash
     rows = []
     for g in _golden_rows(st, team):
         content, exp = g.get("content") or {}, g.get("expected") or {}
-        h = _chash(content)
+        h = golden_hash(g)
         if not content.get("title"):
             continue
         rows.append((h, content, exp))

@@ -53,17 +53,17 @@ _LAST_EVAL_DETAIL = []                             # (폴백 캐시) 최근 평�
 def _scope_golden(rows, scope, st, team=None, hashes=None):
     """평가 대상 콘텐츠 풀 필터: eval=평가용 홀드아웃만 / all=전체 정답셋.
     hashes 를 주면 그 해시만 남긴다(오토파일럿 고정 정답셋 · 라운드마다 같은 셋으로 재평가)."""
-    from .store import content_hash
+    from .store import golden_hash
     if hashes:
         keep = set(hashes)
-        rows = [r for r in rows if content_hash(r.get("content") or {}) in keep]
+        rows = [r for r in rows if golden_hash(r) in keep]
     if scope != "eval" or not rows:
         return rows
     try:
         pm = st.purpose_map(team) if hasattr(st, "purpose_map") else {}
     except Exception:
         pm = {}
-    return [r for r in rows if pm.get(content_hash(r.get("content") or {}), "review") == "eval"]
+    return [r for r in rows if pm.get(golden_hash(r), "review") == "eval"]
 
 def _holdout_scope(team=None, hashes=None) -> str:
     """배치·오토파일럿 평가 범위: 홀드아웃(용도=eval) 정답이 있으면 'eval'(개선 단계가 못 본 셋으로 측정),
@@ -1195,7 +1195,7 @@ def learn_data(team=None) -> dict:
         exp = g.get("expected") or {}
         gr = exp.get("finalGrade") or "?"
         grade_dist[gr] = grade_dist.get(gr, 0) + 1
-        t1s = {str(c).split("/")[0].strip() for c in (exp.get("content_category") or []) if c}
+        t1s = {c.split("/")[0].strip() for c in MC.category_paths(exp.get("content_category"))}
         for t1 in (t1s or {"(미분류)"}):
             per_class[t1] = per_class.get(t1, 0) + 1
     PER_CLASS_TARGET = 8                                # SetFit(Tunstall 2022) 클래스당 8예시
@@ -1258,11 +1258,11 @@ def learn_data(team=None) -> dict:
     rationale_n = fstats.get("learned", 0)
     # 노하우 결속: 골든 중 사람 판단 사유(검수 노트·교정 이력)가 연결된 건 · knowhow.jsonl 의 원천.
     # REAP 사유는 내보내기 시점에 합류(건별 질의 비용상 집계에는 미포함 → 소량 가산될 수 있음).
-    from .store import content_hash as _chash
+    from .store import golden_hash
     patch_hashes = {p["hash"] for p in prows}
     knowhow_n = 0
     for g in golden:
-        ch = _chash(g.get("content") or {})
+        ch = golden_hash(g)
         e = fmap.get(ch) or {}
         if ch in patch_hashes or any((v.get("note") or "").strip() for v in e.get("verdicts", [])):
             knowhow_n += 1
@@ -1517,7 +1517,7 @@ def knowhow_rows(team=None) -> list:
     st = _SV.get_store()
     if not st:
         return []
-    from .store import content_hash
+    from .store import golden_hash
     try:
         fmap = st.feedback_map(team=team)
     except Exception:
@@ -1530,7 +1530,7 @@ def knowhow_rows(team=None) -> list:
     rows, reap_joined = [], 0
     for g in (st.get_golden(team) if hasattr(st, "get_golden") else []):
         content, exp = g.get("content") or {}, g.get("expected") or {}
-        ch = content_hash(content)
+        ch = golden_hash(g)
         e = fmap.get(ch) or {}
         opinions = [{"reviewer": v.get("reviewer"), "verdict": v.get("verdict"),
                      "stage": v.get("stage"), "note": (v.get("note") or "").strip(),
