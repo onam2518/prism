@@ -164,3 +164,7 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
 ## 런타임 보완(2026-09-29)
 
 운영 콘텐츠 저장은 `prism_sync_contents(jsonb)`, 정답 등록은 `prism_write_golden(uuid,jsonb,boolean,text)` RPC가 한 트랜잭션으로 처리한다. 설치 파일은 `supabase/migrations/20260929101722_atomic_content_and_golden_writes.sql`이다. RPC 실패 시 직접 REST 쓰기로 우회하지 않는다. 서버의 토픽 계산은 `topic.build_topics_rows`에 메모리 행을 전달하며 파일 기반 CLI도 같은 함수를 사용한다. 검사 범위와 측정치는 `docs/RUNTIME_AUDIT_20260929.md`를 참조한다.
+
+## DNM 실행 상태와 토픽 승인
+
+`execution.py`는 실제 모델·추론 설정·프롬프트를 복사하고 코드 지문과 함께 평가 스냅샷으로 고정한다. `dnm.py`는 원천 이벤트·등록표·작업 시도·수동 확정·발행 순번을 관리하며 `dnmops.py`가 관리자 API를 구성한다. 일반 실험 경로에는 DNM 대상·정책 버전을 임의 부여하지 않는다. 토픽의 `preview_action`과 `undo`는 설정 revision과 후보 지문을 검증한다. SQLite `BEGIN IMMEDIATE`와 Supabase `prism_compare_report`가 읽은 상태와 같은 경우에만 변경을 저장한다. 설치·운영 증빙은 [DNM_TRANSITION](docs/DNM_TRANSITION.md)에 기록한다.

@@ -128,7 +128,7 @@ def _percentile(vals: list, p: float):
     return round(float(s[i]), 1)
 
 
-def _prepare(team, model: str, scope: str):
+def _prepare(team, model: str, scope: str, resolve_model=True):
     """골든셋 로드(scope 필터) + LLM 해석. learnops.eval_golden 과 동일 규칙.
     반환 (rows, llm, used_model, error) · 실패 시 rows=None."""
     from . import learnops as LO
@@ -141,6 +141,8 @@ def _prepare(team, model: str, scope: str):
     rows = LO._scope_golden(rows, scope, st, team)
     if not rows:
         return None, None, "", "평가용으로 지정된 콘텐츠의 정답이 없습니다 · 콘텐츠 관리 STEP 1에서 용도를 지정하세요"
+    if not resolve_model:
+        return rows[:MAX_ROWS], None, "", ""
     cfg = Config.load()
     used_model = (model or "").strip()
     if used_model:
@@ -163,30 +165,72 @@ def _eval_basis(rows, model, team):
                                     separators=(",", ":"), default=str).encode()).hexdigest()
 
 
-def eval_run_start(team=None, model: str = "", scope: str = "all", created_by: str = "") -> dict:
+def eval_run_start(team=None, model: str = "", scope: str = "all", created_by: str = "",
+                   policy_version: str = "", protocol=None) -> dict:
     """평가 런 생성 + 백그라운드 실행 시작. 즉시 {id,total} 반환(진행은 폴링)."""
     st = _SV.get_store()
-    rows, llm, used_model, err = _prepare(team, model, scope)
+    rows, llm, used_model, err = _prepare(team, model, scope, resolve_model=not policy_version)
     if rows is None:
         return {"ok": False, "error": err}
     if not hasattr(st, "eval_run_create"):
         return {"ok": False, "error": "스토어가 평가 런을 지원하지 않습니다"}
+    from . import execution as EX
+    import copy
+    rows = copy.deepcopy(rows)
+    policy = None
+    try:
+        if policy_version:
+            from .dnm import training_fields
+            policy = (st.get_report("dnm_control", team=team) or {}).get("policy")
+            if not policy or policy["policy_version"] != policy_version:
+                raise ValueError("선택한 DNM 정책이 현재 설정과 다릅니다")
+            checked = []
+            for row in rows:
+                expected = row.get("expected") or {}
+                fields = training_fields(row.get("content") or {}, expected, policy_version)
+                if fields:
+                    from .meta_contract import FIELDS
+                    row["expected"] = dict({k: v for k, v in expected.items() if k not in (*FIELDS, "finalGrade", "reasons")}, **fields)
+                    checked.append(row)
+            rows = checked
+            if not rows:
+                raise ValueError("현재 입력·정책에 확정된 DNM 정답이 없습니다")
+            if protocol is not None:
+                _validate_protocol(protocol, len(rows))
+    except ValueError as exc:
+        return {"ok": False, "error": str(exc)}
+    try:
+        if policy:
+            llm = EX.restore(policy["execution"], lambda mid: _SV.llm_for_model(mid, _SV.Handler.server_mock)[0])
+            llm.dnm_policy = policy
+            execution = policy["execution"]
+            used_model = llm.model
+        else:
+            llm, execution = EX.capture(llm, rows)
+    except Exception as exc:
+        return {"ok": False, "error": "실행 명세 고정 실패: " + str(exc)[:200]}
     run_id = st.eval_run_create(team, used_model, scope, len(rows), created_by=created_by or "")
-    try:                                         # 이 런이 실제로 쓰는 프롬프트를 시작 시점에 기록(내려받기·재현 근거)
-        from . import learnops as LO
-        _SV._report_save(f"eval_prompts_{run_id}", {**LO.compose_prompts(team, used_model), "run_id": run_id}, team)
-    except Exception as e:
-        print(f"  [eval-run] #{run_id} 프롬프트 기록 실패: {e}")
+    snapshot = {"rows": rows, "execution": execution, "model": used_model, "scope": scope}
+    if policy:
+        snapshot.update(policy_version=policy_version, dnm_policy=policy, protocol=protocol)
     metrics = _zero_metrics()
-    metrics["basis_fingerprint"] = _eval_basis(rows, used_model, team)
-    st.eval_run_update(run_id, team=team, metrics=metrics)
+    metrics["basis_fingerprint"] = EX.digest(snapshot)
+    metrics["summary_sim_method"] = execution["scoring"]["summary"]
+    try:
+        st.save_report("eval_snapshot_" + str(run_id), snapshot, team=team)
+        st.eval_run_update(run_id, team=team, metrics=metrics)
+        st.save_report("eval_prompts_" + str(run_id),
+                       EX.prompt_record(execution, run_id, time.time()), team=team)
+    except Exception as exc:
+        st.eval_run_update(run_id, team=team, status="failed", error="실행 스냅샷 저장 실패")
+        return {"ok": False, "error": "실행 스냅샷 저장 실패: " + str(exc)[:200]}
     _launch(run_id, rows, llm, team, metrics)
     return {"ok": True, "id": run_id, "total": len(rows)}
 
 
 def eval_run_resume(run_id: int, team=None) -> dict:
     """중단(서버 재시작·실패)된 런 재개: 저장된 건별 결과를 빼고 남은 건만 실행.
-    같은 모델·범위로 골든셋을 다시 읽으므로, 그사이 골든이 바뀌면 남은 건 기준도 그에 따른다."""
+    시작 시 저장한 정답·프롬프트·모델·설정으로 재개하며 현재 정답셋을 다시 읽지 않는다."""
     st = _SV.get_store()
     run = st.eval_run_get(run_id, team) if hasattr(st, "eval_run_get") else None
     if not run:
@@ -196,15 +240,23 @@ def eval_run_resume(run_id: int, team=None) -> dict:
             return {"ok": False, "error": "이미 실행 중입니다"}
     if run.get("status") not in ("running", "failed"):
         return {"ok": False, "error": "재개할 수 없는 상태입니다: " + str(run.get("status"))}
-    rows, llm, _used, err = _prepare(team, run.get("model") or "", run.get("scope") or "all")
-    if rows is None:
-        return {"ok": False, "error": err}
+    from . import execution as EX
+    snapshot = st.get_report("eval_snapshot_" + str(run_id), team=team)
     basis = (run.get("metrics") or {}).get("basis_fingerprint")
-    if not basis or basis != _eval_basis(rows, run.get("model") or "", team):
-        return {"ok": False, "error": "정답·프롬프트·설정 기준이 달라졌거나 구 평가입니다. 새 평가를 시작하세요"}
-    from .store import content_hash
+    if not isinstance(snapshot, dict) or not basis or basis != EX.digest(snapshot):
+        return {"ok": False, "error": "고정 실행 스냅샷이 없거나 손상됐습니다. 새 평가를 시작하세요"}
+    try:
+        llm = EX.restore(snapshot["execution"],
+                         lambda mid: _SV.llm_for_model(mid, _SV.Handler.server_mock)[0]
+                         if mid else _SV.make_text_llm(Config.load(), _SV.Handler.server_mock))
+        rows = snapshot["rows"]
+        if snapshot.get("dnm_policy"):
+            llm.dnm_policy = snapshot["dnm_policy"]
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)[:250]}
+    from .store import golden_hash
     done = st.eval_result_hashes(run_id, team)
-    remain = [r for r in rows if content_hash(r.get("content") or {}) not in done]
+    remain = [r for r in rows if golden_hash(r) not in done]
     base = run.get("metrics") or _zero_metrics()
     st.eval_run_update(run_id, team=team, status="running", error="",
                        total=len(done) + len(remain))
@@ -240,7 +292,7 @@ def _run_loop(run_id: int, rows: list, llm, team, m: dict):
     st = _SV.get_store()
     from . import abtest
     from . import harness as H
-    from .store import content_hash
+    from .store import golden_hash
     meth = H.Methodology(name="골든셋")
     try:
         for i in range(0, len(rows), CHUNK):
@@ -254,7 +306,7 @@ def _run_loop(run_id: int, rows: list, llm, team, m: dict):
             for row, out in zip(chunk, outs):
                 r = _tally(m, row, out)
                 c = row.get("content") or {}
-                r.update({"hash": content_hash(c), "title": (c.get("title") or "")[:60]})
+                r.update({"hash": golden_hash(row), "title": (c.get("title") or "")[:60]})
                 results.append(r)
             st.eval_results_add(run_id, results, team)
             st.eval_run_update(run_id, team=team, cursor=m["n"], metrics=m)
@@ -790,3 +842,22 @@ def eval_run_report(run_id: int, team=None) -> dict:
                        "judge": jm.get(r.get("hash")) or {"adopt": 0, "reject": 0, "reviewers": {}}})
     out["detail"] = detail
     return out
+
+
+def _validate_protocol(protocol, size):
+    import math
+    required = {"intent_f1", "cat_hf1", "ent_f1", "summary_sim", "cost_usd", "latency_p95_ms", "empty_rate"}
+    if not isinstance(protocol, dict) or protocol.get("sample_size") != size:
+        raise ValueError("평가 전에 확정한 표본 수와 실제 정답 수가 다릅니다")
+    targets, tolerances = protocol.get("targets") or {}, protocol.get("tolerances") or {}
+    if (not isinstance(targets, dict) or not isinstance(tolerances, dict)
+            or not required.issubset(targets) or set(targets) != set(tolerances)):
+        raise ValueError("4종 품질·실패율·비용·지연의 목표와 허용 오차를 모두 지정하세요")
+    for key, target in targets.items():
+        tolerance = tolerances[key]
+        if (not isinstance(target, dict) or not target or set(target) - {"min", "max"}
+                or type(tolerance) not in (int, float) or not math.isfinite(tolerance) or tolerance < 0
+                or any(type(v) not in (int, float) or not math.isfinite(v) for v in target.values())):
+            raise ValueError("평가 목표와 허용 오차가 유효한 수치여야 합니다")
+        if "min" in target and "max" in target and target["min"] > target["max"]:
+            raise ValueError("평가 목표 최솟값은 최댓값보다 클 수 없습니다")

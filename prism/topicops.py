@@ -11,10 +11,14 @@ serve 가 기동 시 `_SV`(자기 모듈 객체)로 주입한다(learnops 와 �
 from __future__ import annotations
 
 import re
+import copy
+from contextvars import ContextVar
 import threading
 import time
 
 from .config import Config
+
+_EDIT = ContextVar("topic_edit", default=None)
 
 _SV = None                      # serve 모듈 객체(컴포지션 루트) · serve import 시 주입
 
@@ -22,25 +26,24 @@ _SV = None                      # serve 모듈 객체(컴포지션 루트) · se
 def _studio_config() -> dict:
     """토픽 스튜디오 설정(사용자 정의 조건형 토픽 + 클러스터링 튜닝) 로드.
     토픽은 전역(무팀 results_rows) 뷰라 설정도 전역(team="")에 영속한다."""
+    edit = _EDIT.get()
     st = _SV.get_store()
-    cfg = (st.get_report("topic_studio") if st else None) or {}
+    cfg = copy.deepcopy(edit["before"] or {}) if edit is not None else ((st.get_report("topic_studio") if st else None) or {})
     custom = cfg.get("custom") if isinstance(cfg.get("custom"), list) else []
     settings = cfg.get("settings") if isinstance(cfg.get("settings"), dict) else {}
     exclusions = cfg.get("exclusions") if isinstance(cfg.get("exclusions"), dict) else {}
     paused_auto = cfg.get("paused_auto") if isinstance(cfg.get("paused_auto"), list) else []
     inclusions = cfg.get("inclusions") if isinstance(cfg.get("inclusions"), dict) else {}
     return {"custom": custom, "settings": settings, "exclusions": exclusions,
-            "inclusions": inclusions, "paused_auto": paused_auto}
+            "inclusions": inclusions, "paused_auto": paused_auto,
+            "revision": int(cfg.get("revision") or 0)}
 
 
 def _save_studio_config(cfg: dict):
-    st = _SV.get_store()
-    if st:
-        st.save_report("topic_studio", {"custom": cfg.get("custom") or [],
-                                        "settings": cfg.get("settings") or {},
-                                        "exclusions": cfg.get("exclusions") or {},
-                                        "inclusions": cfg.get("inclusions") or {},
-                                        "paused_auto": cfg.get("paused_auto") or []})
+    edit = _EDIT.get()
+    if edit is None:
+        raise RuntimeError("토픽 변경은 미리보기 승인 경로를 사용해야 합니다")
+    edit["after"] = copy.deepcopy(cfg)
 
 
 TOPIC_STATUS = ("active", "paused", "draft", "archived")      # 운영자 상태 네 가지
@@ -75,13 +78,17 @@ def _row_stats(ids, rows, now=None, settings=None):
     stall_min, inactive_min = _stat_days(settings)
     ts = [float(rows[i].get("_ts") or 0) for i in ids if 0 <= i < len(rows)]
     ts = [t for t in ts if t > 0]
-    today = sum(1 for t in ts if t >= now - 86400)
+    from datetime import datetime, timedelta, timezone
+    day_start = datetime.fromtimestamp(now, timezone(timedelta(hours=9))).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+    ts = [t for t in ts if t <= now]
+    today = sum(1 for t in ts if t >= day_start)
     d7 = sum(1 for t in ts if t >= now - 7 * 86400)
     prev7 = sum(1 for t in ts if now - 14 * 86400 <= t < now - 7 * 86400)
     last = max(ts) if ts else 0
     stall = int((now - last) // 86400) if last else 0
     # 시각을 모르는 행은 집계에서 빠질 뿐 '매핑 0건'이 아니다 · 묶인 게 있으면 비활성으로 보지 않는다
-    inactive = (stall >= inactive_min) if ts else not ids
+    configured = bool((settings or {}).get("inactive_days"))
+    inactive = ((stall >= inactive_min) if ts else not ids) if configured else not ids
     signal = ""
     if inactive:
         signal = "비활성"
@@ -107,7 +114,7 @@ def _topics_compute(team=None) -> dict:
     cfg = _studio_config()
     if not rows:
         return {"n_contents": 0, "single": [], "composite": [], "custom": [],
-                "customDefs": cfg["custom"], "settings": cfg["settings"], "exclusions": cfg["exclusions"],
+                "revision": cfg["revision"], "customDefs": cfg["custom"], "settings": cfg["settings"], "exclusions": cfg["exclusions"],
                 "catalog": {"intents": [], "cats": [], "keywords": [], "eattrs": []}, "summary": {}}
     from . import topic as TP
     try:
@@ -116,6 +123,7 @@ def _topics_compute(team=None) -> dict:
         out = TP.build_topics_rows(rows, custom_defs=live, settings=cfg["settings"],
                                    exclusions=cfg["exclusions"], ent_index=_ent_index(),
                                    ent_keys=_ent_keys(rows, team), inclusions=cfg["inclusions"])
+        out["revision"] = cfg["revision"]
         out["exclusions"] = cfg["exclusions"]
         _attach_status(out, cfg, rows)
         try:                                     # 추천 카드 원천: 최근 48시간 언급 급증 엔티티(전역)
@@ -128,7 +136,7 @@ def _topics_compute(team=None) -> dict:
     except Exception as e:
         return {"error": str(e)[:200], "n_contents": len(rows),
                 "single": [], "composite": [], "custom": [],
-                "customDefs": cfg["custom"], "settings": cfg["settings"],
+                "revision": cfg["revision"], "customDefs": cfg["custom"], "settings": cfg["settings"],
                 "exclusions": cfg["exclusions"], "summary": {}}
 
 # ── 토픽 자동 리프레시 + 성과 스냅샷 ────────────────────────────────────────
@@ -393,6 +401,7 @@ def _sanitize_def(d: dict, existing_ids=None) -> dict:
             "req": req, "neg": neg, "feed": feed, "status": status,
             **({"condition_expr": expr, "condition_schema_version": 1} if expr is not None else {}),
             "aliases": _strlist(d.get("aliases")),
+            "external_refs": _strlist(d.get("external_refs"), n=50, ln=300),
             "via": "talk" if d.get("via") == "talk" else "manual",   # 만든 방식: 말로 · 직접
             "turns": turns,
             # 해석 모델(4-45): 화면에 모델 선택이 없으니 마지막 턴이 쓴 모델을 기록값으로 삼는다
@@ -425,6 +434,30 @@ def _studio_llm_suggest(text: str, model: str, rows, svc, mock: bool, thresholds
     obj, _res = llm.complete_json(sysp, userp, tag="topic_suggest")
     if not isinstance(obj, dict) or obj.get("_fail"):
         return None, (isinstance(obj, dict) and obj.get("_fail_kind")) or "fail"
+    from .topic_conditions import sanitize
+    unresolved = [str(v)[:180] for v in (obj.get("unresolved") or [])]
+    source_mentions = list(obj.get("srcs") or []) + list(obj.get("neg_srcs") or [])
+    source_mentions += list((obj.get("must") or {}).get("srcs") or [])
+    allowed_sources = {v.lower() for v in allow_src}
+    unresolved += ["미등록 출처: " + str(v) for v in source_mentions if str(v).lower() not in allowed_sources]
+    expr = None
+    if obj.get("condition_expr") is not None:
+        try:
+            expr = sanitize(obj["condition_expr"])
+            def check(node):
+                if "all" in node or "any" in node:
+                    for child in node.get("all", node.get("any", [])): check(child)
+                elif "not" in node:
+                    check(node["not"])
+                else:
+                    allowed = {"source": set(allow_src), "intent": set(allow_int), "content_category": set(allow_cats)}.get(node["field"])
+                    if allowed is not None:
+                        unresolved.extend("미등록 조건: " + v for v in node["values"] if v not in allowed)
+            check(expr)
+        except ValueError as exc:
+            unresolved.append(str(exc))
+    if unresolved:
+        return {"needs_confirmation": True, "unresolved": unresolved}, route
     ac, ai = set(allow_cats), set(allow_int)
     must, opt = obj.get("must") or {}, obj.get("optional") or {}
 
@@ -468,6 +501,8 @@ def _studio_llm_suggest(text: str, model: str, rows, svc, mock: bool, thresholds
            "req": {"cats": [c for c in m_cats if c in cats], "intents": [i for i in m_int if i in intents],
                    "keywords": [k for k in m_kw if k in keywords], "srcs": []},
            "neg": neg, "feed": feed}
+    if expr is not None:
+        sug["condition_expr"] = expr
     return sug, route
 
 
@@ -522,14 +557,13 @@ def similar_topics(new_def: dict, custom: list, threshold: float = 0.86) -> list
     return out[:3]
 
 
-def topic_studio_action(data: dict, mock: bool = False, team=None, who: str = "") -> dict:
+def _topic_studio_action(data: dict, mock: bool = False, team=None, who: str = "") -> dict:
     """토픽 스튜디오 변경/조회: save·delete·settings·preview·suggest.
     rows·topics_data 는 topics_data(team) 인덱스와 정합해야 하므로 같은 team 으로 통일한다."""
     from . import topic as TP
     action = (data.get("action") or "").strip()
-    if action not in ("preview", "suggest"):
-        _SV._agg_bump()                                   # 변경성 액션(save·delete·settings·exclude 등) → 토픽 캐시 무효화
-    rows = _SV.results_rows(team=team)
+    edit = _EDIT.get()
+    rows = edit["rows"] if edit is not None else _SV.results_rows(team=team)
     svc = TP._service_names(rows) if rows else set()
 
     if action == "preview":
@@ -563,12 +597,15 @@ def topic_studio_action(data: dict, mock: bool = False, team=None, who: str = ""
         if re.search(r"(더|덜)\s*(보여|노출|추천)", text):
             return {"ok": False, "needs_confirmation": True,
                     "error": "노출 비중 조절은 지원하지 않습니다. 이 요청을 포함 조건으로 바꾸려면 범위를 확인해 주세요"}
+        known_sources = {v["k"].lower() for v in TP.studio_catalog(rows, svc).get("srcs", [])}
+        requested_sources = re.findall(r"([가-힣A-Za-z0-9_]+(?:뉴스|신문|방송|매체|CP))(?:의|만|에서|는|을|를)", text)
+        missing_sources = [v for v in requested_sources if v.lower() not in known_sources]
+        if missing_sources:
+            return {"ok": False, "needs_confirmation": True, "unresolved": missing_sources,
+                    "error": "필수 출처를 확인할 수 없습니다: " + " · ".join(missing_sources)}
         if not rows:
-            return {"ok": True, "via": "none",
-                    "suggest": {"cats": [], "intents": [], "keywords": [], "srcs": [], "eattrs": [],
-                                "req": {"cats": [], "intents": [], "keywords": [], "srcs": []},
-                                "neg": {"cats": [], "intents": [], "keywords": [], "srcs": []},
-                                "feed": TP.parse_feed_text(text, thresholds=_studio_config()["settings"])}}
+            return {"ok": False, "needs_confirmation": True,
+                    "error": "미리볼 콘텐츠와 출처 정보가 없습니다. 조건을 직접 지정하고 표본을 확보해 주세요"}
         # 화면에서 모델을 고르지 않는다 → 시스템 기본 실행 모델로 확정해 응답에 실어 준다(기록용 · 4-45)
         model = (data.get("model") or "").strip() or Config.load().model
         th = _studio_config()["settings"]                  # 긴 글 · 많이 읽힌 기준값(4-43)
@@ -577,10 +614,17 @@ def topic_studio_action(data: dict, mock: bool = False, team=None, who: str = ""
             sug, route = _studio_llm_suggest(text, model, rows, svc, mock, th)
         except Exception as e:
             sug, route = None, str(e)[:80]
+        if sug and sug.get("needs_confirmation"):
+            return {"ok": False, "needs_confirmation": True,
+                    "error": "조건 확인 필요: " + " · ".join(sug.get("unresolved") or []), "unresolved": sug.get("unresolved")}
+        complex_request = bool(re.search(r"또는|혹은|그중|다만|빼되|제외하되|(?:는|은).+만.+(?:는|은)|\b(?:AND|OR|NOT)\b", text, re.I))
+        if complex_request and not (sug or {}).get("condition_expr"):
+            return {"ok": False, "needs_confirmation": True,
+                    "error": "복합 조건의 묶음·예외를 확정하지 못했습니다. 조건을 직접 지정하거나 문장을 구체화해 주세요"}
         # 모델 호출 불가·실패·빈 결과 → 휴리스틱(즉시·의존성 0) 폴백. 버튼이 헛돌지 않게.
         core_empty = not sug or not (sug.get("cats") or sug.get("intents") or sug.get("keywords") or sug.get("eattrs")
                                      or any(v for k, v in (sug.get("neg") or {}).items() if k != "srcs"))
-        if core_empty:                               # 메타 축이 비면 휴리스틱 · 모델이 준 출처 · 원천 조건은 살린다
+        if core_empty and not (sug or {}).get("condition_expr"):  # 메타 축이 비면 휴리스틱 · 모델이 준 출처 · 원천 조건은 살린다
             h = TP.suggest_dims(text, rows, svc, eattr_cands=TP.eattr_catalog(_ent_index()), thresholds=th)
             if sug:
                 h["srcs"] = sug.get("srcs") or h["srcs"]
@@ -610,6 +654,8 @@ def topic_studio_action(data: dict, mock: bool = False, team=None, who: str = ""
         unknown = _unknown_entities(list(d["keywords"]) + list(d["neg"].get("keywords") or []))
         idx = next((i for i, c in enumerate(custom) if c.get("id") == d["id"]), -1)
         prev = custom[idx] if idx >= 0 else {}
+        if "external_refs" not in data["def"]:
+            d["external_refs"] = list(prev.get("external_refs") or [])
         d["log"] = list(prev.get("log") or [])
         if idx >= 0:                                   # 대화 기록(4-38)은 재저장·직접 손보기에도 보존 · 새 턴만 뒤에 붙인다
             old = list(prev.get("turns") or [])
@@ -690,9 +736,12 @@ def topic_studio_action(data: dict, mock: bool = False, team=None, who: str = ""
         src, dst = custom[i_src], dict(custom[i_dst])
         # 서로 다른 기간·원천 조건은 무손실 합병 규칙이 없으므로 저장 전에 보류한다.
         if (TP.sanitize_feed(src.get("feed")) != TP.sanitize_feed(dst.get("feed"))
-                or src.get("condition_expr") != dst.get("condition_expr")):
+                or src.get("eattrs", []) != dst.get("eattrs", [])):
             return {"ok": False, "needs_confirmation": True,
                     "error": "기간·원천·조건식이 다릅니다. 두 토픽의 전체 조건을 검토한 뒤 맞춰 주세요"}
+        from .topic_conditions import definition_expr
+        merged_expr = {"any": [definition_expr(src), definition_expr(dst)]}
+        dst["external_refs"] = list(dict.fromkeys(list(dst.get("external_refs") or []) + list(src.get("external_refs") or [])))
         dst["status"] = "draft"
         dst["aliases"] = list(dict.fromkeys(list(dst.get("aliases") or []) + [cid]
                                             + list(src.get("aliases") or [])))
@@ -710,13 +759,15 @@ def topic_studio_action(data: dict, mock: bool = False, team=None, who: str = ""
         for k in TP._DIMS:                      # 제외 우선은 합칠 때도 유지(4-14)
             dst[k] = [v for v in dst[k] if v not in (dst["neg"].get(k) or [])]
             dst["req"][k] = [v for v in dst["req"][k] if v in dst[k]]
+        dst["condition_expr"] = merged_expr
+        dst["neg"] = {k: [] for k in TP._DIMS}
+        dst["condition_schema_version"] = 1
         inclusions = dict(cfg["inclusions"] or {})
         for m in (exclusions, inclusions):          # 개별 제외 · 직접 편입 기억도 합친 쪽으로 옮긴다
             if m.get(cid):
                 m[into] = (m.get(into) or []) + m[cid]
             m.pop(cid, None)
-        # ponytail: 합친 토픽의 핵심 묶음은 조건 교집합이라 0건일 수 있다 · 합집합은 관련 묶음이 표현한다.
-        # 현황 건수까지 합집합으로 올리려면 core_count(핵심 묶음 건수) 계약을 먼저 바꿔야 한다.
+        # 각 원본의 핵심 조건 전체를 OR로 연결해 축별 교차 혼합을 막는다.
         _log_add(dst, "병합 ← " + (src.get("name") or cid), who)
         custom[i_dst] = dst
         arch = dict(src, status="archived")
@@ -826,3 +877,114 @@ def topic_drill(cluster_id: str, team=None, reviewer: str = "") -> dict:
     name = cluster.get("name") or cluster.get("label") or cluster_id
     return {"ok": True, "kind": "topic", "value": name, "items": out, "n": len(out),
             "topic_id": topic_id}
+
+
+def _fingerprint(value):
+    import hashlib
+    import json
+    return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False,
+                                     separators=(",", ":")).encode()).hexdigest()
+
+
+def _topic_state(cfg):
+    return {k: copy.deepcopy((cfg or {}).get(k) or ([] if k in ("custom", "paused_auto") else {}))
+            for k in ("custom", "settings", "exclusions", "inclusions", "paused_auto")}
+
+
+def _approval_view(cfg, rows, team):
+    from . import topic as TP
+    index, keys = _ent_index(), _ent_keys(rows, team)
+    out = TP.build_topics_rows(rows, custom_defs=cfg["custom"], settings=cfg["settings"],
+                              exclusions=cfg["exclusions"], inclusions=cfg["inclusions"],
+                              ent_index=index, ent_keys=keys)
+    topics = []
+    for d in cfg["custom"]:
+        g = next((x for x in out.get("custom", []) if x.get("id") == d.get("id")), {})
+        core = next((b for b in g.get("bundles", []) if b.get("kind") == "core"), {})
+        ids = core.get("content_ids", [])
+        topics.append({"id": d.get("id"), "name": d.get("name"), "status": d.get("status"),
+                       "count": len(ids), "samples": [_recent_samples([i], rows, n=1)[0] for i in ids[:5]],
+                       "conditions": {k: d.get(k) for k in ("cats", "intents", "keywords", "srcs", "req", "neg", "condition_expr", "feed")},
+                       "feed_labels": TP.feed_labels(d.get("feed")), "aliases": d.get("aliases", []), "external_refs": d.get("external_refs", [])})
+    for kind in ("single", "composite"):
+        for group in out.get(kind, []):
+            cid = group.get("cluster_id")
+            ids = group.get("content_ids") or []
+            topics.append({"id": cid, "name": group.get("name") or cid,
+                           "status": "paused" if cid in cfg["paused_auto"] else "active",
+                           "count": len(ids), "samples": [_recent_samples([i], rows, n=1)[0] for i in ids[:5]],
+                           "conditions": {"keywords": group.get("representative_entities") or [group.get("name") or cid]},
+                           "feed_labels": [], "aliases": [], "external_refs": []})
+    # The whole candidate snapshot is bound, including excluded rows and entity dictionary edits.
+    from datetime import datetime, timedelta, timezone
+    day = datetime.now(timezone(timedelta(hours=9))).date().isoformat()
+    for group in out.get("custom", []):
+        group.pop("log", None)
+    basis = _fingerprint({"rows": rows, "dictionary": index, "keys": keys, "kst_date": day,
+                          "candidates": {k: out[k] for k in ("single", "composite", "custom")}})
+    return topics, basis
+
+
+def topic_studio_action(data: dict, mock: bool = False, team=None, who: str = "") -> dict:
+    """미리보기→승인→CAS 저장. 되돌리기도 마지막 확정 revision만 허용한다."""
+    if not isinstance(data, dict):
+        return {"ok": False, "error": "요청은 객체여야 합니다"}
+    action = data.get("action")
+    if action in ("preview", "suggest"):
+        return _topic_studio_action(data, mock, team, who)
+    st = _SV.get_store()
+    if not st or not hasattr(st, "compare_report"):
+        return {"ok": False, "error": "버전 저장 기능을 사용할 수 없습니다"}
+    before = st.get_report("topic_studio")
+    revision = int((before or {}).get("revision") or 0)
+    request = copy.deepcopy(data.get("request") if action == "preview_action" else data)
+    if not isinstance(request, dict) or request.get("action") in (None, "preview_action", "preview", "suggest"):
+        return {"ok": False, "error": "미리볼 변경 요청이 필요합니다"}
+    if request.get("expected_revision") != revision:
+        return {"ok": False, "conflict": True, "revision": revision,
+                "error": "토픽 설정이 바뀌었습니다. 새로고침 후 변경을 다시 확인하세요"}
+    edit = {"before": before, "rows": _SV.results_rows(team=team)}
+    token = _EDIT.set(edit)
+    try:
+        if request["action"] == "undo":
+            undo = (before or {}).get("undo") or {}
+            if request.get("undo_revision") != revision or not undo:
+                return {"ok": False, "conflict": True, "error": "후속 변경이 있어 이 작업을 되돌릴 수 없습니다"}
+            edit["after"] = copy.deepcopy(undo["before"])
+            result = {"ok": True}
+        else:
+            result = _topic_studio_action(request, mock, team, who)
+        if result.get("error") or "after" not in edit:
+            return result
+        after = _topic_state(edit["after"])
+        topics, basis = _approval_view(after, edit["rows"], team)
+        clean_request = {k: v for k, v in request.items() if k != "preview_token"}
+        approval = _fingerprint({"request": clean_request, "revision": revision,
+                                 "basis": basis, "team": team, "who": who})
+        if action == "preview_action":
+            removed = {d.get("id") for d in _topic_state(before)["custom"]} - {d.get("id") for d in after["custom"]}
+            if removed:
+                previous_topics, _ = _approval_view(_topic_state(before), edit["rows"], team)
+                topics.extend(dict(t, status="deleted") for t in previous_topics if t["id"] in removed)
+            return {"ok": True, "preview_token": approval, "revision": revision,
+                    "preview": {"topics": topics, "action": request["action"],
+                                "settings": after["settings"], "saved": result.get("saved"),
+                                "candidate_version": basis}}
+        if request.get("preview_token") != approval:
+            return {"ok": False, "conflict": True, "needs_confirmation": True,
+                    "error": "승인한 조건·기간·후보·표본이 달라졌습니다. 미리보기를 다시 확인하세요"}
+        after["revision"] = revision + 1
+        after["undo"] = {"before": _topic_state(before), "action": request["action"],
+                         "who": who, "ts": time.time()}
+        if not st.compare_report("topic_studio", before, after):
+            return {"ok": False, "conflict": True, "error": "다른 변경이 먼저 저장됐습니다. 다시 확인하세요"}
+    except ValueError as exc:
+        return {"ok": False, "error": str(exc)}
+    finally:
+        _EDIT.reset(token)
+    _SV._agg_bump()
+    out = dict(_SV.topics_data(team), ok=True, revision=revision + 1, undo_revision=revision + 1)
+    for k in ("saved", "similar", "notice", "unknown_entities"):
+        if k in result:
+            out[k] = result[k]
+    return out

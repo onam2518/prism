@@ -249,10 +249,12 @@ def run(content_dict: dict, llm, methodology: Methodology = None, *,
     content = Content.from_dict(content_dict)
     if llm.mock and getattr(llm, "_mock_fn", None) is None:
         llm._mock_fn = _mock_generator
+    snapshot = (getattr(llm, "execution", None) or {}).get("snapshot") or {}
+    versions = (snapshot.get("quality_version"), snapshot.get("item_version")) if snapshot else (P.quality_version(), P.IMETA_VERSION)
     ctx = HCtx(content=content, llm=llm, methodology=m, emb=emb,
                prefilter=quality_prefilter, fewshot_pool=fewshot_pool,
                legal_meta=LegalMeta(enabled=False),
-               trace=Trace(prompt_version=f"{P.quality_version()}, {P.IMETA_VERSION}"),
+               trace=Trace(prompt_version=", ".join(v for v in versions if v)),
                t0=time.time())
     for key in m.stages:
         if m.parallel_quality_item and key == "quality" and "item" in m.stages:

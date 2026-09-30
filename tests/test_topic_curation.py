@@ -10,6 +10,7 @@ import os
 import sys
 import tempfile
 import unittest
+from tests.topic_support import approved_action
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -186,12 +187,12 @@ class TestServeActions(unittest.TestCase):
     def test_exclude_restore_roundtrip(self):
         S, rows = self.S, _rows()
         h0 = _hash(rows, 0)
-        td = S.topic_studio_action({"action": "save", "def": {"name": "경제", "cats": ["Business and Finance"]}})
+        td = approved_action({"action": "save", "def": {"name": "경제", "cats": ["Business and Finance"]}})
         g = next(x for x in td["custom"] if x["name"] == "경제")
         core = next(b for b in g["bundles"] if b["kind"] == "core")
         self.assertEqual(core["count"], 2)
 
-        td = S.topic_studio_action({"action": "exclude", "id": g["id"], "hash": h0,
+        td = approved_action({"action": "exclude", "id": g["id"], "hash": h0,
                                     "title": "삼성 분석1", "topic": "경제"})
         core = next(b for x in td["custom"] for b in x["bundles"] if b["kind"] == "core")
         self.assertEqual((core["count"], core["excluded_n"]), (1, 1))
@@ -202,47 +203,47 @@ class TestServeActions(unittest.TestCase):
         self.assertEqual(dr["n"], 1)
         self.assertNotIn(h0, [it["hash"] for it in dr["items"]])
 
-        td = S.topic_studio_action({"action": "restore", "id": g["id"], "hash": h0})
+        td = approved_action({"action": "restore", "id": g["id"], "hash": h0})
         core = next(b for x in td["custom"] for b in x["bundles"] if b["kind"] == "core")
         self.assertEqual(core["count"], 2)
         self.assertNotIn(g["id"], td["exclusions"])
 
     def test_exclude_requires_ids(self):
-        out = self.S.topic_studio_action({"action": "exclude", "id": "", "hash": ""})
+        out = approved_action({"action": "exclude", "id": "", "hash": ""})
         self.assertFalse(out.get("ok", True))
 
     def test_delete_cleans_exclusions_and_settings_keep_them(self):
         S, rows = self.S, _rows()
-        td = S.topic_studio_action({"action": "save", "def": {"name": "경제", "cats": ["Business and Finance"]}})
+        td = approved_action({"action": "save", "def": {"name": "경제", "cats": ["Business and Finance"]}})
         gid = next(x for x in td["custom"] if x["name"] == "경제")["id"]
-        S.topic_studio_action({"action": "exclude", "id": gid, "hash": _hash(rows, 0)})
+        approved_action({"action": "exclude", "id": gid, "hash": _hash(rows, 0)})
         auto_ev = _build(rows)["composite"][0]["cluster_id"]  # 자동 토픽 제외도 공존
-        S.topic_studio_action({"action": "exclude", "id": auto_ev, "hash": _hash(rows, 1)})
+        approved_action({"action": "exclude", "id": auto_ev, "hash": _hash(rows, 1)})
 
-        td = S.topic_studio_action({"action": "settings", "settings": {"co_min": 2}})
+        td = approved_action({"action": "settings", "settings": {"co_min": 2}})
         self.assertIn(gid, td["exclusions"])                  # 튜닝 저장이 제외를 지우지 않는다
-        td = S.topic_studio_action({"action": "delete", "id": gid})
+        td = approved_action({"action": "delete", "id": gid})
         self.assertIn(gid, td["exclusions"])                  # 삭제 = 보관 · 개별 제외 목록 보존(3-11)
         self.assertEqual(next(g["status"] for g in td["custom"] if g["id"] == gid), "archived")
         self.assertIn(auto_ev, td["exclusions"])              # 자동 토픽 제외는 유지
-        td = S.topic_studio_action({"action": "status", "id": gid, "status": "active"})
+        td = approved_action({"action": "status", "id": gid, "status": "active"})
         self.assertEqual(next(g["status"] for g in td["custom"] if g["id"] == gid), "active")     # 복구
 
     def test_entity_auto_topic_drill_and_exclude(self):
         S, rows = self.S, _rows()
-        S.topic_studio_action({"action": "settings", "settings": {"entity_min": 1}})
+        approved_action({"action": "settings", "settings": {"entity_min": 1}})
         # 식별자는 사전 공통키 기반(등재 전이면 이름 기준) · 이름으로 찾아서 쓴다(2-6)
         cid = next(p["cluster_id"] for p in S.topics_data()["single"] if p["name"] == "삼성전자")
         dr = S.topic_drill(cid)
         self.assertEqual((dr["topic_id"], dr["n"]), (cid, 2))
-        td = S.topic_studio_action({"action": "exclude", "id": cid, "hash": _hash(rows, 0)})
+        td = approved_action({"action": "exclude", "id": cid, "hash": _hash(rows, 0)})
         samsung = next(p for p in td["single"] if p["name"] == "삼성전자")
         self.assertEqual((samsung["count"], samsung["excluded_n"]), (1, 1))
         self.assertEqual(S.topic_drill(cid)["n"], 1)
 
     def test_preview_samples_carry_detail_contract(self):
         """미리보기 표본 배지 클릭 → 공통 상세 스플릿뷰: 표본이 상세 필드 전체를 갖춘다."""
-        out = self.S.topic_studio_action({"action": "preview",
+        out = approved_action({"action": "preview",
                                           "def": {"name": "x", "cats": ["Business and Finance"]}})
         core = next(b for b in out["preview"]["bundles"] if b["kind"] == "core")
         self.assertTrue(core.get("samples"))

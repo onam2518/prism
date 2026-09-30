@@ -170,9 +170,8 @@ GOLD = [{'in': 'title="\'나는 유로파의 제왕이 아니다\'… \'UEL 통�
                {'name': '총파업', 'type': None},
                {'name': '중앙노동위원회', 'type': 'OG'}],
   'intent': ['속보·단신', '노동·사회 이슈'],
-  'category': [{'tier1': 'Business and Finance', 'tier2': 'Industries'},
-               {'tier1': 'News and Politics', 'tier2': 'Society'}],
-  'note': '엔티티 후보 8개 중 정제(협상·결렬=행위어, 노사·사후조정=일반어) · 기업 엔티티의 노사 맥락 → Industries 대표'},
+  'category': [{'tier1': 'News and Politics', 'tier2': 'Society'}],
+  'note': '엔티티 후보 8개 중 정제(협상·결렬=행위어, 노사·사후조정=일반어) · 노사·파업 본문 맥락 → Society 대표 · 기업명만으로 Industries 병기 금지'},
  {'in': 'title="고령운전자 급가속 사고 막는다…페달 오조작 방지장치 2차 보급 본격화"',
   'summary': '경찰청·손해보험협회·한국교통안전공단이 고령운전자 페달 오조작 사고 예방을 위해 전국 7개 광역시 759명을 대상으로 방지장치 설치를 완료하고, 오는 6월부터 주행 데이터 '
              '기반 효과 검증에 돌입하는 2차 보급사업의 추진 현황과 정책 배경을 전한다.',
@@ -426,7 +425,7 @@ TOPIC_SUGGEST_ROLE = (
     "'필수 조건'(반드시 만족 · 토픽의 정체성=주제·대상)과, 관련 콘텐츠를 넓히는 '선택 조건'"
     "(각각이 별도 '관련 묶음'이 됨 · 관점·형식 등 곁가지)으로 나눠 조건값을 설계한다.")
 TOPIC_SUGGEST_SCHEMA = (
-    '{"must": {"cats": string[], "intents": string[], "keywords": string[]}, '
+    '{"condition_expr": null 또는 {"all":조건[]} 또는 {"any":조건[]} 또는 {"not":조건} 또는 {"field":"entities"|"intent"|"content_category"|"source","values":string[]}, "unresolved":string[], "must": {"cats": string[], "intents": string[], "keywords": string[]}, '
     '"optional": {"cats": string[], "intents": string[], "keywords": string[]}, '
     '"exclude": {"cats": string[], "intents": string[], "keywords": string[]}, '
     '"eattrs": string[] ("key:value" · 개체 속성 후보 목록의 값만 · 해당 없으면 빈 배열), '
@@ -436,6 +435,12 @@ TOPIC_SUGGEST_SCHEMA = (
     '"min_len": int, "max_len": int, "flags": string[], "neg_flags": string[], "rules": string[], '
     '"tags": string[], "min_dri": number, "cp_grades": string[], "base_excl": bool}}')
 TOPIC_SUGGEST_RULES = (
+    "- 복합 조건은 condition_expr의 all/any/not 트리로 표현한다. 같은 축 여러 값은 기본 OR다. "
+    "'A는 결과만, B는 프리뷰만'은 any(all(A,결과),all(B,프리뷰))로 대응 관계를 보존한다. "
+    "'X 제외, 다만 Y 허용'은 any(not(X),Y)이며 범위를 잃지 않는다.\n"
+    "- 더·덜은 비중 조절이며 포함·제외로 바꾸지 않는다. 지원하지 않는 행동·모호한 범위·미등록 필수 CP는 "
+    "unresolved 배열에 원문과 이유를 적고 해당 요청 묶음을 확인 대기로 둔다. 없는 출처를 버리고 일부만 제안하지 않는다.\n"
+
     "- 목적: 하나의 토픽을 '핵심 묶음(필수+모든 선택)'과 '관련 묶음(필수+선택 하나씩)'으로 펼칠 수 있게 조건을 설계한다.\n"
     "- must(필수): 이 토픽이 무엇에 관한 것인지 규정하는 축. 보통 주제 카테고리·대상 키워드 1~2개. 비우지 않는다.\n"
     "- optional(선택): 관련 콘텐츠를 넓히는 관점·형식·세부 유형. 인텐트가 여기 오는 경우가 많다. 1~3개 제안해 묶음이 풍부해지게 한다.\n"

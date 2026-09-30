@@ -580,8 +580,8 @@ class SupabaseStore:
 
     def register_golden(self, team, rows, replace=True, source="manual"):
         """검증된 전체 배치를 한 트랜잭션으로 교체·병합한다. 실패 시 기존 정답을 유지한다."""
-        from .store import content_hash
-        payload = [{"content_hash": content_hash(r["content"]), "content": r["content"], "expected": r["expected"]}
+        from .store import golden_hash
+        payload = [{"content_hash": golden_hash(r), "content": r["content"], "expected": r["expected"]}
                    for r in rows if r.get("content") and r.get("expected")]
         if not payload:
             return 0
@@ -1853,6 +1853,12 @@ class SupabaseStore:
         tq = urllib.parse.quote(team or "")
         rows = self._get("reports", f"select=payload&kind=eq.{urllib.parse.quote(kind)}&team_key=eq.{tq}")
         return rows[0]["payload"] if rows else None
+
+    def compare_report(self, kind, expected, payload, team=None, guard=None):
+        return self._req("POST", "rpc/prism_compare_report", body={
+            "p_kind": kind, "p_team_key": team or "", "p_expected": expected,
+            "p_payload": payload, "p_guard_kind": guard[0] if guard else None,
+            "p_guard_expected": guard[1] if guard else None}) is True
 
     # ── 조회 스테이징(metaquery) · SQLite Store 와 동일 계약 · 표 prism_mq_stage ──
     @staticmethod

@@ -32,6 +32,18 @@ def content_hash(content: dict) -> str:
     return hashlib.sha1(s.encode("utf-8")).hexdigest()[:16]
 
 
+def golden_hash(row: dict) -> str:
+    """DNM 정답·평가는 원천키/입력/정책으로 식별한다. 일반 실험의 해시는 유지한다."""
+    expected, content = row.get("expected") or {}, row.get("content") or {}
+    if expected.get("contract_version") == "dnm-common-2026-09-29-r3":
+        key = (content.get("source_fields") or {}).get("item_unique_key")
+        if not isinstance(key, str) or not key or not expected.get("input_revision") or not expected.get("policy_version"):
+            raise ValueError("DNM 정답에는 원천키·입력·정책 버전이 필요합니다")
+        return hashlib.sha256(json.dumps([key, expected["input_revision"], expected["policy_version"]],
+                                         ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
+    return content_hash(content)
+
+
 IDENTITY_FIELDS = ("displayServiceName", "title", "subtitle", "body")   # content_hash 입력 = 콘텐츠 정체성
 
 # 인입 경로 라벨(results.source) 은 '최초 1회'만 기록한다.
@@ -153,6 +165,12 @@ class Store:
     def __init__(self, path: str):
         self.path = path
         self._init()
+
+    def close_thread_connection(self):
+        c = getattr(_local, "conn", None)
+        if c is not None and getattr(_local, "path", None) == self.path:
+            c.close()
+            _local.conn = None
 
     def _conn(self) -> sqlite3.Connection:
         # 스레드별 커넥션(ThreadPool 동시 쓰기 안전)
@@ -990,6 +1008,24 @@ class Store:
             return json.loads(row[0])
         except Exception:
             return None
+
+    def compare_report(self, kind, expected, payload, team=None, guard=None):
+        """읽은 스냅샷이 그대로일 때만 교체한다. 최초 생성도 동일 잠금으로 보호."""
+        c = self._conn()
+        try:
+            c.execute("BEGIN IMMEDIATE")
+            current = self.get_report(kind, team)
+            if current != expected or (guard is not None and self.get_report(guard[0], team) != guard[1]):
+                c.rollback()
+                return False
+            c.execute("INSERT INTO reports(kind,team,payload,ts) VALUES(?,?,?,?) "
+                      "ON CONFLICT(kind,team) DO UPDATE SET payload=excluded.payload, ts=excluded.ts",
+                      (kind, team or "", json.dumps(payload, ensure_ascii=False), time.time()))
+            c.commit()
+            return True
+        except Exception:
+            c.rollback()
+            raise
 
     def save_draft(self, content_hash: str, model: str, version, item_meta, quality_meta, team=None):
         """(콘텐츠, 모델, 버전) 초안 스냅샷 upsert · 결과 비교 팝업의 전체 이력 원천."""
@@ -2362,7 +2398,7 @@ class Store:
         건별 upsert_golden(행마다 commit)이 아니라 executemany + 단일 커밋 —
         같은 파일의 다른 일괄 경로(save_many·save_dedup·eval_results_add)와 같은 관례
         (500건 실측 50ms → 10ms · 2026-08 감사 S10). 단건 upsert_golden 은 그대로 둔다."""
-        vals = [(content_hash(r["content"]), json.dumps(r["content"], ensure_ascii=False),
+        vals = [(golden_hash(r), json.dumps(r["content"], ensure_ascii=False),
                  json.dumps(r["expected"], ensure_ascii=False), time.time(), source or "manual")
                 for r in rows if r.get("content") and r.get("expected")]
         if not vals:

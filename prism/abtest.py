@@ -270,8 +270,12 @@ def run_methodology(rows: list, methodology: H.Methodology, llm, *,
 
     def work(i):
         try:
-            outs[i] = H.run(rows[i]["content"], llm, methodology, emb=emb,
-                            quality_prefilter=prefilter, fewshot_pool=fewshot_pool)
+            if getattr(llm, "dnm_policy", None):
+                from .dnm import evaluate_content
+                outs[i] = evaluate_content(rows[i]["content"], llm)
+            else:
+                outs[i] = H.run(rows[i]["content"], llm, methodology, emb=emb,
+                                quality_prefilter=prefilter, fewshot_pool=fewshot_pool)
         except Exception as e:
             outs[i] = None
             errs.append((i, e))

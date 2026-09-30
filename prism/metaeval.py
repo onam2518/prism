@@ -178,7 +178,10 @@ def _top(d: dict, n: int = 10) -> list:
 def meta_report(acc: dict) -> dict:
     cn, en = acc.get("cat_n", 0), acc.get("ent_n", 0)
     pairs = acc.get("sum_pairs") or []
-    sims, sim_method = summary_sims(pairs)       # 리드문은 여기서 한 번에(임베딩 호출을 한 지점으로)
+    if acc.get("summary_sim_method") == "bigram_f1":
+        sims, sim_method = [summary_sim(a, b) for a, b in pairs], "bigram_f1"
+    else:
+        sims, sim_method = summary_sims(pairs)
     sn = len(pairs)
     r4 = lambda s, n: round(s / n, 4) if n else 0
     return {
