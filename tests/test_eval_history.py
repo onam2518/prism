@@ -49,6 +49,48 @@ class TestEvalHistory(unittest.TestCase):
         rid = self.st.eval_run_create('', 'old', 'all', 0)
         self.assertIsNone(E.eval_history_detail('eval', rid)['version'])
 
+    def test_missing_expected_is_not_filled_from_model_or_current_golden(self):
+        rid = self.st.eval_run_create('', 'model', 'all', 1)
+        original = {'finalGrade': 'G', 'reasons': []}
+        self.st.eval_results_add(rid, [{'hash': 'missing', 'expected': original,
+                                      'got': {'finalGrade': 'G', 'summary': '모델 산출'}}])
+        self.st.upsert_golden('missing', {'title': '현재 정답'},
+                              {'finalGrade': 'G', 'summary': '나중에 확정한 정답'})
+        result = E.eval_history_detail('eval', rid)
+        item = result['items'][0]
+        self.assertEqual(set(item['expected_status'].values()), {'missing'})
+        self.assertNotIn('summary', item['expected'])
+        self.assertEqual(item['got']['model']['summary'], '모델 산출')
+        self.assertEqual(result['expected_coverage']['fields']['summary'], 0)
+        self.assertEqual(self.st.eval_results_list(rid)[0]['expected'], original)
+
+    def test_expected_coverage_uses_scoring_rules_and_keeps_values(self):
+        items = [
+            {'expected': {'finalGrade': 'G', 'intent': ['리뷰'], 'intent_review': 'needed',
+                          'entities': [], 'content_category': [], 'summary': ''}},
+            {'expected': {'entities': [], 'meta_status': {'entities': 'no_value'}}},
+            {'expected': {'intent': ['리뷰'], 'summary': '사람이 확정한 리드문',
+                          'content_category': ['News'], 'meta_status': {'content_category': 'input_hold'}}},
+        ]
+        result = E._history_expected(items)
+        self.assertEqual(result['items'][0]['expected_status'],
+                         {'intent': 'pending', 'content_category': 'empty', 'entities': 'empty', 'summary': 'empty'})
+        self.assertEqual(result['items'][1]['expected_status']['entities'], 'scored')
+        self.assertEqual(result['items'][2]['expected_status']['content_category'], 'excluded')
+        self.assertEqual(result['expected_coverage']['fields'],
+                         {'intent': 1, 'content_category': 0, 'entities': 1, 'summary': 1})
+        self.assertEqual(result['expected_coverage']['total'], 3)
+        self.assertEqual(result['items'][0]['expected'], items[0]['expected'])
+        self.assertNotIn('expected_status', items[0])
+
+    def test_legacy_compare_does_not_claim_gold_was_missing(self):
+        key = 'model_compare_v1234567890'
+        self.st.save_report(key, {'ok': True, 'models': [{'model': 'old'}], 'items': [
+            {'hash': 'old', 'expected': {'grade': 'G', 'reasons': []}, 'got': {'old': {'grade': 'G'}}}]})
+        result = E.eval_history_detail('compare', key=key)
+        self.assertEqual(set(result['items'][0]['expected_status'].values()), {'unrecorded'})
+        self.assertTrue(result['expected_coverage']['legacy'])
+
     def test_pilot_round_reads_its_own_report(self):
         rid = self.st.autopilot_create('', 0.9, 3)
         self.st.autopilot_update(rid, history=[{'round': 1, 'version': 4, 'accuracy': 0.8, 'model': 'old', 'reverted': True}])
