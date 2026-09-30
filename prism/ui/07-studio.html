@@ -83,6 +83,7 @@
               <table class="ds-table talk__tbl" x-show="t.samples.length"><tbody>
               <template x-for="s in t.samples" x-bind:key="'s'+(s.hash||s.title)"><tr><td x-text="s.title"></td><td class="text-muted" x-text="s.service||''"></td><td class="text-muted" x-text="s.why?('걸린 이유 · '+s.why):''"></td><td class="text-muted tnum" x-text="s.grade||''"></td></tr></template>
               </tbody></table>
+              <p class="meta" x-show="t.semantic" x-text="t.semantic"></p>
               <!-- 가까운 기존 토픽(4-44): 저장 전에도 겹침을 알린다 -->
               <div class="talk__warn" x-show="(t.similar||[]).length" x-text="'가까운 기존 토픽 · '+(t.similar||[]).map(x=>x.name+' ('+Math.round(x.score*100)+'%)').join(' · ')+' · 겹치면 하나로 합쳐 주세요'"></div>
               </div>

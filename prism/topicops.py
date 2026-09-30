@@ -576,10 +576,20 @@ def _topic_studio_action(data: dict, mock: bool = False, team=None, who: str = "
         eidx = _ent_index() if d.get("eattrs") else None
         pv = (TP.preview_definition(rows, svc, d, ent_index=eidx, ent_keys=_ent_keys(rows, team)) if rows else
               {"n_total": 0, "bundles": [], "must_n": 0, "opt_n": 0})
+        if data.get("semantic") and not mock:
+            from .topicvectors import rank
+            for b in pv.get("bundles") or []:
+                if b.get("kind") == "core":
+                    ranked, info = rank(d.get("prompt") or d.get("name"), rows,
+                                        b.get("content_ids") or [], team)
+                    pv["semantic"] = info
+                    if ranked:
+                        b["samples"] = ranked
         # 표본을 상세 화면 계약(_detail_row)으로 확장: 미리보기 배지 클릭 → 공통 스플릿뷰로 바로 열람
         for b in pv.get("bundles") or []:
             if b.get("samples"):
-                b["samples"] = [_SV._detail_row(rows[s["i"]]) for s in b["samples"]
+                b["samples"] = [dict(_SV._detail_row(rows[s["i"]]),
+                                     **({"semantic_score": s["semantic_score"]} if "semantic_score" in s else {})) for s in b["samples"]
                                 if isinstance(s.get("i"), int) and 0 <= s["i"] < len(rows)]
         pv["feed_chips"] = TP.feed_labels(TP.sanitize_feed((data.get("def") or {}).get("feed")))
         # 걸린 이유(4-44): 표본이 어떤 조건 묶음으로 걸렸는지 · 메타 축이 없으면 원천 조건으로 표기
