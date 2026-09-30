@@ -56,6 +56,8 @@
 
 ## 카드·구획
 
+콘텐츠 전환 탭은 앱 공통 `.evaltabs`와 활성 버튼 `.sel`을 사용한다. 콘텐츠 검수·평가 등 같은 계층의 화면은 GmarketSans 13.5px·700, 높이40px, 좌우 padding18px, 선택 색상 `--ds-primary-deep`와 동일한 밑줄을 공유한다. 기본 `.ds-tabs`를 직접 섞으면 앱의 글꼴·색·간격 계약이 달라진다. 탭 역할·선택 상태·키보드 이동도 함께 제공한다.
+
 | 컴포넌트 | 계약 |
 |---|---|
 | `.panel` | 카드 1구획. `--ds-radius-card` · 헤더 `.panel-hd`(타이틀 b + `.meta` 설명, 우측 액션은 `ml-auto`) · 본문 `.panel-bd`(`--ds-pad-inset`/`--ds-pad-panel-x`) |
@@ -65,6 +67,7 @@
 | `.content-section__head` | 내부 div에 제목과 설명을 묶고, 별도 `.content-section__actions`에 조작 배치. 내부 구획 제목 GmarketSans16px(좁은 화면15px), 독립 패널 제목은 기존 패널과 동일한16.5px·700·줄높이1.4·자간−0.015em. 설명 Pretendard13px·줄높이1.6 |
 | `.result-notes` | 결과 해석 안내용 `ul > li` 목록. 13px·줄높이1.6·항목 간격8px. 단일 문장과 상태 메시지는 `.content-section__description` 사용 |
 | `.item-compare-table` | 콘텐츠240px + 정답70px + 동일 너비 모델 열 최소160px. 넘침은 표 wrapper 안에서 처리 |
+| `.item-compare-table--metadata` | 등급 외 메타 전문을 표시할 때 사용. `.item-compare-content` col은240px, 정답·모델 col은 고정폭 없이 동일 너비·최소200px. `.item-compare-expected`의70px 폭을 적용하지 않는다 |
 | `.stepline` | 프로세스 스텝 헤더: `STEP N` 배지(디스플레이 폰트) + 타이틀 + meta |
 | `.subhd` | 패널 내 소제목(디스플레이 폰트 13.5px) + `.meta` 설명 |
 | `.tiles`/`.tile` | 지표 타일. 기본 최대4열, `tiles--3/--5/--6`으로 최대 열수 지정. 칸 최소140px, 간격10px. 가용폭이 줄면 자동 줄바꿈. 숫자 `.n` + 라벨 `.t` · 통계 용어는 `data-tip` 필수 |

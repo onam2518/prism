@@ -331,7 +331,7 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       evalMetricText(model, row) {
         const value = model[row[1]];
-        if (value == null || (row[3] && !model[row[3]])) return '—';
+        if (value == null || (row[3] && !model[row[3]])) return '·';
         const text = row[2] === 'raw' ? String(value) : row[2] === 'cost' ? '$' + Number(value).toFixed(4) : row[2] === 'lat' ? this.latTxt(value) : this.pctTxt(value);
         return text + (row[3] ? ' · ' + model[row[3]] + '건' : '');
       },
