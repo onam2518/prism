@@ -134,12 +134,12 @@ window.PRISM_APP_PARTS.push(() => ({
             if (v !== 'good') return;
             const cur = (this.detail && this.detail.hash === r.hash) ? (this.detail.intent || []) : (r.intent || []);
             const res = await (await this._afetch('/final-verdict', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: r.hash, verdict: 'intent_confirm', intent: cur, reviewer: this.reviewer }) })).json();
-            if (!(res && res.ok)) { this._err((res && res.error) || '재확정 저장 실패'); return; }
+            if (!(res && res.ok)) { this._err((res && res.error) || '재확정 저장 실패'); return false; }
             this.liveToast('인텐트 재확정 저장 · 이 정답은 다시 인텐트 측정에 들어갑니다');
             this.finalQueue.items = ((this.finalQueue || {}).items || []).filter((x) => x.hash !== r.hash);
             if (this.finalQueue) this.finalQueue.n = this.finalQueue.items.length;
             if (this.finalCtx && this.finalCtx.hash === r.hash) { this.detailOpen = false; this.finalCtx = null; }
-            return;
+            return true;
           }
           const res = await (await this._afetch('/final-verdict', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: r.hash, verdict: v, reviewer: this.reviewer }) })).json();
           if (res && res.ok && res.gold) {         // 골드 캘리브레이션 문항: 정오 알림 후 목록에서 제거(원장 무오염)
@@ -147,7 +147,7 @@ window.PRISM_APP_PARTS.push(() => ({
             this.finalQueue.items = ((this.finalQueue || {}).items || []).filter((x) => x.hash !== r.hash);
             (res.missions_completed || []).forEach((m) => this.celebratePoints(m.bonus, '미션 달성 · ' + m.label));
             if (this.finalCtx && this.finalCtx.hash === r.hash) { this.detailOpen = false; this.finalCtx = null; }
-            return;
+            return true;
           }
           if (res && res.ok) {
             r.final = v || '';
@@ -155,8 +155,10 @@ window.PRISM_APP_PARTS.push(() => ({
             r.final_ts = v ? (Date.now() / 1000) : 0;
             this.liveToast(v === 'good' ? '편입 확정 · 다음 학습 반영 때 정답셋으로 승격됩니다' : (v === 'bad' ? '제외 확정 · 정답셋으로 승격되지 않습니다' : '최종판정을 철회했어요'));
             (res.missions_completed || []).forEach((m) => this.celebratePoints(m.bonus, '미션 달성 · ' + m.label));
+            return true;
           } else this._err((res && res.error) || '저장 실패');
         } catch (e) { this._err('저장 실패'); }
+        return false;
       },
       // 최종검수 컨텍스트: 최종 검수 탭에서 상세로 들어오면 '검수 판정' 자리가 '최종검수 결정'으로 바뀐다
       finalCtx: null,
@@ -173,9 +175,10 @@ window.PRISM_APP_PARTS.push(() => ({
       openFinalAnswer(r) {
         this.fa = { hash: r.hash, title: r.title || '(제목 없음)', row: r,
           summary: r.summary || '', cats: (r.category || []).slice(),
-          intent: (r.intent || []).slice(), grade: r.grade === 'R' ? 'R' : 'G',
+          intent: (r.intent || []).slice(), grade: ['G','R'].includes(r.grade) ? r.grade : '',
           entities: (r.entities || []).slice(),
           note: (r.fb && r.fb.note) || '', elems: (r.fb && r.fb.elems) || [] };
+        if (!(r.hash||'').startsWith('goldf:')) this.fa.opsCapture = this.opsCaptureFinal(r, this.fa);
         this.hybInit(['facat', 'faint', 'faent']);   // 픽커 상태(검색어·신규 표시) 초기화
         this.hybEntLoad();                           // 엔티티 추천·검색용 등재분 캐시 예열
         this.faOpen = true;
@@ -228,6 +231,10 @@ window.PRISM_APP_PARTS.push(() => ({
         const f = this.fa; if (!f || this.faBusy) return;
         this.faBusy = true;
         try {
+          if (!(f.hash || '').startsWith('goldf:') && f.row.final_reason !== '인텐트 재확정') {
+            if (await this.opsCorrectFinal(f)) this.faOpen = false;
+            return;
+          }
           if (!(f.hash || '').startsWith('goldf:')) {   // 골드 문항은 편집 대상이 아니라 판정만 기록됨
             const r0 = f.row; const patch = {};
             const cats = (f.cats || []).map((s) => String(s).trim()).filter(Boolean);
@@ -249,8 +256,7 @@ window.PRISM_APP_PARTS.push(() => ({
               (pr.missions_completed || []).forEach((m) => this.celebratePoints(m.bonus, '미션 달성 · ' + m.label));
             }
           }
-          await this.finalDecide(f.row, 'good');
-          this.faOpen = false;
+          if (await this.finalDecide(f.row, 'good')) this.faOpen = false;
         } finally { this.faBusy = false; }
       },
       async toggleFinalRole(m) {                    // 팀 관리: 최종검수자 지정/해제(슈퍼관리자 이상)

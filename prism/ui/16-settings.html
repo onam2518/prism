@@ -1,5 +1,17 @@
       <!-- ═══ 모듈: 시스템 설정(운영 관리자) · 데이터 관리(상단) + API 키·모델(하단) ═══ -->
       <template x-if="mod === 'system'">
+        <section class="panel w-full" x-init="opsDnmLoad()"><header class="panel-hd"><b>DNM 연결·전환 상태</b><button class="copybtn ml-auto" type="button" x-on:click="opsDnmLoad()">새로고침</button></header><section class="panel-bd">
+          <p x-text="opsDnm ? (opsDnm.control && opsDnm.control.registry && opsDnm.control.policy?'실제 등록표·정책 연결됨':'등록표·정책 미연결') : '조회 중'"></p>
+          <p class="text-xs" x-text="'정책 버전 · '+((((opsDnm||{}).control||{}).policy||{}).policy_version||'미연결')"></p>
+          <p class="text-xs" x-text="'전환 승인 · '+(((opsDnm||{}).control||{}).approval?'근거 연결됨':'미승인')"></p><p class="text-xs" x-text="'등록표 버전 · '+(((((opsDnm||{}).control||{}).registry)||{}).version||'미연결')"></p><p class="text-xs text-muted">등록표와 승인 근거는 실제 원천·적용 정책을 확인한 파일만 사용하세요 · API 존재와 서비스 수신 완료는 구분합니다.</p>
+          <label>원천 등록표 파일 <input class="field" type="file" accept="application/json,.json" x-on:change="opsDnmFile($event,'configure')"></label>
+          <button class="copybtn" type="button" x-on:click="opsDnmPrepare()">현재 모델·사전 기준의 정책 연결</button>
+          <label>전환 승인 증빙 파일 <input class="field" type="file" accept="application/json,.json" x-on:change="opsDnmFile($event,'approve')"></label>
+          <label>실제 원천 이벤트 파일 <input class="field" type="file" accept="application/json,.json" x-on:change="opsDnmFile($event,'event')"></label>
+          <p role="status" x-text="opsDnmMsg"></p>
+        </section></section>
+      </template>
+      <template x-if="mod === 'system'">
         <div class="w-full space-y-4">
         <section class="panel"><div class="panel-hd"><b>데이터 관리</b><span class="meta">삭제는 되돌릴 수 없습니다 · 우리 팀 데이터만 영향</span><span class="ds-badge ds-badge--neutral ml-auto">운영 관리자</span></div>
           <div class="panel-bd">

@@ -16,6 +16,7 @@ window.PRISM_APP_PARTS.push(() => ({
         this.srcCheckMsg = ''; this.srcCheckBusy = false;   // 원문 상태 확인 결과는 콘텐츠별(이전 항목 잔상 제거)
         this.loadEntLookup();                    // 엔티티 → 개체 사전 정보(타입·속성) 표시
         this.loadEntLabels();                    // 엔티티 관련성 라벨(내 표·집계)
+        this.opsOpen(c);
       },
       // ── 검수 상세 × 엔티티 사전: 뱃지에 타입·속성 표시 · 클릭 = 상세 팝업(수정·보강 가능) ──
       entLookup: {},
@@ -47,7 +48,8 @@ window.PRISM_APP_PARTS.push(() => ({
         this.entFixBusy = true;
         try {
           let r = null;
-          try { r = await (await this._afetch('/patch-meta', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: this.detail.hash, patch: { entities: ents }, reviewer: this.reviewer || '' }) })).json(); } catch (e) {}
+          if (!this.opsDetail) { this._err('검수 기준을 불러온 뒤 다시 저장하세요'); return; }
+          r = await this.opsSave({action:'patch',patch:{entities:ents}});
           if (!(r && r.ok)) { this._err((r && r.error) || '엔티티 저장 실패'); return; }
           this.detail.entities = ents;             // 상세·목록 사본 즉시 반영
           [((this.rawData || {}).items), ((this.drillData || {}).items), ((this.finalQueue || {}).items), (this.detailNav ? this.detailNav.list : null)].forEach((list) => {
@@ -55,7 +57,7 @@ window.PRISM_APP_PARTS.push(() => ({
             if (t) { t.entities = ents; if (t.item_meta) t.item_meta.entities = ents; }
           });
           this.entFixOpen = false;
-          this.liveToast('엔티티 교정 저장 · 골든 확정 시 정답에 포함됩니다');
+          this.liveToast('엔티티 교정 저장 · 원문 대조 후 항목별 판정을 다시 확인하세요');
           ((r.missions_completed) || []).forEach((m) => this.celebratePoints(m.bonus, '미션 달성 · ' + m.label));
           this.loadEntLookup();                    // 사전 등재 배지 갱신
           if (this.histOpen) this.loadHistory();   // 작업 이력에 교정 행 반영
@@ -155,7 +157,7 @@ window.PRISM_APP_PARTS.push(() => ({
       histWhen(ts) { return ts ? new Date(ts * 1000).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''; },
       editVerdict: false, pendingBad: false, detailBack: false,
       // 정확 = 즉시 완료 · 수정 필요 = 요소·사유 입력 후 '완료 처리' 로만 확정(누른다고 바로 저장 안 함)
-      reviewGood() { this.pendingBad = false; this.setFeedback(this.detail, 'good'); this.editVerdict = false; this._afterVerdict(); },
+      reviewGood() { if(this.opsDetail && this.detail && this.opsDetail.hash===this.detail.hash){this.opsAllAccurate();this.opsSaveReview();return;} this.pendingBad = false; this.setFeedback(this.detail, 'good'); this.editVerdict = false; this._afterVerdict(); },
       reviewBadComplete() {
         if (!(this.detail.fb.note || '').trim()) { this._err('무엇을 왜 고쳐야 하는지 입력하세요'); return; }
         const cur = this.myVerdict(this.detail.fb);

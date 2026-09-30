@@ -218,7 +218,7 @@ window.PRISM_APP_PARTS.push(() => ({
           if (t && /INPUT|TEXTAREA|SELECT/.test(t.tagName)) return;
           if (e.metaKey || e.ctrlKey || e.altKey) return;
           if (e.code === 'KeyA') { e.preventDefault(); if (this.finalMode) this.finalDecide(this.finalCtx, 'good'); else this.reviewGood(); }
-          else if (e.code === 'KeyS') { e.preventDefault(); if (this.finalMode) this.finalDecide(this.finalCtx, 'bad'); else { this.openEditVerdict(); this.pendingBad = true; } }
+          else if (e.code === 'KeyS') { e.preventDefault(); if (this.finalMode) this.finalDecide(this.finalCtx, 'bad'); else if(this.opsDetail){this._err('해당 메타의 수정 필요와 원문 근거를 입력하세요');} else { this.openEditVerdict(); this.pendingBad = true; } }
           else if (e.code === 'ArrowRight') { e.preventDefault(); this.detailGo(1); }
           else if (e.code === 'ArrowLeft') { e.preventDefault(); this.detailGo(-1); }
           else if (e.code === 'Escape') { this.detailOpen = false; }

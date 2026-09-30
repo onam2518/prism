@@ -147,11 +147,12 @@ def is_final_reviewer(uid, team=None) -> bool:
     return bool(uid) and uid in reviewer_roles(team)
 
 
-def final_review_queue(team=None, reviewer: str = "") -> dict:
+def final_review_queue(team=None, reviewer: str = "", offset=0, limit=200, reason="", order="oldest") -> dict:
     """최종검수 큐: 기초 검수를 거쳤지만 골든으로 확정되지 못한 미확정분만.
     대상 = ① 의견 갈림(split · 가중 다수결 미결) ② 정확 합의인데 분류 공백 ③ 정확 합의인데
     등급(G/R) 공백. 기초 합의·승격 기준은 build_golden_from_reviews 와 동일 ·
     판정은 final_verdicts(편입/제외)로."""
+    filter_reason = reason
     st = _SV.get_store()
     if not st:
         return {"ok": False, "items": [], "n": 0}
@@ -205,13 +206,22 @@ def final_review_queue(team=None, reviewer: str = "") -> dict:
         d["final_by"] = fv.get("by", "")               # 목록 = 결정 현황판: 누가 · 언제
         d["final_ts"] = fv.get("ts", 0)
         out.append(d)
-        if len(out) >= 200:
-            break
-    out += _intent_reconfirm_items(rows, st, team, cap=200)   # 공통 68 전환 뒤 재확정 대기 정답(2차 검수 몫)
+    out += _intent_reconfirm_items(rows, st, team, cap=max(1, len(rows)))   # 공통 68 전환 뒤 재확정 대기 정답(2차 검수 몫)
     out = _SV._attach_fb(out, team, reviewer, fmap=fmap)
+    if filter_reason:
+        out = [r for r in out if r.get("final_reason") == filter_reason]
+    def waiting_since(row):
+        fb = fmap.get(row['hash']) or {}
+        stamps = [float(v.get('ts') or 0) for v in fb.get('verdicts', []) if v.get('ts')]
+        return min(stamps) if stamps else (row.get('fb') or {}).get('ts') or 0
+    out.sort(key=waiting_since, reverse=order == "newest")
+    total = len(out)
+    offset, limit = max(0, int(offset)), max(1, min(200, int(limit)))
+    out = out[offset:offset+limit]
+    real_n = len(out)
     if reviewer and out and bool(getattr(Config.load(), "final_gold_check", True)):
         out = _inject_gold_final(out, reviewer, team)   # 골드 캘리브레이션(블라인드 · 응답은 gold_checks 로)
-    return {"ok": True, "items": out, "n": len(out), "stats": _final_stats(finals)}
+    return {"ok": True, "items": out, "n": total, "displayed_n": real_n, "offset": offset, "limit": limit, "gold_n": len(out)-real_n, "stats": _final_stats(finals)}
 
 
 def _intent_reconfirm_items(rows: list, st, team=None, cap: int = 200) -> list:

@@ -1654,6 +1654,28 @@ def _g_topic_drill(h, q):
                        reviewer=(h._bearer_uid() or q.get("reviewer", [""])[0]))
 
 
+def _ops_access(h):
+    uid = h._bearer_uid()
+    privileged = not _supa() or is_super_admin_user(uid, h._req_team(), h._bearer_email())
+    return uid, privileged
+
+
+@_get_route("/ops-review")
+def _g_ops_review(h, q):
+    from . import opsreview as O
+    uid, privileged = _ops_access(h)
+    who = uid or q.get("reviewer", [""])[0]
+    ch = q.get("hash", [""])[0]
+    try:
+        if ch:
+            return O.detail(get_store(), ch, h._req_team(), who, privileged)
+        return O.overview(get_store(), h._req_team(), who, privileged,
+               legacy=feedback_map_cached(h._req_team()),
+               live_hashes={_row_key(r.get("content_ref") or {}) for r in results_rows(team=h._req_team())})
+    except (ValueError, TypeError) as exc:
+        return {"ok": False, "error": str(exc)}
+
+
 @_get_route("/dnm", admin=True)
 def _g_dnm(h, q):
     from .dnm import Runtime
@@ -1710,7 +1732,13 @@ def _g_final_queue(h, q):
                         or is_final_reviewer(uid, h._req_team())):
         h._send(403, json.dumps({"error": "최종검수자 전용입니다"}, ensure_ascii=False), _JSON)
         return None
-    return final_review_queue(h._req_team(), reviewer=uid or "")
+    try:
+        return final_review_queue(h._req_team(), reviewer=uid or "",
+                offset=int(q.get("offset", ["0"])[0]), limit=int(q.get("limit", ["200"])[0]),
+                reason=q.get("reason", [""])[0], order=q.get("order", ["oldest"])[0])
+    except ValueError:
+        return {"ok": False, "error": "페이지 조건을 확인하세요"}
+
 
 
 @_get_route("/admin")
@@ -2968,6 +2996,22 @@ def _p_board(h, body):
         return None
     return board_action(data, team=h._req_team(), uid=h._bearer_uid() or "",
                         email=h._bearer_email())
+
+
+@_post_route("/ops-review", gate="team")
+def _p_ops_review(h, body):
+    from . import opsreview as O
+    data = json.loads(body or b"{}")
+    if not isinstance(data, dict):
+        return {"ok": False, "error": "요청을 확인하세요"}
+    if not h._inject_reviewer(data):
+        return {"ok": False, "error": "검수자 정보가 필요합니다"}
+    uid, privileged = _ops_access(h)
+    result = O.action(get_store(), data, h._req_team(), data.get("reviewer") or uid or "",
+                      privileged, is_final_reviewer(uid, h._req_team()))
+    if result.get("ok"):
+        _agg_bump()
+    return result
 
 
 @_post_route("/dnm", gate="admin")
