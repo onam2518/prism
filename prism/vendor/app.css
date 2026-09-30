@@ -984,6 +984,8 @@
   .item-compare-table{table-layout:fixed;width:100%;min-width:calc(240px + 70px + var(--compare-model-count,1) * 160px)}
   .item-compare-table .item-compare-content{width:240px}
   .item-compare-table .item-compare-expected{width:70px}
+  /* Full metadata needs the same readable width for expected and model values. */
+  .item-compare-table--metadata{min-width:calc(240px + (var(--compare-model-count,1) + 1) * 200px)}
   .item-compare-table th,.item-compare-table td{box-sizing:border-box;overflow-wrap:anywhere}
   .compare-model-heading{display:flex;align-items:center;flex-wrap:wrap;gap:6px;min-width:0}
   .compare-model-name{display:inline-block;max-width:100%;white-space:normal;word-break:normal;overflow-wrap:anywhere;hyphens:none}

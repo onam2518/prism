@@ -1,8 +1,8 @@
       <template x-if="mod === 'evaluate'">
         <div class="w-full space-y-4">
-          <div class="ds-tabs ds-tabs--underline" role="tablist" aria-label="평가" x-on:keydown="evalTabKey($event)">
-            <button type="button" id="eval-tab-run" class="ds-tab" role="tab" aria-controls="eval-panel-run" x-bind:aria-selected="evalTab==='run'" x-bind:tabindex="evalTab==='run' ? 0 : -1" x-bind:class="evalTab==='run' ? 'ds-tab--active' : ''" x-on:click="setEvalTab('run')">실행</button>
-            <button type="button" id="eval-tab-results" class="ds-tab" role="tab" aria-controls="eval-panel-results" x-bind:aria-selected="evalTab==='results'" x-bind:tabindex="evalTab==='results' ? 0 : -1" x-bind:class="evalTab==='results' ? 'ds-tab--active' : ''" x-on:click="setEvalTab('results')">평가결과</button>
+          <div class="evaltabs" role="tablist" aria-label="평가" x-on:keydown="evalTabKey($event)">
+            <button type="button" id="eval-tab-run" role="tab" aria-controls="eval-panel-run" x-bind:aria-selected="evalTab==='run'" x-bind:tabindex="evalTab==='run' ? 0 : -1" x-bind:class="evalTab==='run' ? 'sel' : ''" x-on:click="setEvalTab('run')">실행</button>
+            <button type="button" id="eval-tab-results" role="tab" aria-controls="eval-panel-results" x-bind:aria-selected="evalTab==='results'" x-bind:tabindex="evalTab==='results' ? 0 : -1" x-bind:class="evalTab==='results' ? 'sel' : ''" x-on:click="setEvalTab('results')">평가결과</button>
           </div>
           <div id="eval-panel-run" role="tabpanel" aria-labelledby="eval-tab-run" x-show="evalTab==='run'" class="space-y-4">
           <section class="panel" data-fn><div class="panel-hd"><b>평가 기준</b><span class="meta">어떤 모델·버전을 어떤 콘텐츠로 잴지 먼저 정합니다</span></div>
@@ -14,10 +14,9 @@
                 <span class="selctl" data-tip="프롬프트 버전 = 학습 반영 회차 + 1 · 평가는 항상 현재 버전으로 실행됩니다" data-tip-pos="bottom"><span class="selctl__lbl">프롬프트 버전</span>
                   <b class="tnum" style="padding:0 8px;font-size:13px;display:inline-flex;align-items:center" x-text="verTxt"></b>
                   <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="downloadPrompt({ model: String(evalModel || '').split('|').pop() })" data-tip="지금 평가에 쓰이는 프롬프트를 호출마다 파일 하나(① ~ ④ + ⑤ 품질) 로 zip 에 담아 내려받습니다 · 기준 모델 기준" data-tip-pos="bottom">내려받기</button></span>
-                <span style="display:flex;gap:6px;align-items:center;margin-left:6px"><span class="selctl__lbl">대상 콘텐츠</span>
-                  <button type="button" class="srcfilter__chip" x-bind:class="evalScope==='all' ? 'sel' : ''" x-on:click="evalScope='all'">전체 정답셋</button>
-                  <button type="button" class="srcfilter__chip" x-bind:class="evalScope==='eval' ? 'sel' : ''" x-on:click="evalScope='eval'">평가용만</button>
-                </span>
+                <label class="selctl"><span class="selctl__lbl">대상 콘텐츠</span>
+                  <select class="field" x-model="evalScope"><option value="all">전체 정답셋</option><option value="eval">평가용만</option></select>
+                </label>
               </div>
               <ul class="ds-bullets" style="margin:11px 0 0">
                 <li><b>평가용</b> 콘텐츠는 <b>콘텐츠 관리 · STEP 1</b>에서 지정합니다 · 검수 목록에서 제외되어 오염 없이 평가에만 쓰입니다.</li>
@@ -51,7 +50,7 @@
                   <select class="field" x-model="pilotMeta" title="아이템 메타(인텐트·카테고리·엔티티·리드문) 4축 각각이 이 값 이상이어야 목표 달성"><option value="">설정값</option><option value="0.6">60%</option><option value="0.7">70%</option><option value="0.8">80%</option><option value="0.9">90%</option></select></span>
                 <span class="selctl"><span class="selctl__lbl">최대 라운드</span>
                   <select class="field" x-model="pilotRounds"><option value="3">3</option><option value="5">5</option><option value="8">8</option></select></span>
-                <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="pilotBusy" x-on:click="startPilot()">오토파일럿 시작</button>
+                <button type="button" class="ds-btn ds-btn--secondary" x-bind:disabled="pilotBusy" x-on:click="startPilot()">오토파일럿 시작</button>
                 <span class="text-xs text-muted" x-show="pilotMsg" x-text="pilotMsg"></span>
               </div>
               <template x-if="pilot">
@@ -84,7 +83,7 @@
                 </template>
                 <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="cmpModels.length < 6" x-on:click="cmpModels.push('')">+ 모델 추가</button>
                 <span class="text-xs text-muted" x-show="modelsMsg" x-text="modelsMsg"></span>
-                <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-bind:disabled="cmpBusy || cmpPicked.length < 2" x-on:click="runCompare()" x-text="cmpBusy ? ('비교 중… ' + (cmpProgressTxt || (cmpPicked.length + '개 모델 동시 추출'))) : '비교 실행'"></button>
+                <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-md" x-bind:disabled="cmpBusy || cmpPicked.length < 2" x-on:click="runCompare()" x-text="cmpBusy ? ('비교 중… ' + (cmpProgressTxt || (cmpPicked.length + '개 모델 동시 추출'))) : '비교 실행'"></button>
                 <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="openCompareWindow(cmpJob ? cmpJob.id : 0)" data-tip="모델별 진척도와 최근 비교 결과를 브라우저 새 창으로 봅니다 · 닫아도 비교는 계속 돕니다" data-tip-pos="top">진척도 창</button>
                 <button type="button" class="ds-btn ds-btn--secondary" x-show="cmpResult && cmpResult.ok && cmpResult.key" x-on:click="openEvalHistory({ kind: 'compare', id: 'c'+cmpResult.key, key: cmpResult.key })">최근 비교 결과 보기</button>
                 <span class="text-xs text-muted" role="status" x-show="cmpResult && !cmpResult.ok" x-text="cmpResult ? cmpResult.error : ''"></span>
@@ -93,16 +92,16 @@
           </section>
           </div>
           <div id="eval-panel-results" role="tabpanel" aria-labelledby="eval-tab-results" x-show="evalTab==='results'" class="space-y-4">
-          <section class="panel"><div class="panel-hd"><b>평가 이력</b><span class="meta">종류와 관계없이 상세 보기에서 저장된 지표와 건별 결과를 확인합니다</span></div>
-            <div class="panel-bd">
+          <section class="panel"><div class="panel-hd"><b>평가 이력</b><span class="meta">종류와 관계없이 상세 보기에서 저장된 지표와 건별 결과를 확인합니다</span>
+            <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadEvalRuns()" data-tip="새로고침" data-tip-pos="bottom" aria-label="평가 이력 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
+            <div class="panel-bd space-y-4">
               <div class="control-row">
                 <label class="selctl"><span class="selctl__lbl">종류</span><select class="field" x-model="evalHistoryFilter"><option value="all">전체</option><option value="eval">일반 평가</option><option value="pilot">오토파일럿</option><option value="compare">모델 비교</option></select></label>
-                <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="loadEvalRuns()">새로고침</button>
                 <span role="alert" class="text-xs text-muted" x-text="evalHistoryError"></span>
               </div>
               <div class="text-xs text-muted" x-show="!evalHistoryRows.length && !evalHistoryError">표시할 평가가 없습니다. 실행 탭에서 평가를 시작하세요.</div>
               <template x-if="evalHistoryRows.length">
-                <div class="overflow-auto" style="max-height:300px"><table class="ds-table" style="min-width:960px"><thead><tr><th style="width:70px">#</th><th style="width:110px">시각</th><th style="width:100px">종류</th><th>모델</th><th style="width:110px">범위</th><th style="width:150px">상태</th><th style="width:90px">일치율</th><th style="width:170px">작업</th></tr></thead><tbody>
+                <div class="overflow-auto" style="max-height:300px"><table class="ds-table ds-table--compact" style="min-width:960px"><thead><tr><th style="width:64px">#</th><th style="width:104px">시각</th><th style="width:100px">종류</th><th>모델</th><th style="width:104px">범위</th><th style="width:100px">상태</th><th style="width:76px">일치율</th><th style="width:220px">작업</th></tr></thead><tbody>
                   <template x-for="r in evalHistoryRows" x-bind:key="'er'+r.id">
                     <tr x-bind:class="evalSelected && evalSelected.kind===r.kind && evalSelected.id===r.id ? 'is-sel' : ''">
                       <td class="tnum" x-text="r.kind==='pilot' ? ('#'+r.pilot_id+' · '+r.round+'R') : (r.kind==='compare' ? '·' : r.id)"></td>
@@ -116,25 +115,15 @@
                         <span class="ds-badge ds-badge--success" x-show="r.kind==='compare'">완료</span>
                       </td>
                       <td class="tnum" x-text="r.grade_accuracy != null ? Math.round(r.grade_accuracy*100)+'%' : '·'"></td>
-                      <td>
+                      <td><div class="control-row control-row--compact">
                         <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="openEvalHistory(r)" x-bind:aria-label="evalKindLabel(r.kind) + ' ' + fmtTs(r.ts) + ' 상세 보기'">상세 보기</button>
-                        <template x-if="r.kind==='eval'"><span class="control-row control-row--compact">
-
-                          <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" data-tip="이 런이 시작 시점에 실제로 쓴 프롬프트(zip · 호출별 파일) · 기록 기능 이전 런은 없음" data-tip-pos="top" x-on:click="downloadPrompt({ run: r.id })">프롬프트</button>
-                          <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="r.status==='running' && !r.stalled" x-on:click="cancelEvalRun(r.id)">중단</button>
-                          <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="r.stalled || r.status==='failed'" data-tip="저장된 건을 빼고 남은 건만 이어서 실행합니다" data-tip-pos="top" x-on:click="resumeEvalRun(r.id)">재개</button>
-                          <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="r.status==='done'" x-bind:class="cmpRunA===r.id ? 'is-on' : ''" data-tip="이 런을 비교 기준(개선 전)으로 지정합니다" data-tip-pos="top" x-on:click="setCmpBase(r.id)" x-text="cmpRunA===r.id ? '기준 ✓' : '기준'"></button>
-                          <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-show="r.status==='done' && cmpRunA && cmpRunA!==r.id" x-bind:disabled="evalCmpBusy" data-tip="기준 런 대비 이 런의 개선/회귀를 판정합니다" data-tip-pos="top" x-on:click="compareRuns(r.id)">비교</button>
-                        </span></template>
-                        <template x-if="r.kind==='pilot'"><span class="control-row control-row--compact">
-                          <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="r.version" data-tip="이 라운드가 만든 프롬프트(zip · 호출별 파일) 내려받기" data-tip-pos="top" x-on:click="downloadPrompt({ v: r.version })" x-text="'프롬프트 v' + r.version"></button>
-                          <span class="text-xs text-muted" x-show="!r.version">프롬프트 기록 없음</span>
-                        </span></template>
-                        <template x-if="r.kind==='compare'"><span class="control-row control-row--compact">
-
-                          <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="r.version" data-tip="비교 시작 시점 프롬프트(zip · 호출별 파일) 내려받기" data-tip-pos="top" x-on:click="downloadPrompt({ v: r.version })" x-text="'프롬프트 v' + r.version"></button>
-                        </span></template>
-                      </td>
+                        <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="r.kind==='eval' || r.version" data-tip="이 평가에 저장된 프롬프트(zip · 호출별 파일) 내려받기" data-tip-pos="top" x-on:click="downloadPrompt(r.kind==='eval' ? { run: r.id } : { v: r.version })" x-text="r.kind==='eval' ? '프롬프트' : '프롬프트 v' + r.version"></button>
+                        <span class="text-xs text-muted" x-show="r.kind==='pilot' && !r.version">프롬프트 기록 없음</span>
+                        <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="r.kind==='eval' && r.status==='running' && !r.stalled" x-on:click="cancelEvalRun(r.id)">중단</button>
+                        <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="r.kind==='eval' && (r.stalled || r.status==='failed')" data-tip="저장된 건을 빼고 남은 건만 이어서 실행합니다" data-tip-pos="top" x-on:click="resumeEvalRun(r.id)">재개</button>
+                        <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="r.kind==='eval' && r.status==='done'" x-bind:class="cmpRunA===r.id ? 'is-on' : ''" data-tip="이 런을 비교 기준(개선 전)으로 지정합니다" data-tip-pos="top" x-on:click="setCmpBase(r.id)" x-text="cmpRunA===r.id ? '기준 ✓' : '기준'"></button>
+                        <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="r.kind==='eval' && r.status==='done' && cmpRunA && cmpRunA!==r.id" x-bind:disabled="evalCmpBusy" data-tip="기준 런 대비 이 런의 개선/회귀를 판정합니다" data-tip-pos="top" x-on:click="compareRuns(r.id)">비교</button>
+                      </div></td>
                     </tr>
                   </template>
                 </tbody></table></div>
@@ -171,28 +160,30 @@
           <template x-if="evalDetail">
             <div class="content-section-stack">
               <section class="panel" aria-labelledby="eval-detail-title">
-                <div class="panel-hd"><b id="eval-detail-title" x-ref="evalDetailTitle" x-text="evalKindLabel(evalDetail.kind) + ' 상세'" tabindex="-1"></b><span class="meta" x-text="fmtTs(evalDetail.ts)"></span></div>
+                <div class="panel-hd"><b id="eval-detail-title" x-ref="evalDetailTitle" x-text="evalKindLabel(evalDetail.kind) + ' 상세'" tabindex="-1"></b><span class="meta" x-text="fmtTs(evalDetail.ts)"></span>
+                  <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="openEvalHistory(evalSelected, true)" data-tip="새로고침" data-tip-pos="bottom" aria-label="평가 상세 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
                 <div class="panel-bd space-y-4">
                   <div class="control-row">
                     <span class="ds-badge ds-badge--neutral" x-text="evalDetail.status==='reverted' ? '원복' : evalDetail.status==='applied' ? '반영' : evalRunStatusTxt(evalDetail)"></span>
                     <span class="text-xs text-muted" x-text="evalDetail.version ? '프롬프트 버전 ' + evalDetail.version : '프롬프트 버전 기록 없음'"></span>
                     <span class="text-xs text-muted" x-text="evalDetail.scope==='fixed' ? '고정 정답셋' : evalDetail.scope==='eval' ? '평가용 콘텐츠' : '전체 정답셋'"></span>
-                    <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="openEvalHistory(evalSelected, true)">상세 새로고침</button>
-                    <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="evalDetail.kind==='eval' || evalDetail.version" x-on:click="downloadPrompt(evalDetail.kind==='eval' ? { run: evalDetail.id } : { v: evalDetail.version })">프롬프트 내려받기</button>
+                    <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm ml-auto" x-show="evalDetail.kind==='eval' || evalDetail.version" x-on:click="downloadPrompt(evalDetail.kind==='eval' ? { run: evalDetail.id } : { v: evalDetail.version })">프롬프트 내려받기</button>
                   </div>
                   <p role="status" class="text-xs text-muted" x-show="evalDetail.run_error" x-text="evalDetail.run_error"></p>
-                  <div class="overflow-auto"><table class="ds-table model-compare-table" x-bind:style="'--compare-model-count:' + evalCols.length"><thead><tr><th>요약 지표</th>
+                  <div class="overflow-auto"><table class="ds-table model-compare-table" x-bind:style="'--compare-model-count:' + evalCols.length"><colgroup><col class="model-compare-label"><template x-for="m in evalCols" x-bind:key="m.model"><col></template></colgroup><thead><tr><th>요약 지표</th>
                     <template x-for="m in evalCols" x-bind:key="m.model"><th><span x-text="m.model"></span> <span class="ds-badge ds-badge--success" x-show="m.model===evalDetail.best">추천</span> <span class="ds-badge ds-badge--neutral" x-show="m.model===evalDetail.cheapest_passing">합격 최저 비용</span></th></template>
                   </tr></thead><tbody>
                     <template x-for="row in evalMetricRows" x-bind:key="row[1]"><tr><th x-text="row[0]"></th><template x-for="m in evalCols" x-bind:key="m.model"><td class="tnum" x-text="evalMetricText(m, row)"></td></template></tr></template>
                     <tr x-show="evalCols.some(m => m.grade_accuracy != null)"><th>등급 신뢰구간(95%)</th><template x-for="m in evalCols" x-bind:key="m.model"><td x-text="ciOf(m.grade_accuracy, m.grade_n == null ? m.n : m.grade_n)"></td></template></tr>
-                    <tr x-show="evalCols.some(m => m.passed != null)"><th>목표 달성</th><template x-for="m in evalCols" x-bind:key="m.model"><td x-text="m.passed == null ? '—' : m.passed ? '게이트 통과' : '미달: ' + (m.gate_fails||[]).map(cmpFieldKo).join(', ')"></td></template></tr>
+                    <tr x-show="evalCols.some(m => m.passed != null)"><th>목표 달성</th><template x-for="m in evalCols" x-bind:key="m.model"><td x-text="m.passed == null ? '·' : m.passed ? '게이트 통과' : '미달: ' + (m.gate_fails||[]).map(cmpFieldKo).join(', ')"></td></template></tr>
                     <tr x-show="evalDetail.kind==='compare'"><th>호출</th><template x-for="m in evalCols" x-bind:key="m.model"><td x-text="m.real ? (m.route || '실호출') : '모의 응답'"></td></template></tr>
                     <tr x-show="evalDetail.kind==='compare' && assignAdmin"><th>최종 선정</th><template x-for="m in evalCols" x-bind:key="m.model"><td><button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-bind:disabled="applyBusy || cfgModel===m.model" x-on:click="applyModel(m.model)" x-text="cfgModel===m.model ? '현재 기본 모델' : '이 모델로 확정'"></button></td></template></tr>
                   </tbody></table></div>
-                  <p class="text-xs text-muted">표본이 없는 항목은 —로 표시합니다. 신뢰구간이 겹치는 결과는 우열 판단을 보류하세요.</p>
-                  <p class="text-xs text-muted" x-show="evalDetail.concurrent_models > 1">여러 모델을 동시에 실행한 결과입니다. 호출 자원을 공유하므로 응답 시간이 단독 실행보다 길 수 있습니다.</p>
-                  <p class="text-xs text-muted" x-show="(evalDetail.skipped||[]).length" x-text="'비교 제외: ' + (evalDetail.skipped||[]).map(s => s.model + ' (' + s.reason + ')').join(', ')"></p>
+                  <ul class="result-notes">
+                    <li>표본이 없는 항목은 ·로 표시합니다. 신뢰구간이 겹치는 결과는 우열 판단을 보류하세요.</li>
+                    <li x-show="evalDetail.concurrent_models > 1">여러 모델을 동시에 실행한 결과입니다. 호출 자원을 공유하므로 응답 시간이 단독 실행보다 길 수 있습니다.</li>
+                    <li x-show="(evalDetail.skipped||[]).length" x-text="'비교 제외: ' + (evalDetail.skipped||[]).map(s => s.model + ' (' + s.reason + ')').join(', ')"></li>
+                  </ul>
                   <template x-for="m in evalCols" x-bind:key="m.model"><details x-show="Object.keys(m.by_service||{}).length || Object.keys(m.by_reason_bucket||{}).length">
                     <summary x-text="m.model + ' · 서비스·유형별 분포'"></summary>
                     <div class="overflow-auto"><table class="ds-table"><thead><tr><th>영역</th><th>표본</th><th>등급 일치율</th></tr></thead><tbody>
@@ -222,7 +213,7 @@
                     <span class="text-xs text-muted" x-text="evalFilteredItems.length + '건'"></span>
                   </div>
                   <p class="text-xs text-muted">등급이 없는 평가는 등급 일치 여부를 판정하지 않습니다. 항목을 펼치면 당시 저장된 인텐트·카테고리·엔티티·리드문을 볼 수 있습니다.</p>
-                  <div class="overflow-auto"><table class="ds-table item-compare-table" x-bind:style="'--compare-model-count:' + evalCols.length"><thead><tr><th>콘텐츠</th><th>정답</th><template x-for="m in evalCols" x-bind:key="m.model"><th x-text="m.model"></th></template></tr></thead><tbody>
+                  <div class="overflow-auto"><table class="ds-table item-compare-table item-compare-table--metadata" x-bind:style="'--compare-model-count:' + evalCols.length"><colgroup><col class="item-compare-content"><col><template x-for="m in evalCols" x-bind:key="m.model"><col></template></colgroup><thead><tr><th>콘텐츠</th><th>정답</th><template x-for="m in evalCols" x-bind:key="m.model"><th x-text="m.model"></th></template></tr></thead><tbody>
                     <template x-for="it in evalItems" x-bind:key="it.hash"><tr>
                       <td><span x-text="it.title || it.hash"></span><div class="text-xs text-muted" x-text="it.hash.slice(0,12)"></div>
                         <template x-if="it.judgment"><div class="control-row control-row--compact">
@@ -250,9 +241,9 @@
                   <div class="content-section__head">
                     <div><h3 class="content-section__title" id="compare-loop-title">개선 루프</h3>
                     <p class="content-section__description">문제점을 골라 공통 스테이지 프롬프트(사전·정책 › 메타 프롬프트)에 반영하고 다시 비교합니다.</p></div>
-                    <span class="srcfilter content-section__actions">
-                      <template x-for="(m,mi) in evalCols" x-bind:key="'lp'+mi"><button type="button" class="srcfilter__chip" x-bind:class="cmpLoopModel===m.model ? 'sel' : ''" x-on:click="cmpLoopModel=m.model" x-text="cmpTag(mi) + ' ' + m.model"></button></template>
-                    </span>
+                    <div class="control-row content-section__actions"><label class="selctl"><span class="selctl__lbl">모델</span>
+                      <select class="field" x-model="cmpLoopModel"><template x-for="(m,mi) in evalCols" x-bind:key="m.model"><option x-bind:value="m.model" x-text="cmpTag(mi) + ' ' + m.model"></option></template></select>
+                    </label></div>
                   </div>
                   <div class="overflow-auto" style="margin-top:8px"><table class="ds-table"><thead><tr><th style="width:90px">영역</th><th style="width:220px">문제점</th><th>쿡북 지시(프롬프트에 얹을 문장)</th><th style="width:120px">반영</th></tr></thead><tbody>
                     <template x-for="it in cmpIssues" x-bind:key="'is'+it.id">
