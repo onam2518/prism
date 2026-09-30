@@ -57,6 +57,7 @@ def _tally(m: dict, row: dict, out) -> dict:
     """건 1개를 카운터에 반영하고 저장용 건별 결과 행을 반환.
     계수 규칙은 abtest.score 와 동일(실패 산출도 등급 채점에 포함 · empty 비배타)."""
     from . import abtest
+    from .learnops import _eval_values
     m["n"] += 1
     exp = row.get("expected") or {}
     abtest.intent_tally(m, exp, out)             # 인텐트 계수는 abtest.score 와 단일 소스
@@ -65,12 +66,9 @@ def _tally(m: dict, row: dict, out) -> dict:
         m["harm_n"] = int(m.get("harm_n") or 0) + 1   # 구 런 재개 시 키가 없다 → get 으로 시작
     has_grade = exp.get("finalGrade") in ("G", "R")
     m["grade_n"] = m.get("grade_n", m["n"] - 1) + int(has_grade)
-    want_intent = abtest.intent_expected(exp)
     if out is None:
         m["empty"] += 1
-        return {"expected": {"finalGrade": exp.get("finalGrade", ""),
-                             "reasons": exp.get("reasons", []) or [],
-                             "intent": want_intent},
+        return {"expected": dict(exp),
                 "got": None, "passed": False, "error": "empty"}
     qm = out.get("quality_meta") or {}
     tr = out.get("trace") or {}
@@ -84,7 +82,7 @@ def _tally(m: dict, row: dict, out) -> dict:
     if any("fail" in str(f) or "unparse" in str(f) for f in tr.get("fallbacks", [])):
         m["empty"] += 1
     if not has_grade:
-        return {"expected": exp, "got": out.get("item_meta") or {},
+        return {"expected": dict(exp), "got": _eval_values(out),
                 "passed": None, "error": ""}
     grade_ok = qm.get("finalGrade") == exp.get("finalGrade")
     m["grade_hit"] += int(grade_ok)
@@ -107,16 +105,7 @@ def _tally(m: dict, row: dict, out) -> dict:
     sd = m.setdefault("per_service", {}).setdefault(abtest.service_key(row), {"n": 0, "grade_ok": 0})
     sd["n"] += 1
     sd["grade_ok"] += int(grade_ok)
-    im = out.get("item_meta")
-    summary = (im.get("summary") if isinstance(im, dict)
-               else getattr(im, "summary", "")) or ""
-    # 인텐트는 기대·산출 양쪽에 대칭으로 싣는다(루브릭 저지 accuracy 축의 판단 근거 ·
-    # 정렬하지 않음 = 대표값 첫 번째 순서를 보존).
-    return {"expected": {"finalGrade": exp.get("finalGrade", ""),
-                         "reasons": sorted(want), "intent": want_intent},
-            "got": {"finalGrade": qm.get("finalGrade", ""), "reasons": sorted(got),
-                    "intent": abtest.intent_got(out),
-                    "summary": str(summary)[:200]},   # 루브릭 저지의 '실제 응답' 원천
+    return {"expected": dict(exp), "got": _eval_values(out),
             "passed": bool(grade_ok), "error": ""}
 
 
@@ -523,6 +512,7 @@ def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = "",
             ov = ME.overall(ev, target, meta_target)
             metrics = {k: ev.get(k) for k in _ROUND_KEYS}
             metrics.update(ov)
+            _SV._report_save(f"pilot_eval_{rid}_{rnd}", ev, team)
             history.append({"round": rnd, "ts": time.time(), "accuracy": acc, "pre": pre, "model": model, "metrics": metrics,
                             "delta": rep.get("improve_delta"), "reverted": reverted,
                             "version": int((rep.get("prompt_snapshot") or {}).get("version") or 0)})
@@ -749,7 +739,7 @@ def eval_runs_list(team=None, limit: int = 20) -> dict:
             it["stalled"] = bool(it.get("status") == "running"
                                  and not (it.get("id") in _ACTIVE and _ACTIVE[it["id"]].is_alive()))
             m = it.pop("metrics", None) or {}
-            n = m.get("n") or 0
+            n = m.get("grade_n", m.get("n")) or 0
             it["grade_accuracy"] = round(m.get("grade_hit", 0) / n, 4) if n else None
             it["kind"] = "eval"
     # 오토파일럿 라운드 · 모델별 비교도 '평가' 라 같은 이력에 합류(읽기 시 파생 · 저장 구조 무변경) · kind 로 구분
@@ -825,11 +815,8 @@ def eval_run_report(run_id: int, team=None) -> dict:
            "min_good": int(getattr(cfg, "golden_min_good", 1) or 1)}
     lo, hi = Q.binomial_ci(out["grade_accuracy"] or 0.0, m.get("grade_n", n))
     out["grade_ci"] = {"lo": lo, "hi": hi, "n": m.get("grade_n", n)}
-    try:
-        seq = st.batch_seq(team) if hasattr(st, "batch_seq") else 0
-    except Exception:
-        seq = 0
-    out["basis"] = {"model": run.get("model") or "", "version": seq + 1,
+    prompt = _SV._report_get("eval_prompts_" + str(run_id), team) or {}
+    out["basis"] = {"model": run.get("model") or "", "version": prompt.get("version"),
                     "scope": run.get("scope") or "all"}
     detail = []                                  # 불일치(등급) 건만 · 즉시 평가 detail 과 동일 형태
     try:
@@ -852,6 +839,74 @@ def eval_run_report(run_id: int, team=None) -> dict:
                        "judge": jm.get(r.get("hash")) or {"adopt": 0, "reject": 0, "reviewers": {}}})
     out["detail"] = detail
     return out
+
+
+def eval_history_detail(kind, run_id=0, round_no=0, key="", team=None):
+    """세 종류의 저장된 평가를 같은 모델 열·건별 행 계약으로 읽는다. 모델 호출 없음."""
+    from . import learnops as LO
+    st = _SV.get_store()
+    missing = {"ok": False, "error": "평가 기록을 찾을 수 없습니다"}
+    if kind == "compare":
+        if not key:
+            return missing
+        rep = LO.last_model_compare(team, key)
+        if not rep.get("ok"):
+            return missing
+        return {**rep, "kind": kind, "id": "c" + key, "status": "done",
+                "version": rep.get("prompt_snapshot_version"), "detail_mode": "all"}
+    if kind == "eval":
+        rep = eval_run_report(run_id, team)
+        if not rep.get("ok"):
+            return missing
+        model = rep["basis"]["model"] or "기록된 모델"
+        judges = {d["hash"]: d for d in rep.get("detail") or []}
+        items = []
+        for row in st.eval_results_list(run_id, team, limit=MAX_ROWS):
+            exp, got = row.get("expected") or {}, row.get("got")
+            grade = (got or {}).get("finalGrade", "")
+            passed = (grade == exp["finalGrade"]) if exp.get("finalGrade") else None
+            items.append({"hash": row["hash"], "title": row.get("title") or "",
+                          "expected": {**exp, "grade": exp.get("finalGrade", "")},
+                          "got": {model: {**(got or {}), "grade": grade, "ok": passed,
+                                          "empty": got is None, "error": row.get("error") or "",
+                                          "rubric": row.get("rubric")}},
+                          "all_ok": passed, "split": False, "judgment": judges.get(row["hash"])})
+        metrics = {k: v for k, v in rep.items() if k != "detail"}
+        return {**rep, "kind": kind, "models": [{**metrics, "model": model, "n": rep["evaluated"]}],
+                "items": items, "detail_mode": "all", "scope": rep["basis"]["scope"],
+                "version": rep["basis"]["version"]}
+    if kind != "pilot" or not st or not hasattr(st, "autopilot_get"):
+        return missing
+    run = st.autopilot_get(run_id, team)
+    hh = next((h for h in (run or {}).get("history") or [] if h.get("round") == round_no), None)
+    if not hh:
+        return missing
+    ev = _SV._report_get(f"pilot_eval_{run_id}_{round_no}", team)
+    if not ev and hh.get("version"):
+        old = _SV._report_get(f"learn_report_v{hh['version']}", team) or {}
+        if (old.get("prompt_snapshot") or {}).get("version") == hh["version"]:
+            ev = old.get("eval")
+    ev = ev or {}
+    model = (ev.get("basis") or {}).get("model") or hh.get("model") or "기록된 모델"
+    metrics = {"grade_accuracy": hh.get("accuracy"), **(hh.get("metrics") or {}), **ev, "model": model}
+    metrics.pop("items", None)
+    metrics.pop("detail", None)
+    items = ev.get("items") or []
+    mode = "all" if "items" in ev else "mismatches" if ev.get("detail") else "none"
+    if mode == "mismatches":
+        items = [{"hash": d["hash"], "title": d.get("title") or "",
+                  "expected": {"grade": d.get("expected")},
+                  "got": {model: {"grade": d.get("got"), "ok": False, "empty": False}},
+                  "all_ok": False, "split": False} for d in ev["detail"]]
+    # 단일 모델 결과는 저장 당시 모델명을 사용한다(현재 기본 모델과 무관).
+    if items and len(items[0].get("got") or {}) == 1:
+        model = next(iter(items[0]["got"]))
+        metrics["model"] = model
+    return {"ok": True, "kind": kind, "id": f"p{run_id}-{round_no}", "pilot_id": run_id,
+            "round": round_no, "ts": hh.get("ts") or run.get("ts"), "version": hh.get("version"),
+            "status": "reverted" if hh.get("reverted") else "applied", "scope": "fixed",
+            "total": len(run.get("golden_hashes") or []), "models": [metrics], "items": items,
+            "detail_mode": mode, "pre": hh.get("pre"), "delta": hh.get("delta")}
 
 
 def _validate_protocol(protocol, size):

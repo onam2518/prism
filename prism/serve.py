@@ -1989,6 +1989,14 @@ def _g_eval_runs(h, q):
     return eval_runs_list(h._req_team())
 
 
+@_get_route("/eval-history-detail")
+def _g_eval_history_detail(h, q):
+    return EVO.eval_history_detail((q.get("kind") or [""])[0],
+                                   _qint(q, "id", 0, 0, 2 ** 31),
+                                   _qint(q, "round", 0, 0, 100),
+                                   (q.get("key") or [""])[0], h._req_team())
+
+
 @_get_route("/compare-status")                       # 백그라운드 비교 진척(모델별 done/total) · 완료 시 결과 포함
 def _g_compare_status(h, q):
     return compare_status((q.get("id") or [""])[0], h._req_team())

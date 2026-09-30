@@ -547,7 +547,8 @@ class TestHarmMissDenominator(unittest.TestCase):
             def batch_seq(self, team=None):
                 return 0
         o = evalops._SV
-        evalops._SV = type("SV", (), {"get_store": staticmethod(lambda: _St())})
+        evalops._SV = type("SV", (), {"get_store": staticmethod(lambda: _St()),
+                                     "_report_get": staticmethod(lambda *args: None)})
         self.addCleanup(lambda: setattr(evalops, "_SV", o))
         return evalops.eval_run_report(1)
 

@@ -263,6 +263,9 @@ class TestButtonsEndToEnd(unittest.TestCase):
         ev = self.ok("/eval-golden", {"model": "", "scope": "all"})
         run = self.ok("/eval-run-start", {"model": "", "scope": "all"})   # 런 시작 = 실제로 쓴 프롬프트 기록
         self.assertTrue(run.get("ok"), run)
+        history = self.ok(f"/eval-history-detail?kind=eval&id={run['id']}")
+        self.assertEqual(history["kind"], "eval")
+        self.assertEqual(len(history["models"]), 1)
         snap = self.ok(f"/prompt-snapshot?run={run['id']}")["snapshot"]
         self.assertEqual(snap["run_id"], run["id"])
         self.assertNotIn("by_service", snap["calls"]["intent"])   # 인텐트는 출처 공통 하나(2026-09-22)

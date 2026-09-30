@@ -1,6 +1,10 @@
-      <!-- ═══ 모듈: 평가 · 테스트셋(골든) 기준 정합성 수치화 + 모델별 비교(단일 페이지) ═══ -->
       <template x-if="mod === 'evaluate'">
         <div class="w-full space-y-4">
+          <div class="ds-tabs ds-tabs--underline" role="tablist" aria-label="평가" x-on:keydown="evalTabKey($event)">
+            <button type="button" id="eval-tab-run" class="ds-tab" role="tab" aria-controls="eval-panel-run" x-bind:aria-selected="evalTab==='run'" x-bind:tabindex="evalTab==='run' ? 0 : -1" x-bind:class="evalTab==='run' ? 'ds-tab--active' : ''" x-on:click="setEvalTab('run')">실행</button>
+            <button type="button" id="eval-tab-results" class="ds-tab" role="tab" aria-controls="eval-panel-results" x-bind:aria-selected="evalTab==='results'" x-bind:tabindex="evalTab==='results' ? 0 : -1" x-bind:class="evalTab==='results' ? 'ds-tab--active' : ''" x-on:click="setEvalTab('results')">평가결과</button>
+          </div>
+          <div id="eval-panel-run" role="tabpanel" aria-labelledby="eval-tab-run" x-show="evalTab==='run'" class="space-y-4">
           <section class="panel" data-fn><div class="panel-hd"><b>평가 기준</b><span class="meta">어떤 모델·버전을 어떤 콘텐츠로 잴지 먼저 정합니다</span></div>
             <div class="panel-bd">
               <div class="control-row">
@@ -21,97 +25,86 @@
               </ul>
             </div>
           </section>
-          <section class="panel"><div class="panel-hd"><b>평가 실행</b><span class="meta">위 기준으로 정답셋과 비교 · 요약과 건별 판정</span></div>
+          <section class="panel"><div class="panel-hd"><b>평가 실행</b><span class="meta">위 기준으로 실행합니다. 요약과 건별 상세는 평가결과 탭에서 확인하세요.</span></div>
             <div class="panel-bd">
               <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="goldenBusy" x-on:click="runGolden()" x-text="goldenBusy ? ('평가 중… ' + (goldenResult && goldenResult.total ? ((goldenResult.cursor||0) + '/' + goldenResult.total) : '(전건 추출)')) : '평가 실행'"></button>
               <span class="text-xs text-muted" style="margin-left:10px" x-show="goldenResult && !goldenResult.ok" x-text="goldenResult ? goldenResult.error : ''"></span>
               <template x-if="goldenBusy && goldenResult && goldenResult.total">
                 <div class="ds-progress" style="margin-top:10px"><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="'width:' + Math.max(((goldenResult.cursor||0)/goldenResult.total)*100, 3) + '%'"></div></div></div>
               </template>
-              <template x-if="goldenResult && goldenResult.ok">
-                <div>
-                  <!-- 결과 카드화: 산개한 숫자·막대를 타일과 박스로 묶어 시선 고정 -->
-                  <div class="text-xs text-muted" style="margin-top:12px" x-show="goldenResult.basis">기준: <b class="text-ink" x-text="goldenResult.basis ? (goldenResult.basis.model || '현재 설정 모델') : ''"></b> · <span class="tnum" x-text="goldenResult.basis ? ('v' + goldenResult.basis.version) : ''"></span> · <span x-text="goldenResult.basis && goldenResult.basis.scope === 'eval' ? '평가용 콘텐츠' : '전체 정답셋'"></span></div>
-                  <div class="tiles" style="margin-top:10px">
-                    <div class="tile tile--hero"><div class="n tnum" x-text="Math.round((goldenResult.grade_accuracy||0)*100)+'%'"></div><div class="t">등급 일치율<span class="tnum" x-text="goldenResult.grade_ci ? (' · 신뢰구간 ' + pctTxt(goldenResult.grade_ci.lo) + '~' + pctTxt(goldenResult.grade_ci.hi)) : ''"></span></div></div>
-                    <div class="tile"><div class="n tnum" x-text="Math.round((goldenResult.reason_jaccard||0)*100)+'%'"></div><div class="t">사유 일치</div></div>
-                    <div class="tile"><div class="n tnum" x-text="goldenResult.harm_miss_rate!=null ? pctTxt(goldenResult.harm_miss_rate) : '·'"></div><div class="t">유해 놓침<span class="tnum" x-text="goldenResult.harm_miss_rate==null ? ' · 측정 불가(기대 R 0건)' : (goldenResult.harm_expected_n ? (' · 기대 R ' + goldenResult.harm_expected_n + '건') : '')"></span></div></div>
-                    <div class="tile"><div class="n tnum" x-text="goldenResult.evaluated"></div><div class="t">평가 건수</div></div>
+              <button type="button" class="ds-btn ds-btn--secondary" x-show="evalRunId" x-on:click="openEvalRun(evalRunId)">결과 보기</button>
+              <button type="button" class="ds-btn ds-btn--secondary" x-show="goldenBusy && evalRunId" x-on:click="cancelEvalRun(evalRunId)">중단</button>
+            </div>
+          </section>
+          <section class="panel"><div class="panel-hd"><b>오토파일럿 · 자동 개선 루프</b><span class="meta">목표 달성까지 학습 반영 → 재평가 반복 · 악화 라운드는 자동 원복</span></div>
+            <div class="panel-bd">
+              <ul class="ds-bullets" style="margin-bottom:11px">
+                <li>한 라운드 = <b>학습 반영</b>(검수 피드백 → 프롬프트 보정) 후 같은 정답셋으로 <b>재평가</b> · 점수가 나빠지면 그 라운드 보정은 반영하지 않습니다(자동 원복).</li>
+                <li>종료 조건: <b>목표 달성</b> · <b>개선 정체</b>(2라운드 연속 향상 없음) · <b>최대 라운드</b> · 수동 중지 · 라운드마다 실모델 호출 비용이 듭니다.</li>
+              </ul>
+              <div x-show="!(pilot && pilot.status==='running' && !pilot.stalled)" class="control-row">
+                <span class="selctl"><span class="selctl__lbl">평가 모델</span>
+                  <x-modelpick key="ap" value="pilotModel" set="pilotModel=$v" groups="textGroups" first-label="기본 설정 모델" first-value="" width="212px" tip="라운드마다 이 모델로 정답셋을 재평가합니다 · 비워두면 기본 텍스트 슬롯(설정) · 미연결 제공자는 키 등록 후 선택"></x-modelpick></span>
+                <span class="selctl"><span class="selctl__lbl">목표 일치율</span>
+                  <select class="field" x-model="pilotTarget"><option value="0.8">80%</option><option value="0.85">85%</option><option value="0.9">90%</option><option value="0.95">95%</option></select></span>
+                <span class="selctl"><span class="selctl__lbl">메타 일치율</span>
+                  <select class="field" x-model="pilotMeta" title="아이템 메타(인텐트·카테고리·엔티티·리드문) 4축 각각이 이 값 이상이어야 목표 달성"><option value="">설정값</option><option value="0.6">60%</option><option value="0.7">70%</option><option value="0.8">80%</option><option value="0.9">90%</option></select></span>
+                <span class="selctl"><span class="selctl__lbl">최대 라운드</span>
+                  <select class="field" x-model="pilotRounds"><option value="3">3</option><option value="5">5</option><option value="8">8</option></select></span>
+                <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="pilotBusy" x-on:click="startPilot()">오토파일럿 시작</button>
+                <span class="text-xs text-muted" x-show="pilotMsg" x-text="pilotMsg"></span>
+              </div>
+              <template x-if="pilot">
+                <div style="margin-top:10px">
+                  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                    <button type="button" class="ds-badge" style="cursor:pointer;border:0;font-family:inherit" x-on:click="openCompareWindow()" data-tip="라운드 안 단계별 진척도를 새 창으로 봅니다 · 닫아도 오토파일럿은 계속 돕니다" data-tip-pos="top" x-bind:class="pilot.status==='running' ? (pilot.stalled ? 'ds-badge--warning' : 'ds-badge--intent') : (pilot.status==='done' ? 'ds-badge--success' : (pilot.status==='failed' ? 'ds-badge--error' : 'ds-badge--neutral'))"
+                      x-text="pilot.status==='running' ? (pilot.stalled ? '중단됨(서버 재시작)' : (pilot.stop_reason ? ('라운드 ' + pilot.round + ' 중지 요청됨 · 마무리 중') : ('라운드 ' + pilot.round + '/' + pilot.max_rounds + ' 진행 중'))) : ({done:'완료',stopped:'중지',failed:'실패'}[pilot.status] || pilot.status)"></button>
+                    <span class="text-xs text-muted tnum" x-text="'목표 등급 ' + Math.round((pilot.target||0)*100) + '%' + (pilot.meta_target!=null ? ' · 메타 ' + Math.round(pilot.meta_target*100) + '%' : '') + (pilot.golden_n ? ' · 고정 정답셋 ' + pilot.golden_n + '건' : '')"></span>
+                    <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="pilot.status==='running' && !pilot.stalled && !pilot.stop_reason" x-on:click="stopPilot()" data-tip="지금 도는 단계를 다음 청크 경계(8건)에서 멈춥니다 · 진행 중 라운드의 보정은 반영하지 않습니다" data-tip-pos="top">중지</button>
                   </div>
-                  <div class="tile" style="margin-top:10px">
-                    <div class="t" style="margin:0 0 8px">유형별 일치율 · 어디가 약한지(수정 우선순위)</div>
-                    <template x-for="(v,k) in (goldenResult.by_reason_bucket||{})" x-bind:key="k">
-                      <div class="ds-progress" style="margin:7px 0"><div class="ds-progress__head"><span class="ds-progress__label"><span class="ds-badge ds-badge--reason" style="cursor:help" x-bind:data-tip="k==='normal' ? '문제 사유 없는 일반 콘텐츠' : termDef('reason', k)" data-tip-pos="top" x-text="reasonBoth(k)"></span> <span class="tnum text-muted" x-text="'('+v.n+')'"></span></span><span class="ds-progress__pct tnum" x-text="Math.round(v.grade_acc*100)+'%'"></span></div><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="'width:'+Math.max(v.grade_acc*100,3)+'%'"></div></div></div>
-                    </template>
-                  </div>
-                  <!-- 서비스별(원천) 쪼개 보기: 어느 서비스가 약한지 · 표본이 얇으면 신뢰구간이 넓다 -->
-                  <div class="tile" style="margin-top:10px" x-show="Object.keys(goldenResult.by_service||{}).length">
-                    <div class="t" style="margin:0 0 8px">서비스별 일치율 · 어느 원천이 약한지 <span class="text-xs text-muted">표본 20건 미만은 회색(참고용)</span></div>
-                    <div class="overflow-auto"><table class="ds-table"><thead><tr><th>서비스</th><th style="width:70px">표본</th><th style="width:100px">등급 일치율</th><th style="width:150px">신뢰구간(95%)</th></tr></thead><tbody>
-                      <template x-for="(v,k) in (goldenResult.by_service||{})" x-bind:key="'bs'+k">
-                        <tr x-bind:class="v.n < 20 ? 'text-muted' : ''">
-                          <td class="text-ink" x-text="k"></td>
-                          <td class="tnum" x-text="v.n"></td>
-                          <td class="tnum" x-text="pctTxt(v.grade_acc)"></td>
-                          <td class="tnum text-xs" x-text="pctTxt(v.ci_lo) + '~' + pctTxt(v.ci_hi)"></td>
-                        </tr>
-                      </template>
-                    </tbody></table></div>
-                  </div>
-                  <!-- 루브릭 진단(Atelier rubric-judge 이식): 4축 평균 · 낮은 축 = 프롬프트 개선 우선순위 -->
-                  <div class="tile" style="margin-top:10px">
-                    <div class="t" style="margin:0 0 8px">루브릭 진단(4축 · LLM 심사) · 낮은 축이 프롬프트 개선 우선순위</div>
-                    <template x-if="goldenResult.rubric && goldenResult.rubric.n">
-                      <div>
-                        <div class="tiles">
-                          <div class="tile"><div class="n tnum" x-text="(goldenResult.rubric.accuracy||0)+'/5'"></div><div class="t" style="cursor:help" data-tip="기대 정답(등급·사유)과 의미가 일치하는가" data-tip-pos="top">정확성</div></div>
-                          <div class="tile"><div class="n tnum" x-text="(goldenResult.rubric.format||0)+'/5'"></div><div class="t" style="cursor:help" data-tip="등급 라벨·사유 코드·요약 구조를 지켰는가" data-tip-pos="top">형식</div></div>
-                          <div class="tile"><div class="n tnum" x-text="(goldenResult.rubric.policy||0)+'/5'"></div><div class="t" style="cursor:help" data-tip="유해(R) 콘텐츠를 놓치지 않았는가" data-tip-pos="top">정책</div></div>
-                          <div class="tile"><div class="n tnum" x-text="(goldenResult.rubric.conciseness||0)+'/5'"></div><div class="t" style="cursor:help" data-tip="요약이 군더더기 없이 필요한 만큼만인가" data-tip-pos="top">간결성</div></div>
-                        </div>
-                        <div class="text-xs text-muted" style="margin-top:6px" x-text="'채점 ' + goldenResult.rubric.n + '건 · 가장 낮은 축부터 프롬프트를 손보세요'"></div>
-                      </div>
-                    </template>
-                    <div x-show="goldenResult.rubric_status==='running'" class="text-xs text-muted">채점 중… <span class="tnum" x-text="(goldenResult.rubric_cursor||0)+'/'+(goldenResult.evaluated||0)"></span>
-                      <button type="button" class="copybtn" style="margin-left:8px" data-tip="채점을 멈춥니다 · 이미 채점된 건은 유지됩니다" data-tip-pos="top" x-on:click="cancelRubric()">중단</button>
+                  <template x-if="pilotStep">
+                    <div class="ds-progress" x-bind:class="pilotStep.total ? '' : 'ds-progress--indeterminate'" style="margin-top:10px">
+                      <div class="ds-progress__head"><span class="ds-progress__label" x-text="pilotStep.label"></span><span class="ds-progress__pct" x-text="pilotStep.total ? (pilotStep.done + ' / ' + pilotStep.total) : ''"></span></div>
+                      <div class="ds-progress__track" role="progressbar"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="pilotStep.total ? ('width:' + Math.max(Math.round(pilotStep.done / pilotStep.total * 100), 2) + '%') : ''"></div></div>
                     </div>
-                    <span class="text-xs text-muted" x-show="goldenResult.rubric_status==='failed'">채점 실패 · 모델 설정 확인 후 다시 실행하세요</span>
-                    <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" style="margin-top:6px" x-show="goldenResult.status==='done' && goldenResult.rubric_status!=='running' && goldenResult.rubric_status!=='done'" data-tip="건별 산출을 LLM 심사관이 4축(1~5점)으로 채점합니다 · 실모델 호출 비용" data-tip-pos="top" x-on:click="startRubric()">루브릭 채점 실행</button>
-                  </div>
-                  <div class="subhd" style="margin:16px 0 8px">평가 상세 · 불일치 건별 판정 <span class="meta">모델이 맞음=정답 교정 후보 · 정답 유지=모델 오답 확정</span></div>
-                  <template x-if="(goldenResult.detail||[]).length">
-                    <div class="overflow-auto" style="max-height:340px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:64px">정답</th><th style="width:84px">모델 결과</th><th style="width:160px">판정</th><th style="width:190px">합의</th></tr></thead><tbody>
-                      <template x-for="d in goldenResult.detail" x-bind:key="'ej'+d.hash">
-                        <tr>
-                          <td class="text-ink"><span x-text="d.title || '(제목 없음)'"></span><div class="text-xs text-muted" x-show="d.rubric_note" x-text="'심사: ' + d.rubric_note"></div></td>
-                          <td><span class="ds-badge" style="cursor:help" x-bind:class="d.expected==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-bind:data-tip="termDef('grade', d.expected)" data-tip-pos="top" x-text="d.expected"></span></td>
-                          <td><span class="ds-badge" style="cursor:help" x-bind:class="d.got==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-bind:data-tip="termDef('grade', d.got)" data-tip-pos="top" x-text="d.got"></span></td>
-                          <td><span class="control-row control-row--compact">
-                            <button type="button" class="verdictbtn verdictbtn--good"  x-bind:class="myEvalVote(d)==='adopt' ? 'is-on' : ''" data-tip="모델 결과가 맞아요 · 정답을 고칠 후보로 올립니다" data-tip-pos="top" x-on:click="evalJudge(d, 'adopt')">모델이 맞음</button>
-                            <button type="button" class="verdictbtn verdictbtn--bad"  x-bind:class="myEvalVote(d)==='reject' ? 'is-on' : ''" data-tip="기존 정답이 맞아요 · 모델 오답으로 확정합니다" data-tip-pos="top" x-on:click="evalJudge(d, 'reject')">정답 유지</button>
-                          </span></td>
-                          <td><span class="text-xs text-muted tnum" x-text="'모델이 맞음 ' + ((d.judge&&d.judge.adopt)||0) + ' · 정답 유지 ' + ((d.judge&&d.judge.reject)||0)"></span>
-                            <span class="ds-badge ds-badge--warning" style="cursor:help;margin-left:6px" x-show="evalConsensus(d)==='adopt'" data-tip="'모델이 맞음' 합의 · 정답 교정 필요(정답셋 관리 · 정답셋 목록에 '교정 필요'로 표시)" data-tip-pos="top">교정 필요</span>
-                            <span class="ds-badge ds-badge--error" style="cursor:help;margin-left:6px" x-show="evalConsensus(d)==='reject'" data-tip="'정답 유지' 합의 · 모델 오답 확정(프롬프트 개선 우선순위 근거)" data-tip-pos="top">모델 오답</span>
-                          </td>
-                        </tr>
-                      </template>
-                    </tbody></table></div>
                   </template>
-                  <div x-show="!(goldenResult.detail||[]).length" class="text-xs text-muted">불일치 없음 · 건별 판정할 항목이 없습니다</div>
-                  <button type="button" class="ds-btn ds-btn--secondary" style="margin-top:12px" x-on:click="selectMod('prompt')">원천 프롬프트 수정하러 가기 →</button>
+                  <p class="text-xs text-muted" x-show="pilot.error || pilot.stop_reason" x-text="pilot.error || pilot.stop_reason"></p>
+                  <button type="button" class="ds-btn ds-btn--secondary" x-show="(pilot.history||[]).length" x-on:click="openEvalHistory({ kind: 'pilot', id: 'p'+pilot.id+'-'+pilot.history[pilot.history.length-1].round, pilot_id: pilot.id, round: pilot.history[pilot.history.length-1].round })">최근 라운드 결과 보기</button>
                 </div>
               </template>
             </div>
           </section>
-          <!-- 평가 이력: 평가 실행(런 단위 영속 · Atelier 이식) + 오토파일럿 라운드 + 모델별 비교를 한 표에 · 종류로 구분 -->
-          <section class="panel"><div class="panel-hd"><b>평가 이력</b><span class="meta">평가 실행 · 오토파일럿 라운드 · 모델별 비교를 한 곳에 · 평가 실행은 다시 열어 리포트 확인 · 중단된 런은 재개</span></div>
+          <section class="panel"><div class="panel-hd"><b>모델별 비교</b><span class="meta">같은 정답셋으로 여러 모델을 동시에 실호출 · 나란히 보고 최종 모델을 고릅니다</span></div>
             <div class="panel-bd">
-              <div class="text-xs text-muted" x-show="!evalRuns.length">아직 실행한 평가가 없습니다 · 위에서 평가를 실행하면 이력이 쌓입니다</div>
-              <template x-if="evalRuns.length">
-                <div class="overflow-auto" style="max-height:300px"><table class="ds-table"><thead><tr><th style="width:70px">#</th><th style="width:110px">시각</th><th style="width:100px">종류</th><th>모델</th><th style="width:110px">범위</th><th style="width:150px">상태</th><th style="width:90px">일치율</th><th style="width:170px"></th></tr></thead><tbody>
-                  <template x-for="r in evalRuns" x-bind:key="'er'+r.id">
-                    <tr x-bind:style="evalRunId===r.id ? 'background:var(--panel-hd-bg, rgba(0,0,0,.03))' : ''">
+              <div class="filterbar control-row" style="margin-bottom:12px">
+                <template x-for="(slot, si) in cmpModels" x-bind:key="'cs'+si">
+                  <span class="selctl abslot"><span class="selctl__tag" x-bind:style="'background:' + cmpColor(si)" x-text="cmpTag(si)"></span><span class="selctl__lbl">모델</span>
+                    <x-modelpick key="cm" value="cmpModels[si]" set="cmpModels[si]=$v" groups="textGroups" first-label="선택…" first-value="" width="212px" tip="직접(Solar)·라우터 전체에서 고름 · 미연결 제공자는 키 등록 후 선택 · 목록이 오래됐으면 '모델 새로고침'"></x-modelpick>
+                    <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-show="cmpModels.length > 2" x-on:click="cmpRemoveSlot(si)" title="이 슬롯 빼기">✕</button></span>
+                </template>
+                <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="cmpModels.length < 6" x-on:click="cmpModels.push('')">+ 모델 추가</button>
+                <span class="text-xs text-muted" x-show="modelsMsg" x-text="modelsMsg"></span>
+                <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-bind:disabled="cmpBusy || cmpPicked.length < 2" x-on:click="runCompare()" x-text="cmpBusy ? ('비교 중… ' + (cmpProgressTxt || (cmpPicked.length + '개 모델 동시 추출'))) : '비교 실행'"></button>
+                <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="openCompareWindow(cmpJob ? cmpJob.id : 0)" data-tip="모델별 진척도와 최근 비교 결과를 브라우저 새 창으로 봅니다 · 닫아도 비교는 계속 돕니다" data-tip-pos="top">진척도 창</button>
+                <button type="button" class="ds-btn ds-btn--secondary" x-show="cmpResult && cmpResult.ok && cmpResult.key" x-on:click="openEvalHistory({ kind: 'compare', id: 'c'+cmpResult.key, key: cmpResult.key })">최근 비교 결과 보기</button>
+                <span class="text-xs text-muted" role="status" x-show="cmpResult && !cmpResult.ok" x-text="cmpResult ? cmpResult.error : ''"></span>
+              </div>
+            </div>
+          </section>
+          </div>
+          <div id="eval-panel-results" role="tabpanel" aria-labelledby="eval-tab-results" x-show="evalTab==='results'" class="space-y-4">
+          <section class="panel"><div class="panel-hd"><b>평가 이력</b><span class="meta">종류와 관계없이 상세 보기에서 저장된 지표와 건별 결과를 확인합니다</span></div>
+            <div class="panel-bd">
+              <div class="control-row">
+                <label class="selctl"><span class="selctl__lbl">종류</span><select class="field" x-model="evalHistoryFilter"><option value="all">전체</option><option value="eval">일반 평가</option><option value="pilot">오토파일럿</option><option value="compare">모델 비교</option></select></label>
+                <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="loadEvalRuns()">새로고침</button>
+                <span role="alert" class="text-xs text-muted" x-text="evalHistoryError"></span>
+              </div>
+              <div class="text-xs text-muted" x-show="!evalHistoryRows.length && !evalHistoryError">표시할 평가가 없습니다. 실행 탭에서 평가를 시작하세요.</div>
+              <template x-if="evalHistoryRows.length">
+                <div class="overflow-auto" style="max-height:300px"><table class="ds-table" style="min-width:960px"><thead><tr><th style="width:70px">#</th><th style="width:110px">시각</th><th style="width:100px">종류</th><th>모델</th><th style="width:110px">범위</th><th style="width:150px">상태</th><th style="width:90px">일치율</th><th style="width:170px">작업</th></tr></thead><tbody>
+                  <template x-for="r in evalHistoryRows" x-bind:key="'er'+r.id">
+                    <tr x-bind:class="evalSelected && evalSelected.kind===r.kind && evalSelected.id===r.id ? 'is-sel' : ''">
                       <td class="tnum" x-text="r.kind==='pilot' ? ('#'+r.pilot_id+' · '+r.round+'R') : (r.kind==='compare' ? '·' : r.id)"></td>
                       <td class="tnum" x-text="fmtTs(r.ts)"></td>
                       <td><span class="ds-badge" x-bind:class="r.kind==='pilot' ? 'ds-badge--intent' : (r.kind==='compare' ? 'ds-badge--category' : 'ds-badge--neutral')" x-text="r.kind==='pilot' ? '오토파일럿' : (r.kind==='compare' ? '모델별 비교' : '평가 실행')"></span></td>
@@ -124,8 +117,9 @@
                       </td>
                       <td class="tnum" x-text="r.grade_accuracy != null ? Math.round(r.grade_accuracy*100)+'%' : '·'"></td>
                       <td>
+                        <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="openEvalHistory(r)" x-bind:aria-label="evalKindLabel(r.kind) + ' ' + fmtTs(r.ts) + ' 상세 보기'">상세 보기</button>
                         <template x-if="r.kind==='eval'"><span class="control-row control-row--compact">
-                          <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="openEvalRun(r.id)">보기</button>
+
                           <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" data-tip="이 런이 시작 시점에 실제로 쓴 프롬프트(zip · 호출별 파일) · 기록 기능 이전 런은 없음" data-tip-pos="top" x-on:click="downloadPrompt({ run: r.id })">프롬프트</button>
                           <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="r.status==='running' && !r.stalled" x-on:click="cancelEvalRun(r.id)">중단</button>
                           <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="r.stalled || r.status==='failed'" data-tip="저장된 건을 빼고 남은 건만 이어서 실행합니다" data-tip-pos="top" x-on:click="resumeEvalRun(r.id)">재개</button>
@@ -137,7 +131,7 @@
                           <span class="text-xs text-muted" x-show="!r.version">프롬프트 기록 없음</span>
                         </span></template>
                         <template x-if="r.kind==='compare'"><span class="control-row control-row--compact">
-                          <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" data-tip="아래 모델별 비교 표에서 이 회차를 다시 봅니다" data-tip-pos="top" x-on:click="cmpHistKey=r.key; cmpResult=null; loadCompareLast(r.key)">보기</button>
+
                           <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="r.version" data-tip="비교 시작 시점 프롬프트(zip · 호출별 파일) 내려받기" data-tip-pos="top" x-on:click="downloadPrompt({ v: r.version })" x-text="'프롬프트 v' + r.version"></button>
                         </span></template>
                       </td>
@@ -171,191 +165,93 @@
             </div>
           </section>
           <!-- 오토파일럿: 자동 개선 루프(Atelier 이식) · 라운드=학습 반영→재평가 · 악화 자동 원복 -->
-          <section class="panel"><div class="panel-hd"><b>오토파일럿 · 자동 개선 루프</b><span class="meta">목표 달성까지 학습 반영 → 재평가 반복 · 악화 라운드는 자동 원복</span></div>
-            <div class="panel-bd">
-              <ul class="ds-bullets" style="margin-bottom:11px">
-                <li>한 라운드 = <b>학습 반영</b>(검수 피드백 → 프롬프트 보정) 후 같은 정답셋으로 <b>재평가</b> · 점수가 나빠지면 그 라운드 보정은 반영하지 않습니다(자동 원복).</li>
-                <li>종료 조건: <b>목표 달성</b> · <b>개선 정체</b>(2라운드 연속 향상 없음) · <b>최대 라운드</b> · 수동 중지 · 라운드마다 실모델 호출 비용이 듭니다.</li>
-              </ul>
-              <div x-show="!(pilot && pilot.status==='running' && !pilot.stalled)" class="control-row">
-                <span class="selctl"><span class="selctl__lbl">평가 모델</span>
-                  <x-modelpick key="ap" value="pilotModel" set="pilotModel=$v" groups="textGroups" first-label="기본 설정 모델" first-value="" width="212px" tip="라운드마다 이 모델로 정답셋을 재평가합니다 · 비워두면 기본 텍스트 슬롯(설정) · 미연결 제공자는 키 등록 후 선택"></x-modelpick></span>
-                <span class="selctl"><span class="selctl__lbl">목표 일치율</span>
-                  <select class="field" x-model="pilotTarget"><option value="0.8">80%</option><option value="0.85">85%</option><option value="0.9">90%</option><option value="0.95">95%</option></select></span>
-                <span class="selctl"><span class="selctl__lbl">메타 일치율</span>
-                  <select class="field" x-model="pilotMeta" title="아이템 메타(인텐트·카테고리·엔티티·리드문) 4축 각각이 이 값 이상이어야 목표 달성"><option value="">설정값</option><option value="0.6">60%</option><option value="0.7">70%</option><option value="0.8">80%</option><option value="0.9">90%</option></select></span>
-                <span class="selctl"><span class="selctl__lbl">최대 라운드</span>
-                  <select class="field" x-model="pilotRounds"><option value="3">3</option><option value="5">5</option><option value="8">8</option></select></span>
-                <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="pilotBusy" x-on:click="startPilot()">오토파일럿 시작</button>
-                <span class="text-xs text-muted" x-show="pilotMsg" x-text="pilotMsg"></span>
-              </div>
-              <template x-if="pilot">
-                <div style="margin-top:10px">
-                  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                    <button type="button" class="ds-badge" style="cursor:pointer;border:0;font-family:inherit" x-on:click="openCompareWindow()" data-tip="라운드 안 단계별 진척도를 새 창으로 봅니다 · 닫아도 오토파일럿은 계속 돕니다" data-tip-pos="top" x-bind:class="pilot.status==='running' ? (pilot.stalled ? 'ds-badge--warning' : 'ds-badge--intent') : (pilot.status==='done' ? 'ds-badge--success' : (pilot.status==='failed' ? 'ds-badge--error' : 'ds-badge--neutral'))"
-                      x-text="pilot.status==='running' ? (pilot.stalled ? '중단됨(서버 재시작)' : (pilot.stop_reason ? ('라운드 ' + pilot.round + ' 중지 요청됨 · 마무리 중') : ('라운드 ' + pilot.round + '/' + pilot.max_rounds + ' 진행 중'))) : ({done:'완료',stopped:'중지',failed:'실패'}[pilot.status] || pilot.status)"></button>
-                    <span class="text-xs text-muted tnum" x-text="'목표 등급 ' + Math.round((pilot.target||0)*100) + '%' + (pilot.meta_target!=null ? ' · 메타 ' + Math.round(pilot.meta_target*100) + '%' : '') + (pilot.golden_n ? ' · 고정 정답셋 ' + pilot.golden_n + '건' : '')"></span>
-                    <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="pilot.status==='running' && !pilot.stalled && !pilot.stop_reason" x-on:click="stopPilot()" data-tip="지금 도는 단계를 다음 청크 경계(8건)에서 멈춥니다 · 진행 중 라운드의 보정은 반영하지 않습니다" data-tip-pos="top">중지</button>
+          <p class="text-muted" x-show="!evalSelected">이력에서 상세 보기를 선택하세요.</p>
+          <p role="status" aria-live="polite" x-show="evalDetailBusy">평가 상세를 불러오는 중…</p>
+          <div role="alert" x-show="evalDetailError"><span x-text="evalDetailError"></span> <button type="button" class="ds-btn ds-btn--secondary" x-on:click="openEvalHistory(evalSelected)">다시 시도</button></div>
+          <template x-if="evalDetail">
+            <div class="content-section-stack">
+              <section class="panel" aria-labelledby="eval-detail-title">
+                <div class="panel-hd"><b id="eval-detail-title" x-ref="evalDetailTitle" x-text="evalKindLabel(evalDetail.kind) + ' 상세'" tabindex="-1"></b><span class="meta" x-text="fmtTs(evalDetail.ts)"></span></div>
+                <div class="panel-bd space-y-4">
+                  <div class="control-row">
+                    <span class="ds-badge ds-badge--neutral" x-text="evalDetail.status==='reverted' ? '원복' : evalDetail.status==='applied' ? '반영' : evalRunStatusTxt(evalDetail)"></span>
+                    <span class="text-xs text-muted" x-text="evalDetail.version ? '프롬프트 버전 ' + evalDetail.version : '프롬프트 버전 기록 없음'"></span>
+                    <span class="text-xs text-muted" x-text="evalDetail.scope==='fixed' ? '고정 정답셋' : evalDetail.scope==='eval' ? '평가용 콘텐츠' : '전체 정답셋'"></span>
+                    <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="openEvalHistory(evalSelected, true)">상세 새로고침</button>
+                    <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="evalDetail.kind==='eval' || evalDetail.version" x-on:click="downloadPrompt(evalDetail.kind==='eval' ? { run: evalDetail.id } : { v: evalDetail.version })">프롬프트 내려받기</button>
                   </div>
-                  <template x-if="pilotStep">
-                    <div class="ds-progress" x-bind:class="pilotStep.total ? '' : 'ds-progress--indeterminate'" style="margin-top:10px">
-                      <div class="ds-progress__head"><span class="ds-progress__label" x-text="pilotStep.label"></span><span class="ds-progress__pct" x-text="pilotStep.total ? (pilotStep.done + ' / ' + pilotStep.total) : ''"></span></div>
-                      <div class="ds-progress__track" role="progressbar"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="pilotStep.total ? ('width:' + Math.max(Math.round(pilotStep.done / pilotStep.total * 100), 2) + '%') : ''"></div></div>
-                    </div>
-                  </template>
-                  <div class="tiles tiles--3" x-show="pilot.start_accuracy!=null || pilot.last_accuracy!=null" style="margin-top:10px">
-                    <div class="tile"><div class="n tnum" x-text="pilot.start_accuracy!=null ? Math.round(pilot.start_accuracy*100)+'%' : '·'"></div><div class="t">시작 일치율</div></div>
-                    <div class="tile"><div class="n tnum" x-text="pilot.last_accuracy!=null ? Math.round(pilot.last_accuracy*100)+'%' : '·'"></div><div class="t">현재 일치율</div></div>
-                    <div class="tile tile--hero"><div class="n tnum" x-text="pilot.best_accuracy!=null ? Math.round(pilot.best_accuracy*100)+'%' : '·'"></div><div class="t">최고 일치율</div></div>
-                  </div>
-                  <template x-if="(pilot.history||[]).length">
-                    <div class="overflow-auto" style="margin-top:10px"><table class="ds-table"><thead><tr><th style="width:60px">라운드</th><th style="width:60px">버전</th><th style="width:130px">모델</th><th>종합</th><th>게이트</th><th>등급 일치율</th><th>사유 일치</th><th>유해 미탐률</th><th>인텐트 F1</th><th>카테고리 F1</th><th>엔티티 F1</th><th>리드문 유사도</th><th>빈 결과</th><th>입력 필요</th><th>비용($)</th><th style="width:90px">누적 비용($)</th><th>응답 속도</th><th style="width:80px">반영</th></tr></thead><tbody>
-                      <template x-for="(hh, hi) in pilot.history" x-bind:key="'ph'+hh.round">
-                        <tr x-bind:class="pilotM(hh).n != null && pilotM(hh).n < 20 ? 'text-muted' : ''">
-                          <td class="tnum" x-text="hh.round"></td>
-                          <td class="tnum"><button type="button" class="copybtn" x-show="hh.version" x-on:click="downloadPrompt({ v: hh.version })" data-tip="이 라운드가 만든 프롬프트(zip · 호출별 파일) 내려받기" data-tip-pos="top" x-text="'v'+hh.version"></button><span x-show="!hh.version">·</span></td>
-                          <td class="text-xs" x-text="hh.model || '기본 설정'"></td>
-                          <td><b class="tnum" x-text="pilotM(hh).overall!=null ? pctTxt(pilotM(hh).overall) : '·'"></b> <span class="abwin" x-show="pilotWin('overall', hh)">▲</span></td>
-                          <td><span class="ds-badge" x-bind:class="pilotM(hh).passed ? 'ds-badge--success' : 'ds-badge--warning'" style="cursor:help" x-bind:data-tip="pilotM(hh).passed ? '등급 목표 · 메타 게이트 전부 통과' : '미달: ' + (pilotM(hh).gate_fails||[]).map(cmpFieldKo).join(', ')" data-tip-pos="top" x-text="pilotM(hh).passed ? '통과' : '미달 ' + (pilotM(hh).gate_fails||[]).length"></span></td>
-                          <td><span class="tnum" x-text="(hh.pre!=null ? pctTxt(hh.pre) : '·') + ' → '"></span><b class="tnum" x-bind:style="(hh.delta||0) > 0 ? 'color:var(--ds-success-deep)' : ((hh.delta||0) < 0 ? 'color:var(--ds-error-deep)' : '')" x-text="pctTxt(hh.accuracy)"></b> <span class="abwin" x-show="pilotWin('grade_accuracy', hh)">▲</span></td>
-                          <td class="tnum" x-text="pctTxt(pilotM(hh).reason_jaccard)"></td>
-                          <td class="tnum" x-text="pilotM(hh).harm_miss_rate!=null ? pctTxt(pilotM(hh).harm_miss_rate) : '·'"></td>
-                          <td><span class="tnum" x-text="pilotM(hh).intent_n ? pctTxt(pilotM(hh).intent_f1) : '·'"></span> <span class="abwin" x-show="pilotWin('intent_f1', hh)">▲</span></td>
-                          <td><span class="tnum" x-text="pilotM(hh).cat_n ? pctTxt(pilotM(hh).cat_hf1) : '·'"></span> <span class="abwin" x-show="pilotWin('cat_hf1', hh)">▲</span></td>
-                          <td><span class="tnum" x-text="pilotM(hh).ent_n ? pctTxt(pilotM(hh).ent_f1) : '·'"></span> <span class="abwin" x-show="pilotWin('ent_f1', hh)">▲</span></td>
-                          <td><span class="tnum" x-text="pilotM(hh).summary_n ? pctTxt(pilotM(hh).summary_sim) : '·'"></span> <span class="abwin" x-show="pilotWin('summary_sim', hh)">▲</span></td>
-                          <td class="tnum" x-text="pilotM(hh).empty_rate!=null ? pctTxt(pilotM(hh).empty_rate) : '·'"></td>
-                          <td class="tnum" x-text="pilotM(hh).meta_hold_rate!=null ? pctTxt(pilotM(hh).meta_hold_rate) : '·'"></td>
-                          <td class="tnum" x-text="pilotM(hh).cost_usd!=null ? ('$'+(Math.round(pilotM(hh).cost_usd*10000)/10000)) : '·'"></td>
-                          <td class="tnum" style="cursor:help" data-tip="1라운드부터 이 라운드까지 실호출 비용 합계 · 개선 1%p 를 얼마에 샀는지 보는 축" data-tip-pos="top" x-text="'$'+pilotCumCost(hi)"></td>
-                          <td class="tnum" x-text="pilotM(hh).latency_p50_ms!=null ? (latTxt(pilotM(hh).latency_p50_ms) + ' · ' + latTxt(pilotM(hh).latency_p95_ms)) : '·'"></td>
-                          <td><span class="ds-badge" x-bind:class="hh.reverted ? 'ds-badge--warning' : 'ds-badge--success'" x-bind:data-tip="hh.reverted ? '이 라운드 보정은 점수를 낮춰 반영하지 않았습니다(이전 프롬프트 유지)' : '이 라운드 보정이 반영됐습니다'" data-tip-pos="top" style="cursor:help" x-text="hh.reverted ? '원복' : '반영'"></span></td>
-                        </tr>
-                      </template>
+                  <p role="status" class="text-xs text-muted" x-show="evalDetail.run_error" x-text="evalDetail.run_error"></p>
+                  <div class="overflow-auto"><table class="ds-table model-compare-table" x-bind:style="'--compare-model-count:' + evalCols.length"><thead><tr><th>요약 지표</th>
+                    <template x-for="m in evalCols" x-bind:key="m.model"><th><span x-text="m.model"></span> <span class="ds-badge ds-badge--success" x-show="m.model===evalDetail.best">추천</span> <span class="ds-badge ds-badge--neutral" x-show="m.model===evalDetail.cheapest_passing">합격 최저 비용</span></th></template>
+                  </tr></thead><tbody>
+                    <template x-for="row in evalMetricRows" x-bind:key="row[1]"><tr><th x-text="row[0]"></th><template x-for="m in evalCols" x-bind:key="m.model"><td class="tnum" x-text="evalMetricText(m, row)"></td></template></tr></template>
+                    <tr x-show="evalCols.some(m => m.grade_accuracy != null)"><th>등급 신뢰구간(95%)</th><template x-for="m in evalCols" x-bind:key="m.model"><td x-text="ciOf(m.grade_accuracy, m.grade_n == null ? m.n : m.grade_n)"></td></template></tr>
+                    <tr x-show="evalCols.some(m => m.passed != null)"><th>목표 달성</th><template x-for="m in evalCols" x-bind:key="m.model"><td x-text="m.passed == null ? '—' : m.passed ? '게이트 통과' : '미달: ' + (m.gate_fails||[]).map(cmpFieldKo).join(', ')"></td></template></tr>
+                    <tr x-show="evalDetail.kind==='compare'"><th>호출</th><template x-for="m in evalCols" x-bind:key="m.model"><td x-text="m.real ? (m.route || '실호출') : '모의 응답'"></td></template></tr>
+                    <tr x-show="evalDetail.kind==='compare' && assignAdmin"><th>최종 선정</th><template x-for="m in evalCols" x-bind:key="m.model"><td><button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-bind:disabled="applyBusy || cfgModel===m.model" x-on:click="applyModel(m.model)" x-text="cfgModel===m.model ? '현재 기본 모델' : '이 모델로 확정'"></button></td></template></tr>
+                  </tbody></table></div>
+                  <p class="text-xs text-muted">표본이 없는 항목은 —로 표시합니다. 신뢰구간이 겹치는 결과는 우열 판단을 보류하세요.</p>
+                  <p class="text-xs text-muted" x-show="evalDetail.concurrent_models > 1">여러 모델을 동시에 실행한 결과입니다. 호출 자원을 공유하므로 응답 시간이 단독 실행보다 길 수 있습니다.</p>
+                  <p class="text-xs text-muted" x-show="(evalDetail.skipped||[]).length" x-text="'비교 제외: ' + (evalDetail.skipped||[]).map(s => s.model + ' (' + s.reason + ')').join(', ')"></p>
+                  <template x-for="m in evalCols" x-bind:key="m.model"><details x-show="Object.keys(m.by_service||{}).length || Object.keys(m.by_reason_bucket||{}).length">
+                    <summary x-text="m.model + ' · 서비스·유형별 분포'"></summary>
+                    <div class="overflow-auto"><table class="ds-table"><thead><tr><th>영역</th><th>표본</th><th>등급 일치율</th></tr></thead><tbody>
+                      <template x-for="(v,k) in (m.by_service||{})" x-bind:key="'s'+k"><tr><td x-text="'서비스 · '+k"></td><td x-text="v.n"></td><td x-text="pctTxt(v.grade_acc)"></td></tr></template>
+                      <template x-for="(v,k) in (m.by_reason_bucket||{})" x-bind:key="'r'+k"><tr><td x-text="'유형 · '+reasonBoth(k)"></td><td x-text="v.n"></td><td x-text="pctTxt(v.grade_acc)"></td></tr></template>
                     </tbody></table></div>
-                    <div class="text-xs text-muted" style="margin-top:6px">평가 항목은 모델별 비교와 같습니다 · ▲ = 라운드 중 가장 좋은 값 · 정답셋 표본 20건 미만 라운드는 회색(참고용) · 목표 달성 = 등급 일치율 목표 + 메타 일치율 목표(인텐트·카테고리·엔티티·리드문 각각) 전부 통과</div>
-                  </template>
-                  <div class="text-xs text-muted" style="margin-top:8px" x-show="pilot.stop_reason" x-text="(pilot.status==='running' ? '' : '종료: ') + pilot.stop_reason"></div>
-                  <span class="text-xs text-muted" x-show="pilot.error" x-text="pilot.error"></span>
+                  </details></template>
+                  <template x-if="evalDetail.kind==='eval'"><div>
+                    <div class="control-row"><b>루브릭 진단</b>
+                      <span class="text-xs text-muted" x-show="evalDetail.rubric_status==='running'" x-text="'채점 중 ' + (evalDetail.rubric_cursor||0) + '/' + evalDetail.evaluated"></span>
+                      <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="evalDetail.rubric_status==='running'" x-on:click="cancelRubric()">채점 중단</button>
+                      <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="evalDetail.status==='done' && !['running','done'].includes(evalDetail.rubric_status)" x-on:click="startRubric()">루브릭 채점 실행</button>
+                    </div>
+                    <p class="text-xs text-muted">루브릭 실행 시 LLM 호출 비용이 발생합니다.</p>
+                    <p role="status" x-show="evalDetail.rubric_status==='failed'">채점에 실패했습니다. 모델 설정을 확인한 뒤 다시 실행하세요.</p>
+                    <template x-if="evalDetail.rubric && evalDetail.rubric.n"><p class="text-xs" x-text="'채점 ' + evalDetail.rubric.n + '건 · ' + [['정확성','accuracy'],['형식','format'],['정책','policy'],['간결성','conciseness']].map(a => a[0] + ' ' + evalDetail.rubric[a[1]] + '/5').join(' · ')"></p></template>
+                  </div></template>
                 </div>
-              </template>
-            </div>
-          </section>
-          <!-- 최근 회차: 버전별 학습 리포트(learn_report_v*) 추이 · 표 하나(차트 없음) -->
-          <section class="panel"><div class="panel-hd"><b>최근 회차</b><span class="meta">학습 반영 회차별 정합성 추이 · 최근 5회</span></div>
-            <div class="panel-bd">
-              <div class="text-xs text-muted" x-show="!(learnTrend||[]).length">아직 쌓인 회차 리포트가 없습니다 · 학습 반영(일배치·오토파일럿) 뒤부터 표시됩니다</div>
-              <template x-if="(learnTrend||[]).length">
-                <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:70px">버전</th><th style="width:130px">일시</th><th style="width:70px">표본</th><th style="width:120px">등급 일치율</th><th style="width:90px">종합</th></tr></thead><tbody>
-                  <template x-for="t in learnTrend" x-bind:key="'lt'+t.version">
-                    <tr x-bind:class="t.n && t.n < 20 ? 'text-muted' : ''">
-                      <td class="text-ink tnum" x-text="'v'+t.version"></td>
-                      <td class="tnum text-xs" x-text="fmtTs(t.ts)"></td>
-                      <td class="tnum" x-text="t.n || '·'"></td>
-                      <td class="tnum" x-text="pctTxt(t.grade_accuracy)"></td>
-                      <td class="tnum" x-text="pctTxt(t.overall)"></td>
-                    </tr>
-                  </template>
-                </tbody></table></div>
-              </template>
-              <div class="text-xs text-muted" style="margin-top:6px">종합 = 모델별 비교·오토파일럿과 같은 가중(등급 0.4 · 메타 4항목 각 0.15) · 표본 20건 미만 회차는 회색(참고용)</div>
-            </div>
-          </section>
-          <!-- 모델별 비교: 같은 정답셋을 여러 모델(최대 6개)에 동시 실호출 → 지표표 · 건별 비교표 · 최종 모델 선정 -->
-          <section class="panel"><div class="panel-hd"><b>모델별 비교</b><span class="meta">같은 정답셋으로 여러 모델을 동시에 실호출 · 나란히 보고 최종 모델을 고릅니다</span></div>
-            <div class="panel-bd">
-              <div class="filterbar control-row" style="margin-bottom:12px">
-                <template x-for="(slot, si) in cmpModels" x-bind:key="'cs'+si">
-                  <span class="selctl abslot"><span class="selctl__tag" x-bind:style="'background:' + cmpColor(si)" x-text="cmpTag(si)"></span><span class="selctl__lbl">모델</span>
-                    <x-modelpick key="cm" value="cmpModels[si]" set="cmpModels[si]=$v" groups="textGroups" first-label="선택…" first-value="" width="212px" tip="직접(Solar)·라우터 전체에서 고름 · 미연결 제공자는 키 등록 후 선택 · 목록이 오래됐으면 '모델 새로고침'"></x-modelpick>
-                    <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-show="cmpModels.length > 2" x-on:click="cmpRemoveSlot(si)" title="이 슬롯 빼기">✕</button></span>
-                </template>
-                <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="cmpModels.length < 6" x-on:click="cmpModels.push('')">+ 모델 추가</button>
-                <span class="text-xs text-muted" x-show="modelsMsg" x-text="modelsMsg"></span>
-                <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-bind:disabled="cmpBusy || cmpPicked.length < 2" x-on:click="runCompare()" x-text="cmpBusy ? ('비교 중… ' + (cmpProgressTxt || (cmpPicked.length + '개 모델 동시 추출'))) : '비교 실행'"></button>
-                <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="openCompareWindow(cmpJob ? cmpJob.id : 0)" data-tip="모델별 진척도와 최근 비교 결과를 브라우저 새 창으로 봅니다 · 닫아도 비교는 계속 돕니다" data-tip-pos="top">진척도 창</button>
-                <select class="field" x-show="cmpHist.length" x-bind:disabled="cmpBusy" x-model="cmpHistKey" x-on:change="cmpResult=null; loadCompareLast(cmpHistKey)" title="저장된 지난 비교 회차를 골라 그대로 봅니다">
-                  <option value="">최근 비교</option>
-                  <template x-for="hh in cmpHist" x-bind:key="hh.key"><option x-bind:value="hh.key" x-text="fmtTs(hh.ts) + ' · ' + (hh.models||[]).join(', ') + ' · ★' + (hh.best||'')"></option></template>
-                </select>
-                <span class="text-xs text-muted" x-show="cmpResult && !cmpResult.ok" x-text="cmpResult ? cmpResult.error : ''"></span>
-                <span class="text-xs text-muted" x-show="cmpResult && cmpResult.ok && cmpResult.ts" x-text="cmpResult ? ('마지막 비교 ' + fmtTs(cmpResult.ts) + ' · 정답 ' + cmpResult.golden_n + '건') : ''"></span>
-                <button type="button" class="copybtn tnum" x-show="cmpResult && cmpResult.ok && cmpResult.prompt_snapshot_version" x-on:click="downloadPrompt({ v: cmpResult.prompt_snapshot_version })" x-text="cmpResult ? ('프롬프트 v' + cmpResult.prompt_snapshot_version + ' 내려받기') : ''" data-tip="비교 시작 시점 프롬프트 버전(zip · 호출별 파일) · 도중에 학습이 반영되면 결과가 다른 버전 기준일 수 있어요" data-tip-pos="top"></button>
-              </div>
-            </div>
-          </section>
-              <template x-if="cmpResult && cmpResult.ok && cmpCols.length">
-                <div class="content-section-stack">
-                  <section class="panel content-section content-section--panel" aria-labelledby="compare-summary-title">
-                  <div class="content-section__head">
-                    <div><h3 class="content-section__title" id="compare-summary-title">요약 지표</h3><p class="content-section__description">같은 정답셋에서 모델별 정확도, 비용과 응답 속도를 비교합니다.</p></div>
+              </section>
+              <section class="panel" aria-labelledby="eval-items-title">
+                <div class="panel-hd"><b id="eval-items-title">건별 상세</b><span class="meta" x-text="'저장된 결과 ' + (evalDetail.items||[]).length + '건'"></span></div>
+                <div class="panel-bd space-y-4">
+                  <p class="text-xs text-muted" x-show="evalDetail.detail_mode!=='all'" x-text="evalDetail.detail_mode==='mismatches' ? '이 과거 회차에는 등급 불일치 건만 저장되어 있습니다. 나머지 건과 메타 상세는 기록이 없습니다.' : '이 과거 회차에는 건별 결과가 저장되지 않았습니다. 위 요약 지표만 확인할 수 있습니다.'"></p>
+                  <div class="control-row">
+                    <label class="selctl"><span class="selctl__lbl">필터</span><select class="field" x-model="evalItemFilter" x-on:change="evalItemLimit=50"><option value="all">전체</option><option value="miss">등급 불일치·산출 실패</option><option value="split" x-bind:disabled="evalCols.length < 2">모델 간 등급 차이</option></select></label>
+                    <label class="selctl"><span class="selctl__lbl">콘텐츠 검색</span><input type="search" class="field" x-model="evalItemSearch" x-on:input="evalItemLimit=50" placeholder="제목 또는 해시"></label>
+                    <span class="text-xs text-muted" x-text="evalFilteredItems.length + '건'"></span>
                   </div>
-                  <div class="overflow-auto"><table class="ds-table model-compare-table" x-bind:style="'--compare-model-count:' + cmpCols.length"><colgroup><col class="model-compare-label"><col x-bind:span="cmpCols.length"></colgroup><thead><tr><th>항목</th>
-                    <template x-for="(m,mi) in cmpCols" x-bind:key="'ch'+mi"><th><span class="selctl__tag" x-bind:style="'background:' + cmpColor(mi)" x-text="cmpTag(mi)"></span> <span class="compare-model-name" x-text="m.model"></span> <span class="ds-badge ds-badge--success" x-show="m.model===cmpResult.best">★ best</span> <span class="ds-badge ds-badge--intent" style="cursor:help" x-show="m.model===cmpResult.cheapest_passing" x-bind:data-tip="'등급 일치율 ' + pctTxt(cmpResult.eval_gate) + ' 이상 합격 모델 중 비용이 가장 낮아요'" data-tip-pos="top">합격 최저 비용</span></th></template>
-                  </tr></thead><tbody>
-                    <tr><td class="text-ink">호출</td><template x-for="(m,mi) in cmpCols" x-bind:key="'cr'+mi"><td><span class="ds-badge" x-bind:class="m.real ? 'ds-badge--neutral' : 'ds-badge--warning'" x-bind:data-tip="m.real ? '실제 API 호출 결과' : '모의 응답 · API 키를 설정하면 실호출됩니다'" data-tip-pos="top" style="cursor:help" x-text="m.real ? (m.route||'실호출') : 'mock'"></span></td></template></tr>
-                    <tr><td class="text-ink">등급 일치율 <span class="text-xs text-muted">(신뢰구간)</span></td><template x-for="(m,mi) in cmpCols" x-bind:key="'cg'+mi"><td>
-                      <span class="abbar">
-                        <span class="abbar__track"><span class="abbar__fill" x-bind:style="'width:' + Math.max((m.grade_accuracy||0)*100, 3) + '%;background:' + cmpColor(mi)"></span></span>
-                        <b class="tnum" x-text="pctTxt(m.grade_accuracy)"></b><span class="abwin" x-show="cmpWin('grade_accuracy', mi)">▲</span>
-                      </span>
-                      <div class="text-xs text-muted tnum" style="margin-top:3px" x-text="'(' + ciOf(m.grade_accuracy, m.n) + ')'"></div></td></template></tr>
-                    <tr><td class="text-ink">사유 일치</td><template x-for="(m,mi) in cmpCols" x-bind:key="'cj'+mi"><td><b class="tnum" x-text="pctTxt(m.reason_jaccard)"></b> <span class="abwin" x-show="cmpWin('reason_jaccard', mi)">▲</span></td></template></tr>
-                    <tr><td class="text-ink">종합 점수 <span class="text-xs text-muted">(등급 0.4 · 메타 4항목 각 0.15)</span></td><template x-for="(m,mi) in cmpCols" x-bind:key="'co'+mi"><td>
-                      <b class="tnum" x-text="pctTxt(m.overall)"></b> <span class="abwin" x-show="cmpWin('overall', mi)">▲</span>
-                      <div style="margin-top:3px"><span class="ds-badge" x-bind:class="m.passed ? 'ds-badge--success' : 'ds-badge--warning'" style="cursor:help" x-bind:data-tip="m.passed ? '모든 게이트 통과 · 등급 ' + pctTxt(cmpResult.eval_gate) + ' · 메타 ' + pctTxt(cmpResult.meta_gate) + ' 이상' : '미달: ' + (m.gate_fails||[]).map(cmpFieldKo).join(', ')" data-tip-pos="top" x-text="m.passed ? '게이트 통과' : '게이트 미달 ' + (m.gate_fails||[]).length"></span></div></td></template></tr>
-                    <tr><td class="text-ink">인텐트 F1 <span class="text-xs text-muted">(표본)</span></td><template x-for="(m,mi) in cmpCols" x-bind:key="'ci1'+mi"><td><b class="tnum" x-text="m.intent_n ? pctTxt(m.intent_f1) : '·'"></b> <span class="abwin" x-show="cmpWin('intent_f1', mi)">▲</span> <span class="text-xs text-muted tnum" x-text="m.intent_n ? '(' + m.intent_n + ')' : ''"></span></td></template></tr>
-                    <tr><td class="text-ink">카테고리 F1 <span class="text-xs text-muted">(계층 · 부모만 맞아도 반점)</span></td><template x-for="(m,mi) in cmpCols" x-bind:key="'cc1'+mi"><td><b class="tnum" x-text="m.cat_n ? pctTxt(m.cat_hf1) : '·'"></b> <span class="abwin" x-show="cmpWin('cat_hf1', mi)">▲</span> <span class="text-xs text-muted tnum" x-text="m.cat_n ? '(정확 ' + pctTxt(m.cat_f1) + ' · ' + m.cat_n + ')' : ''"></span></td></template></tr>
-                    <tr><td class="text-ink">엔티티 F1 <span class="text-xs text-muted">(정규화 · 부분 일치)</span></td><template x-for="(m,mi) in cmpCols" x-bind:key="'ce1'+mi"><td><b class="tnum" x-text="m.ent_n ? pctTxt(m.ent_f1) : '·'"></b> <span class="abwin" x-show="cmpWin('ent_f1', mi)">▲</span> <span class="text-xs text-muted tnum" x-text="m.ent_n ? '(부분 ' + pctTxt(m.ent_f1_partial) + ' · ' + m.ent_n + ')' : ''"></span></td></template></tr>
-                    <tr><td class="text-ink">리드문 유사도 <span class="text-xs text-muted" x-text="(cmpCols[0]||{}).summary_sim_method === 'embed_cosine' ? '(임베딩 코사인)' : '(문자 2-gram · 게이트 40%)'"></span></td><template x-for="(m,mi) in cmpCols" x-bind:key="'cs1'+mi"><td><b class="tnum" x-text="m.summary_n ? pctTxt(m.summary_sim) : '·'"></b> <span class="abwin" x-show="cmpWin('summary_sim', mi)">▲</span> <span class="text-xs text-muted tnum" x-text="m.summary_n ? '(' + m.summary_n + ')' : ''"></span></td></template></tr>
-                    <tr><td class="text-ink">유해 미탐률 <span class="text-xs text-muted">(정답 R 중 G 로 흘림)</span></td><template x-for="(m,mi) in cmpCols" x-bind:key="'chm'+mi"><td><b class="tnum" x-text="m.harm_miss_rate!=null ? pctTxt(m.harm_miss_rate) : '·'"></b> <span class="abwin" x-show="cmpWin('harm_miss_rate', mi, true)">▲</span></td></template></tr>
-                    <tr><td class="text-ink">빈 결과</td><template x-for="(m,mi) in cmpCols" x-bind:key="'ce'+mi"><td class="tnum" x-text="pctTxt(m.empty_rate)"></td></template></tr>
-                    <tr><td class="text-ink">비용($)</td><template x-for="(m,mi) in cmpCols" x-bind:key="'cc'+mi"><td><span class="tnum" x-text="m.cost_usd!=null ? ('$'+(Math.round(m.cost_usd*10000)/10000)) : '·'"></span> <span class="abwin" x-show="cmpWin('cost_usd', mi, true)">▲</span></td></template></tr>
-                    <tr><td class="text-ink">응답 속도 <span class="text-xs text-muted">(보통 · 느릴 때)</span></td><template x-for="(m,mi) in cmpCols" x-bind:key="'cl'+mi"><td style="cursor:help" x-bind:data-tip="'콘텐츠 1건 추출에 걸린 시간 · 보통=중간값(p50) · 느릴 때=상위 5% 경계(p95)' + ((cmpResult.concurrent_models||1) > 1 ? (' · 모델 ' + cmpResult.concurrent_models + '개를 동시에 실행해 지연시간이 실제보다 부풀 수 있어요(승자 표시 제외)') : '')" data-tip-pos="top"><span class="tnum" x-text="latTxt(m.latency_p50_ms) + ' · ' + latTxt(m.latency_p95_ms)"></span> <span class="abwin" x-show="cmpWin('latency_p50_ms', mi, true)">▲</span></td></template></tr>
-                    <tr x-show="assignAdmin"><td class="text-ink">최종 선정</td><template x-for="(m,mi) in cmpCols" x-bind:key="'ca'+mi"><td>
-                      <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="cfgModel===m.model ? 'ds-btn--ghost' : 'ds-btn--secondary'" x-bind:disabled="applyBusy || cfgModel===m.model" x-on:click="applyModel(m.model)" x-text="cfgModel===m.model ? '현재 기본 모델' : (applyBusy ? '적용 중…' : '이 모델로 확정')"></button></td></template></tr>
+                  <p class="text-xs text-muted">등급이 없는 평가는 등급 일치 여부를 판정하지 않습니다. 항목을 펼치면 당시 저장된 인텐트·카테고리·엔티티·리드문을 볼 수 있습니다.</p>
+                  <div class="overflow-auto"><table class="ds-table item-compare-table" x-bind:style="'--compare-model-count:' + evalCols.length"><thead><tr><th>콘텐츠</th><th>정답</th><template x-for="m in evalCols" x-bind:key="m.model"><th x-text="m.model"></th></template></tr></thead><tbody>
+                    <template x-for="it in evalItems" x-bind:key="it.hash"><tr>
+                      <td><span x-text="it.title || it.hash"></span><div class="text-xs text-muted" x-text="it.hash.slice(0,12)"></div>
+                        <template x-if="it.judgment"><div class="control-row control-row--compact">
+                          <button type="button" class="verdictbtn verdictbtn--good" x-bind:class="myEvalVote(it.judgment)==='adopt' ? 'is-on' : ''" x-on:click="evalJudge(it.judgment, 'adopt')">모델이 맞음</button>
+                          <button type="button" class="verdictbtn verdictbtn--bad" x-bind:class="myEvalVote(it.judgment)==='reject' ? 'is-on' : ''" x-on:click="evalJudge(it.judgment, 'reject')">정답 유지</button>
+                          <span class="text-xs text-muted" x-text="'모델이 맞음 ' + ((it.judgment.judge||{}).adopt||0) + ' · 정답 유지 ' + ((it.judgment.judge||{}).reject||0)"></span>
+                        </div></template>
+                      </td>
+                      <template x-for="cell in evalItemCells(it)" x-bind:key="cell.model"><td>
+                        <span class="text-xs" x-text="evalCellStatus(cell.data)"></span>
+                        <p class="text-xs text-muted" x-show="cell.data.error" x-text="cell.data.error"></p>
+                        <details><summary x-text="(cell.data.grade || '메타') + ' · 상세'"></summary>
+                          <dl><template x-for="field in evalItemFields" x-bind:key="field[0]"><div><dt class="text-xs text-muted" x-text="field[1]"></dt><dd style="margin:0 0 var(--ds-space-2);white-space:pre-wrap;overflow-wrap:anywhere" x-text="evalMetaText(cell.data, field[0])"></dd></div></template></dl>
+                          <p class="text-xs text-muted" x-show="cell.data.rubric && cell.data.rubric.note" x-text="cell.data.rubric ? cell.data.rubric.note : ''"></p>
+                        </details>
+                      </td></template>
+                    </tr></template>
+                    <tr x-show="!evalItems.length"><td x-bind:colspan="2 + evalCols.length" class="text-muted" x-text="evalDetail.detail_mode==='none' ? '저장된 건별 결과가 없습니다.' : '현재 조건에 해당하는 결과가 없습니다.'"></td></tr>
                   </tbody></table></div>
-                  <ul class="result-notes">
-                    <li><b>★ best</b> · 게이트를 통과한 모델 중 종합 점수 1위입니다.</li>
-                    <li><b>▲</b> · 해당 항목에서 가장 좋은 값입니다.</li>
-                    <li>신뢰구간이 겹치면 우열 판단을 보류합니다. 정답셋이 쌓일수록 오차가 줄어듭니다.</li>
-                    <li x-show="cmpResult.cheapest_passing"><b>합격 최저 비용</b> · 등급 일치율 <span class="tnum" x-text="pctTxt(cmpResult.eval_gate)"></span> 이상인 모델 중 비용이 가장 낮은 모델은 <b x-text="cmpResult.cheapest_passing"></b>입니다.</li>
-                    <li x-show="(cmpResult.skipped||[]).length">비교 제외: <span x-text="(cmpResult.skipped||[]).map(s => s.model + ' (' + s.reason + ')').join(' · ')"></span></li>
-                  </ul>
-                  </section>
-                  <!-- 건별 비교: 정답 vs 모델별 등급 · 틀린 건·갈린 건만 추려 어디서 차이가 나는지 본다 -->
-                  <section class="panel content-section content-section--panel" aria-labelledby="compare-items-title">
-                  <div class="content-section__head">
-                    <div><h3 class="content-section__title" id="compare-items-title">건별 비교</h3>
-                    <p class="content-section__description" x-text="'전체 ' + (cmpResult.items||[]).length + '건 · 하나라도 틀린 건 ' + (cmpResult.miss_n||0) + ' · 모델끼리 갈린 건 ' + (cmpResult.split_n||0)"></p></div>
-                    <span class="srcfilter content-section__actions">
-                      <button type="button" class="srcfilter__chip" x-bind:class="cmpItemFilter==='miss' ? 'sel' : ''" x-on:click="cmpItemFilter='miss'">틀린 건만</button>
-                      <button type="button" class="srcfilter__chip" x-bind:class="cmpItemFilter==='split' ? 'sel' : ''" x-on:click="cmpItemFilter='split'">갈린 건만</button>
-                      <button type="button" class="srcfilter__chip" x-bind:class="cmpItemFilter==='all' ? 'sel' : ''" x-on:click="cmpItemFilter='all'">전체</button>
-                    </span>
-                  </div>
-                  <div class="overflow-auto" style="max-height:420px"><table class="ds-table item-compare-table" x-bind:style="'--compare-model-count:' + cmpCols.length"><colgroup><col class="item-compare-content"><col class="item-compare-expected"><col x-bind:span="cmpCols.length"></colgroup><thead><tr><th>콘텐츠</th><th>정답</th>
-                    <template x-for="(m,mi) in cmpCols" x-bind:key="'ih'+mi"><th><span class="selctl__tag" x-bind:style="'background:' + cmpColor(mi)" x-text="cmpTag(mi)"></span> <span class="compare-model-name" x-text="m.model"></span></th></template>
-                  </tr></thead><tbody>
-                    <template x-for="it in cmpItems" x-bind:key="'ci'+it.hash">
-                      <tr>
-                        <td><span x-text="it.title || it.hash.slice(0,8)"></span><div class="text-xs text-muted" x-show="(it.expected.reasons||[]).length" x-text="'사유: ' + (it.expected.reasons||[]).join(', ')"></div></td>
-                        <td><b class="tnum" x-text="it.expected.grade || '·'"></b></td>
-                        <template x-for="(m,mi) in cmpCols" x-bind:key="'ig'+mi"><td>
-                          <span class="ds-badge" x-bind:class="cmpCell(it, m.model).empty ? 'ds-badge--warning' : (cmpCell(it, m.model).ok ? 'ds-badge--success' : 'ds-badge--error')" x-bind:data-tip="cmpCell(it, m.model).empty ? '산출 실패' : ('사유: ' + ((cmpCell(it, m.model).reasons||[]).join(', ') || '없음'))" data-tip-pos="top" style="cursor:help" x-text="cmpCell(it, m.model).empty ? '실패' : (cmpCell(it, m.model).grade || '·')"></span></td></template>
-                      </tr>
-                    </template>
-                    <tr x-show="!cmpItems.length"><td x-bind:colspan="2 + cmpCols.length" class="text-muted text-xs">해당하는 건이 없습니다</td></tr>
-                  </tbody></table></div>
-                  <p class="content-section__description" x-show="cmpItemsMore">처음 <span x-text="cmpItems.length"></span>건만 표시 · 필터를 좁혀 보세요</p>
-                  </section>
-                  <!-- 개선 루프: 지표 → 문제점 → 쿡북 지시 → 스테이지 프롬프트 반영 → 다시 비교 -->
+                  <button type="button" class="ds-btn ds-btn--secondary" x-show="evalItems.length < evalFilteredItems.length" x-on:click="evalItemLimit+=50">50건 더 보기</button>
+                </div>
+              </section>
+              <template x-if="evalDetail.kind==='compare'">
                   <section class="panel content-section content-section--panel" aria-labelledby="compare-loop-title">
                   <div class="content-section__head">
                     <div><h3 class="content-section__title" id="compare-loop-title">개선 루프</h3>
                     <p class="content-section__description">문제점을 골라 공통 스테이지 프롬프트(사전·정책 › 메타 프롬프트)에 반영하고 다시 비교합니다.</p></div>
                     <span class="srcfilter content-section__actions">
-                      <template x-for="(m,mi) in cmpCols" x-bind:key="'lp'+mi"><button type="button" class="srcfilter__chip" x-bind:class="cmpLoopModel===m.model ? 'sel' : ''" x-on:click="cmpLoopModel=m.model" x-text="cmpTag(mi) + ' ' + m.model"></button></template>
+                      <template x-for="(m,mi) in evalCols" x-bind:key="'lp'+mi"><button type="button" class="srcfilter__chip" x-bind:class="cmpLoopModel===m.model ? 'sel' : ''" x-on:click="cmpLoopModel=m.model" x-text="cmpTag(mi) + ' ' + m.model"></button></template>
                     </span>
                   </div>
                   <div class="overflow-auto" style="margin-top:8px"><table class="ds-table"><thead><tr><th style="width:90px">영역</th><th style="width:220px">문제점</th><th>쿡북 지시(프롬프트에 얹을 문장)</th><th style="width:120px">반영</th></tr></thead><tbody>
@@ -377,8 +273,28 @@
                     <li>지표가 내려가면 사전·정책 › 메타 프롬프트에서 해당 문장을 지웁니다.</li>
                   </ul>
                   </section>
-                </div>
               </template>
+            </div>
+          </template>
+          <details class="panel"><summary class="panel-hd"><b>학습 회차 추이</b></summary><div class="panel-hd"><b>최근 회차</b><span class="meta">학습 반영 회차별 정합성 추이 · 최근 5회</span></div>
+            <div class="panel-bd">
+              <div class="text-xs text-muted" x-show="!(learnTrend||[]).length">아직 쌓인 회차 리포트가 없습니다 · 학습 반영(일배치·오토파일럿) 뒤부터 표시됩니다</div>
+              <template x-if="(learnTrend||[]).length">
+                <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:70px">버전</th><th style="width:130px">일시</th><th style="width:70px">표본</th><th style="width:120px">등급 일치율</th><th style="width:90px">종합</th></tr></thead><tbody>
+                  <template x-for="t in learnTrend" x-bind:key="'lt'+t.version">
+                    <tr x-bind:class="t.n && t.n < 20 ? 'text-muted' : ''">
+                      <td class="text-ink tnum" x-text="'v'+t.version"></td>
+                      <td class="tnum text-xs" x-text="fmtTs(t.ts)"></td>
+                      <td class="tnum" x-text="t.n || '·'"></td>
+                      <td class="tnum" x-text="pctTxt(t.grade_accuracy)"></td>
+                      <td class="tnum" x-text="pctTxt(t.overall)"></td>
+                    </tr>
+                  </template>
+                </tbody></table></div>
+              </template>
+              <div class="text-xs text-muted" style="margin-top:6px">종합 = 모델별 비교·오토파일럿과 같은 가중(등급 0.4 · 메타 4항목 각 0.15) · 표본 20건 미만 회차는 회색(참고용)</div>
+            </div>
+          </details>
+          </div>
         </div>
       </template>
-
