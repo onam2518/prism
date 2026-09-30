@@ -1,0 +1,21 @@
+# 토픽 뉴스 조회용 인덱스 · 공개 포트 없이 Fly 조직의 내부망에서만 접속.
+app = 'prism-topic-vectors'
+primary_region = 'nrt'
+
+[build]
+  image = 'qdrant/qdrant:v1.19.1'
+
+[env]
+  QDRANT__SERVICE__HOST = '::'
+
+[[mounts]]
+  source = 'vectors'
+  destination = '/qdrant/storage'
+
+[[vm]]
+  memory = '512mb'
+  cpu_kind = 'shared'
+  cpus = 1
+
+# API 키: QDRANT__SERVICE__API_KEY 시크릿.
+# Prism: PRISM_QDRANT_URL·PRISM_QDRANT_KEY 시크릿으로 연결.

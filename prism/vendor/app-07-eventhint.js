@@ -79,7 +79,7 @@ window.PRISM_APP_PARTS.push(() => ({
       _talkPrune() { this.talk.dropped.forEach(c => this._chipRemove(c)); },
       talkN() { const t = this.talk.turns[this.talk.turns.length - 1]; return t ? (t.n || 0) : 0; },
       async _talkRefresh(before) {
-        const p = await this._studioPost({ action: 'preview', def: this.studioDef(), similar: true });
+        const p = await this._studioPost({ action: 'preview', def: this.studioDef(), similar: true, semantic: true });
         const pv = (p && p.preview) || { bundles: [], n_total: 0, feed_chips: [] };
         this.studioPreview = pv;
         const t = this.talk.turns[this.talk.turns.length - 1]; if (!t) return;
@@ -87,6 +87,11 @@ window.PRISM_APP_PARTS.push(() => ({
         if (before) chips.forEach(c => { c.new = !before.has(c.key); });
         const core = (pv.bundles || []).find(b => b.kind === 'core') || { count: 0, samples: [] };
         t.chips = chips; t.n = core.count || 0; t.samples = (core.samples || []).slice(0, 5);
+        const sm = pv.semantic || {};
+        t.semantic = sm.status === 'ready' ? '조건에 맞는 뉴스 중 입력 의미에 가까운 샘플입니다.'
+          : sm.status === 'partial' ? '조건에 맞는 뉴스 중 검색 준비가 된 ' + sm.indexed + '건에서 고른 샘플입니다. 전체 매칭 건수는 위에 표시됩니다.'
+          : sm.status === 'indexing' ? '뉴스 검색을 준비하고 있어요. 현재는 기본 샘플을 표시합니다.'
+          : sm.status === 'unavailable' ? '의미순 조회에 연결하지 못했어요. 현재는 기본 샘플을 표시합니다.' : '';
         if (!t.saved) t.after = chips.map(c => c.key);     // 칩 조정 뒤(4-38 기록) · 저장된 옛 턴의 기록은 덮지 않는다
         t.similar = pv.similar || [];                     // 가까운 기존 토픽 · 저장 전에도(4-44)
         t.neg_n = pv.neg_blocked || 0; t.feed_n = pv.feed_blocked || 0;
