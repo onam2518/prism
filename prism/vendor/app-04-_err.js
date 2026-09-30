@@ -278,6 +278,81 @@ window.PRISM_APP_PARTS.push(() => ({
           else this._err((r && r.error) || '용도 전환 실패');
         } catch (e) { this._err('용도 전환 실패'); }
       },
+      evalTab: 'run', evalHistoryFilter: 'all', evalHistoryError: '',
+      evalDetail: null, evalSelected: null, evalDetailBusy: false, evalDetailError: '',
+      _evalDetailSeq: 0, _evalDetailT: null, evalItemFilter: 'all', evalItemSearch: '', evalItemLimit: 50,
+      setEvalTab(tab) {
+        this.evalTab = tab; clearTimeout(this._evalDetailT);
+        if (tab === 'results') { this.loadEvalRuns(); if (this.evalSelected) this.openEvalHistory(this.evalSelected, true); }
+      },
+      evalTabKey(event) {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        event.preventDefault();
+        this.setEvalTab(event.key === 'Home' ? 'run' : event.key === 'End' ? 'results' : this.evalTab === 'run' ? 'results' : 'run');
+        event.currentTarget.querySelector('#eval-tab-' + this.evalTab).focus();
+      },
+      evalKindLabel(kind) { return { eval: '일반 평가', pilot: '오토파일럿', compare: '모델 비교' }[kind] || kind; },
+      get evalHistoryRows() { return this.evalRuns.filter(r => this.evalHistoryFilter === 'all' || r.kind === this.evalHistoryFilter); },
+      async openEvalHistory(row, refresh = false) {
+        if (!row) return;
+        clearTimeout(this._evalDetailT);
+        const seq = ++this._evalDetailSeq;
+        if (!refresh) {
+          this.evalTab = 'results'; this.evalSelected = { ...row }; this.evalDetail = null;
+          this.evalItemFilter = 'all'; this.evalItemSearch = ''; this.evalItemLimit = 50; this.cmpLoopModel = '';
+        }
+        this.evalDetailBusy = true; this.evalDetailError = '';
+        const q = new URLSearchParams({ kind: row.kind });
+        if (row.kind === 'compare') q.set('key', row.key);
+        else { q.set('id', row.kind === 'pilot' ? row.pilot_id : row.id); if (row.kind === 'pilot') q.set('round', row.round); }
+        try {
+          const r = await (await this._afetch('/eval-history-detail?' + q, { headers: this._authHeaders() })).json();
+          if (seq !== this._evalDetailSeq) return;
+          if (!r || !r.ok) throw new Error((r && r.error) || '평가 상세를 불러오지 못했습니다');
+          this.evalDetail = r;
+          if (!refresh && this.$nextTick) this.$nextTick(() => { if (seq === this._evalDetailSeq && this.evalTab === 'results') this.$refs.evalDetailTitle.focus(); });
+          if (r.kind === 'eval' && (r.status === 'running' || r.rubric_status === 'running')) {
+            this._evalDetailT = setTimeout(() => { if (this.evalTab === 'results') this.openEvalHistory(row, true); }, 3000);
+          }
+        } catch (e) { if (seq === this._evalDetailSeq) this.evalDetailError = e.message || '평가 상세를 불러오지 못했습니다'; }
+        finally { if (seq === this._evalDetailSeq) this.evalDetailBusy = false; }
+      },
+      get evalCols() { return (this.evalDetail && this.evalDetail.models) || []; },
+      get evalMetricRows() {
+        const rows = [
+          ['평가 건수', 'n', 'raw'], ['등급 일치율', 'grade_accuracy'], ['등급 표본', 'grade_n', 'raw'],
+          ['사유 일치', 'reason_jaccard'], ['종합 점수', 'overall'],
+          ['인텐트 F1', 'intent_f1', '', 'intent_n'], ['카테고리 F1(계층)', 'cat_hf1', '', 'cat_n'],
+          ['엔티티 F1', 'ent_f1', '', 'ent_n'], ['리드문 유사도', 'summary_sim', '', 'summary_n'],
+          ['유해 미탐률', 'harm_miss_rate'], ['빈 결과', 'empty_rate'], ['입력 필요', 'meta_hold_rate'],
+          ['비용($)', 'cost_usd', 'cost'], ['응답 속도 p50', 'latency_p50_ms', 'lat'], ['응답 속도 p95', 'latency_p95_ms', 'lat']
+        ];
+        return rows.filter(row => this.evalCols.some(m => m[row[1]] != null));
+      },
+      evalMetricText(model, row) {
+        const value = model[row[1]];
+        if (value == null || (row[3] && !model[row[3]])) return '—';
+        const text = row[2] === 'raw' ? String(value) : row[2] === 'cost' ? '$' + Number(value).toFixed(4) : row[2] === 'lat' ? this.latTxt(value) : this.pctTxt(value);
+        return text + (row[3] ? ' · ' + model[row[3]] + '건' : '');
+      },
+      evalItemFields: [['grade', '등급'], ['reasons', '사유'], ['intent', '인텐트'], ['content_category', '카테고리'], ['entities', '엔티티'], ['summary', '리드문']],
+      evalMetaText(data, key) {
+        const value = data && data[key];
+        if (value == null) return '기록 없음';
+        if (Array.isArray(value)) return value.map(v => typeof v === 'object' && v ? (v.name ? v.name + (v.type ? ' (' + v.type + ')' : '') : [v.tier1, v.tier2].filter(Boolean).join(' / ')) : String(v)).join(', ') || '없음';
+        return String(value) || '없음';
+      },
+      get evalFilteredItems() {
+        const search = this.evalItemSearch.trim().toLowerCase();
+        return ((this.evalDetail && this.evalDetail.items) || []).filter(it => {
+          const cells = Object.values(it.got || {});
+          const match = this.evalItemFilter === 'all' || (this.evalItemFilter === 'split' ? it.split : cells.some(c => c.empty || c.ok === false));
+          return match && (!search || (it.title + ' ' + it.hash).toLowerCase().includes(search));
+        });
+      },
+      get evalItems() { return this.evalFilteredItems.slice(0, this.evalItemLimit); },
+      evalItemCells(it) { return [{ model: '정답', data: it.expected || {} }, ...this.evalCols.map(m => ({ model: m.model, data: (it.got || {})[m.model] || {} }))]; },
+      evalCellStatus(data) { return data.empty ? '산출 실패' : data.ok === false ? '등급 불일치' : data.ok === true ? '등급 일치' : ''; },
       evalModel: '', evalScope: 'all',        // 평가 기준: 기준 모델 · 대상 콘텐츠 풀(all=전체 정답셋 | eval=평가용 홀드아웃)
       // 평가 런(이력 영속 · Atelier 이식): 시작 → 백그라운드 실행 → 폴링으로 진행률·리포트
       evalRuns: [], evalRunId: null, _evalPollT: null,
@@ -294,7 +369,8 @@ window.PRISM_APP_PARTS.push(() => ({
         const tick = async () => {
           let r = null;
           try { r = await (await this._afetch('/eval-run?id=' + id, { headers: this._authHeaders() })).json(); } catch (e) {}
-          if (!r || this.evalRunId !== id) { this.goldenBusy = false; return; }
+          if (this.evalRunId !== id) return;
+          if (!r) { this._evalPollT = setTimeout(tick, 2500); return; }
           this.goldenResult = r;
           this.goldenBusy = (r.status === 'running');
           if (r.status === 'running' || r.rubric_status === 'running') { this._evalPollT = setTimeout(tick, 2500); }
@@ -303,9 +379,9 @@ window.PRISM_APP_PARTS.push(() => ({
         tick();
       },
       async loadEvalRuns() {
-        try { const r = await (await this._afetch('/eval-runs', { headers: this._authHeaders() })).json(); if (r && r.ok) this.evalRuns = r.items || []; } catch (e) {}
+        try { const r = await (await this._afetch('/eval-runs', { headers: this._authHeaders() })).json(); if (!r || !r.ok) throw new Error((r && r.error) || '평가 이력 조회 실패'); this.evalRuns = r.items || []; this.evalHistoryError = ''; } catch (e) { this.evalHistoryError = e.message || '평가 이력 조회 실패'; }
       },
-      openEvalRun(id) { this.evalRunId = id; this.goldenResult = null; this.pollEvalRun(id); },
+      openEvalRun(id) { return this.openEvalHistory({ kind: 'eval', id }); },
       async cancelEvalRun(id) {
         try { await (await this._afetch('/eval-run-cancel', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ id }) })).json(); } catch (e) {}
         this.loadEvalRuns(); if (this.evalRunId === id) this.pollEvalRun(id);
@@ -313,7 +389,7 @@ window.PRISM_APP_PARTS.push(() => ({
       async resumeEvalRun(id) {
         try {
           const r = await (await this._afetch('/eval-run-resume', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ id }) })).json();
-          if (r && r.ok) { this.evalRunId = id; this.pollEvalRun(id); }
+          if (r && r.ok) { this.evalTab = 'run'; this.evalRunId = id; this.pollEvalRun(id); }
         } catch (e) {}
         this.loadEvalRuns();
       },
@@ -360,18 +436,6 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       // 오토파일럿(자동 개선 루프 · Atelier 이식): 시작/중지 + 상태 폴링(라운드가 길어 5s)
       pilot: null, pilotTarget: '0.9', pilotMeta: '', pilotRounds: '5', pilotModel: '',
-      pilotM(hh) { return (hh && hh.metrics) || { grade_accuracy: hh && hh.accuracy }; },   // 구 라운드(metrics 없음)는 등급만
-      pilotWin(f, hh) {                        // 라운드 중 유일하게 가장 좋은 값(비용·지연은 낮을수록)
-        const hs = (this.pilot && this.pilot.history) || []; if (hs.length < 2) return false;
-        const lower = (f === 'cost_usd' || f === 'latency_p50_ms'); const v = this.pilotM(hh)[f]; if (v == null) return false;
-        return hs.every((o) => o === hh || this.pilotM(o)[f] == null || (lower ? v < this.pilotM(o)[f] : v > this.pilotM(o)[f]));
-      },
-      pilotCumCost(i) {                        // 1라운드부터 i라운드까지 실호출 비용 누계(개선 1%p 당 값을 가늠하는 축)
-        const hs = (this.pilot && this.pilot.history) || [];
-        let s = 0;
-        for (let k = 0; k <= i && k < hs.length; k++) s += (this.pilotM(hs[k]).cost_usd || 0);
-        return Math.round(s * 10000) / 10000;
-      },
       // 최근 회차 추이: 버전별 학습 리포트(learn_report_v*) 최근 5건 · 표 하나(차트 없음)
       learnTrend: [],
       async loadLearnTrend() {
@@ -413,29 +477,29 @@ window.PRISM_APP_PARTS.push(() => ({
         try { await (await this._afetch('/autopilot-stop', { method: 'POST', headers: this._authHeaders(), body: '{}' })).json(); } catch (e) {}
         this.loadPilot();
       },
-      async startRubric() {                    // 루브릭 진단(4축 · Atelier 이식): 완주 런 대상 배치 채점
-        if (!this.evalRunId) return;
+      async startRubric(id = this.evalDetail && this.evalDetail.id) {                    // 루브릭 진단(4축 · Atelier 이식): 완주 런 대상 배치 채점
+        if (!id) return;
         try {
-          const r = await (await this._afetch('/eval-rubric-start', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ id: this.evalRunId }) })).json();
-          if (r && r.ok) this.pollEvalRun(this.evalRunId);
+          const r = await (await this._afetch('/eval-rubric-start', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ id: id }) })).json();
+          if (r && r.ok) { if (this.evalSelected && this.evalSelected.kind === 'eval' && this.evalSelected.id === id) this.openEvalHistory(this.evalSelected, true); }
           else this._err((r && r.error) || '루브릭 채점 시작 실패');
         } catch (e) { this._err('루브릭 채점 시작 실패'); }
       },
-      async cancelRubric() {                   // 채점 중단(이미 채점된 건은 유지 · 백엔드 배치 사이 확인)
-        if (!this.evalRunId) return;
+      async cancelRubric(id = this.evalDetail && this.evalDetail.id) {                   // 채점 중단(이미 채점된 건은 유지 · 백엔드 배치 사이 확인)
+        if (!id) return;
         try {
-          const r = await (await this._afetch('/eval-rubric-cancel', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ id: this.evalRunId }) })).json();
+          const r = await (await this._afetch('/eval-rubric-cancel', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ id: id }) })).json();
           if (!(r && r.ok)) this._err((r && r.error) || '중단 요청 실패');
         } catch (e) { this._err('중단 요청 실패'); }
       },
       // 모델별 정합성 비교(골든셋 평가 탭) · 슬롯 N개(2~6) 동시 실호출 · 이항 95% CI 표기 · 건별 비교표
-      cmpModels: ['', ''], cmpBusy: false, cmpResult: null, cmpItemFilter: 'miss', cmpLoopModel: '', cookBusy: false,
+      cmpModels: ['', ''], cmpBusy: false, cmpResult: null, cmpLoopModel: '', cookBusy: false,
       cmpHist: [], cmpHistKey: '',            // 저장된 비교 회차 목록 · 고른 회차 키('' = 최신)
       _CMP_FIELD_KO: { grade_accuracy: '등급 일치율', intent_f1: '인텐트 F1', cat_hf1: '카테고리 F1', ent_f1: '엔티티 F1', summary_sim: '리드문 유사도', grade: '등급', intent: '인텐트', category: '카테고리', entities: '엔티티', summary: '리드문' },
       cmpFieldKo(k) { return this._CMP_FIELD_KO[k] || k; },
       get cmpIssues() {                        // 개선 루프 대상 모델(기본 best)의 진단 목록
-        const c = this.cmpCols; if (!c.length) return [];
-        const m = c.find((x) => x.model === this.cmpLoopModel) || c.find((x) => x.model === (this.cmpResult && this.cmpResult.best)) || c[0];
+        const c = this.evalCols; if (!c.length) return [];
+        const m = c.find((x) => x.model === this.cmpLoopModel) || c.find((x) => x.model === (this.evalDetail && this.evalDetail.best)) || c[0];
         return m.issues || [];
       },
       async applyRecipe(it) {                  // 쿡북 지시 → 공통 스테이지 프롬프트 끝에 얹기(/cookbook-apply · 관리자)
@@ -453,34 +517,6 @@ window.PRISM_APP_PARTS.push(() => ({
       cmpColor(i) { return this._CMP_COLORS[i % this._CMP_COLORS.length]; },
       cmpRemoveSlot(i) { if (this.cmpModels.length > 2) this.cmpModels.splice(i, 1); },
       get cmpPicked() { return Array.from(new Set(this.cmpModels.map((v) => String(v || '').split('|').pop()).filter(Boolean))); },   // 픽커 값은 provider|model → 서버엔 model id 만 · 중복 제거
-      get cmpCols() {
-        const ms = (this.cmpResult && this.cmpResult.models) || [];
-        const picked = this.cmpPicked;
-        const cols = picked.map((id) => ms.find((m) => m.model === id)).filter(Boolean);
-        return cols.length ? cols : ms;          // 저장된 비교를 불러온 직후엔 슬롯과 무관하게 결과 순서대로
-      },
-      cmpWin(f, mi, lower) {                     // 그 줄에서 유일하게 가장 좋은 값(동률이면 표시 안 함)
-        const c = this.cmpCols; if (c.length < 2) return false;
-        // 모델을 동시에(concurrent_models>1) 돌리면 같은 라우터 키를 나눠 써 지연시간이 실제보다
-        // 부풀 수 있다 → 속도만 승자 표시에서 제외(다른 지표는 병렬과 무관해 그대로 둔다)
-        if ((f === 'latency_p50_ms' || f === 'latency_p95_ms')
-            && ((this.cmpResult && this.cmpResult.concurrent_models) || 1) > 1) return false;
-        const v = c[mi][f]; if (v == null) return false;
-        return c.every((o, oi) => oi === mi || o[f] == null || (lower ? v < o[f] : v > o[f]));
-      },
-      cmpCell(it, model) { return (it.got && it.got[model]) || { grade: '', reasons: [], ok: false, empty: true }; },
-      get cmpItems() {
-        const all = (this.cmpResult && this.cmpResult.items) || [];
-        const f = this.cmpItemFilter;
-        const sel = f === 'all' ? all : (f === 'split' ? all.filter((it) => it.split) : all.filter((it) => !it.all_ok));
-        return sel.slice(0, 100);
-      },
-      get cmpItemsMore() {
-        const all = (this.cmpResult && this.cmpResult.items) || [];
-        const f = this.cmpItemFilter;
-        const n = f === 'all' ? all.length : (f === 'split' ? all.filter((it) => it.split).length : all.filter((it) => !it.all_ok).length);
-        return n > 100;
-      },
       cmpJob: null, _cmpPollT: null,           // 백그라운드 비교 잡(진척은 별도 창 · 메인은 완료만 받아 표를 채움)
       get cmpProgressTxt() {
         const j = this.cmpJob; if (!j) return '';
@@ -508,7 +544,7 @@ window.PRISM_APP_PARTS.push(() => ({
             const r = await (await this._afetch('/compare-status?id=' + id, { headers: this._authHeaders() })).json();
             if (r && r.ok) {
               this.cmpJob = r.job;
-              if (r.job.status === 'done') { this.cmpResult = r.job.result; this.cmpHistKey = (r.job.result || {}).key || ''; this.loadCompareHist(); this.cmpBusy = false; this.liveToast('모델 비교 완료 · #' + id); return; }
+              if (r.job.status === 'done') { this.cmpResult = r.job.result; this.cmpHistKey = (r.job.result || {}).key || ''; this.loadCompareHist(); this.loadEvalRuns(); this.cmpBusy = false; this.liveToast('모델 비교 완료 · #' + id); return; }
               if (r.job.status === 'failed') { this._err('모델 비교 실패: ' + (r.job.error || '')); this.cmpBusy = false; return; }
             } else if (r && r.error) { this._err(r.error); this.cmpBusy = false; return; }
           } catch (e) {}
@@ -523,6 +559,7 @@ window.PRISM_APP_PARTS.push(() => ({
           if (ev.origin !== location.origin || !ev.data || ev.data.type !== 'prism-compare-done') return;
           try { const r = await (await this._afetch('/compare-status?id=' + ev.data.id, { headers: this._authHeaders() })).json(); if (r && r.ok && r.job.result) { this.cmpResult = r.job.result; this.cmpBusy = false; this.cmpJob = r.job; } } catch (e) {}
           if (this.mod !== 'evaluate') this.selectMod('evaluate');
+          if (this.cmpResult && this.cmpResult.key) this.openEvalHistory({ kind: 'compare', key: this.cmpResult.key, id: 'c' + this.cmpResult.key });
         });
       },
       async loadCompareLast(key) {               // 탭 재진입 시 마지막 비교(영속분) 복원 · key 를 주면 그 회차 · 슬롯이 비어 있으면 비교했던 모델로 채움
@@ -555,7 +592,7 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       myEvalVote(d) { const r = (d.judge && d.judge.reviewers) || {}; const me = (this.arenaData && this.arenaData.my_id) || this.reviewer || ''; return r[me] || r[this.reviewer] || ''; },
       evalConsensus(d) {
-        const j = d.judge || {}; const mg = (this.goldenResult && this.goldenResult.min_good) || 1;
+        const j = d.judge || {}; const mg = (this.evalDetail && this.evalDetail.min_good) || 1;
         if ((j.adopt || 0) >= mg && (j.adopt || 0) > (j.reject || 0)) return 'adopt';
         if ((j.reject || 0) >= mg && (j.reject || 0) > (j.adopt || 0)) return 'reject';
         return '';

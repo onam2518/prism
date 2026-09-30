@@ -1734,6 +1734,11 @@ class Store:
                 "heartbeat": r[14], "finished": r[15], "meta_target": r[16],
                 "golden_hashes": frozen}
 
+    def autopilot_get(self, run_id, team=None):
+        r = self._conn().execute(f"SELECT {self._PILOT_COLS} FROM autopilot_runs WHERE id=?",
+                                 (int(run_id),)).fetchone()
+        return self._pilot_row(r) if r else None
+
     def autopilot_latest(self, team=None):
         c = self._conn()
         r = c.execute(f"SELECT {self._PILOT_COLS} FROM autopilot_runs "

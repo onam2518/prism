@@ -414,6 +414,7 @@ class TestAutopilot(unittest.TestCase):
         self.assertEqual([it["round"] for it in rounds], [3, 2, 1])
         self.assertEqual((rounds[0]["version"], rounds[0]["grade_accuracy"], rounds[0]["status"]), (3, 0.93, "applied"))
         self.assertTrue(rounds[0]["ts"] and rounds[0]["id"] == f"p{run['id']}-3")
+        self.assertEqual(st.get_report(f"pilot_eval_{run['id']}_3")["grade_accuracy"], 0.93)
 
     def test_stall_stops(self):
         serve, st = self._with_serve()

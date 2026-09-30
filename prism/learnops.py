@@ -112,6 +112,7 @@ def eval_golden(team=None, model: str = "", scope: str = "all", hashes=None, pro
             progress(len(outs), len(sample))
     m = abtest.score(sample, outs)
     m["methodology"] = meth.to_dict()
+    m["items"] = [_compare_item(row, {used_model: out}) for row, out in zip(sample, outs)]
     global _LAST_EVAL_DETAIL
     detail = []
     for row, out in zip(sample, outs):
@@ -578,6 +579,18 @@ _COMPARE_START = "model_compare_start"                # 시작 기록 · '결과
 _COMPARE_HISTORY_KEEP = 30                            # 색인에 남기는 회차 수
 
 
+def _eval_values(out):
+    """평가 당시 메타를 보존한다. 과거 기록을 현재 콘텐츠로 보충하지 않는다."""
+    if out is None:
+        return None
+    im = out.get("item_meta") or {}
+    values = {k: im.get(k) if isinstance(im, dict) else getattr(im, k, None)
+              for k in MC.FIELDS}
+    values.update({k: v for k, v in (out.get("quality_meta") or {}).items()
+                   if k in ("finalGrade", "reasons")})
+    return values
+
+
 def _compare_item(row: dict, outs_by_model: dict) -> dict:
     """건 1개의 정답 vs 모델별 산출(등급·사유·정오) · 화면의 건별 비교표 행."""
     from .store import content_hash
@@ -592,11 +605,11 @@ def _compare_item(row: dict, outs_by_model: dict) -> dict:
             continue
         qm = out.get("quality_meta") or {}
         g = qm.get("finalGrade") or ""
-        got[model] = {"grade": g, "reasons": sorted(qm.get("reasons") or []),
-                      "ok": (g == want_g), "empty": False}
+        got[model] = {**_eval_values(out), "grade": g, "reasons": sorted(qm.get("reasons") or []),
+                      "ok": (g == want_g) if want_g else None, "empty": False}
     grades = {v["grade"] for v in got.values()}
     return {"hash": content_hash(c), "title": (c.get("title") or "")[:60],
-            "expected": {"grade": want_g, "reasons": want_r}, "got": got,
+            "expected": {**exp, "grade": want_g, "reasons": want_r}, "got": got,
             "all_ok": all(v["ok"] for v in got.values()),
             "split": len(grades) > 1}               # 모델끼리 등급이 갈린 건
 

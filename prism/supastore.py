@@ -2187,6 +2187,10 @@ class SupabaseStore:
                 "ts": _epoch(r.get("created_at")), "heartbeat": _epoch(r.get("heartbeat_at")),
                 "finished": _epoch(r.get("finished_at")), "golden_hashes": r.get("golden_hashes") or []}
 
+    def autopilot_get(self, run_id, team=None):
+        rows = self._get("autopilot_runs", f"select=*&{self._team_q(team)}&id=eq.{int(run_id)}&limit=1")
+        return self._pilot_row(rows[0]) if rows else None
+
     def autopilot_latest(self, team=None):
         rows = self._get("autopilot_runs",
                          f"select=*&{self._team_q(team)}&order=id.desc&limit=1")
