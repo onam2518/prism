@@ -1,5 +1,6 @@
 import copy
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -196,6 +197,22 @@ class DNMRuntime(unittest.TestCase):
         self.assertEqual(self.calls, [])
         event = copy.deepcopy(self.event); event['source_fields']['item_unique_key'] = 'new-prefix-id'
         self.assertEqual(self.run_event(event)['source_key_status'], 'unregistered')
+
+    def test_fixed_evaluation_runs_four_calls_concurrently_and_measures_wall_time(self):
+        llm = EX.restore(self.policy['execution'], lambda _: self.llm)
+        llm.dnm_policy = self.policy
+        barrier = threading.Barrier(4, timeout=5)
+        def measured_attempt(route, system, user, field):
+            barrier.wait()
+            return {'status': 'no_value', 'value': '' if field == 'summary' else [], 'detail': '',
+                    'measurement': {'cost_usd': 0.01, 'tokens_in': 10, 'tokens_out': 2, 'latency_ms': 40}}
+        with patch('prism.dnm.attempt', side_effect=measured_attempt), \
+                patch('prism.dnm.time.monotonic', side_effect=[100, 100.04]):
+            out = dnm.evaluate_content(self.event['content'], llm)
+        self.assertEqual(out['item_meta']['run_manifest']['attempts'], dict.fromkeys(dnm.MC.FIELDS, 1))
+        self.assertAlmostEqual(out['trace']['latency_ms']['total'], 40)
+        self.assertAlmostEqual(out['trace']['cost_usd'], 0.04)
+        self.assertEqual(out['trace']['tokens'], {'in': 40, 'out': 8})
 
     def test_guarded_write_rejects_changed_control(self):
         expected = self.r._get('dnm_control')

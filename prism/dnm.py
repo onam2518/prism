@@ -518,24 +518,31 @@ def attempt(llm, system, user, field):
 
 
 def evaluate_content(content, llm):
-    """고정 평가도 운영과 같은 단일 시도·검증 함수와 축별 3회 상한을 쓴다."""
+    """운영과 같은 4종 병렬 호출·축별 3회 상한, 실제 경과 시간으로 평가한다."""
+    from concurrent.futures import ThreadPoolExecutor
+    started = time.monotonic()
     policy = llm.dnm_policy
     snapshot = input_snapshot(content)
     c = Content.from_dict(content)
     results, values, statuses, counts = [], {}, {}, {}
-    for field, call in CALLS.items():
-        values[field] = '' if field == 'summary' else []
-        statuses[field], counts[field] = 'insufficient_input', 0
+    def evaluate_field(field):
+        call = CALLS[field]
+        attempts = []
         if not (c.title or c.body):
-            continue
+            return field, attempts
         route = llm.execution['routes'][call]
         for _ in range(3):
             result = attempt(route, policy['execution']['calls'][call]['system'], snapshot['calls'][call], field)
-            counts[field] += 1
-            values[field], statuses[field] = result['value'], result['status']
-            results.append(result)
+            attempts.append(result)
             if result['status'] in DONE or result['detail'] in ('auth', 'billing', 'credit_exhausted'):
                 break
+        return field, attempts
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        for field, attempts in pool.map(evaluate_field, CALLS):
+            counts[field] = len(attempts)
+            values[field] = attempts[-1]['value'] if attempts else ('' if field == 'summary' else [])
+            statuses[field] = attempts[-1]['status'] if attempts else 'insufficient_input'
+            results.extend(attempts)
     im = dict(values, meta_status=statuses, input_revision=EX.digest(snapshot),
               policy_version=policy['policy_version'], contract_version=CONTRACT,
               run_manifest={'attempts': counts, 'execution_version': EX.digest(policy['execution'])})
@@ -543,5 +550,5 @@ def evaluate_content(content, llm):
     return {'content_ref': c.ref(), 'quality_meta': {}, 'item_meta': im,
             'trace': {'cost_usd': sum(m['cost_usd'] for m in measures),
                       'tokens': {'in': sum(m['tokens_in'] for m in measures), 'out': sum(m['tokens_out'] for m in measures)},
-                      'latency_ms': {'total': sum(m['latency_ms'] for m in measures)},
+                      'latency_ms': {'total': (time.monotonic() - started) * 1000},
                       'fallbacks': [f + '_fail' for f in MC.FIELDS if statuses[f] not in DONE]}}
