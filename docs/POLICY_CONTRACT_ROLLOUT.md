@@ -7,6 +7,7 @@
 - 검수 수정은 `manual_fields`에 근거를 남긴다. 자동 저장은 수동값을 보존하고 다른 입력 revision에서는 pending과 `manual_review_required`로 재검수를 요구한다.
 - `source_fields`는 원천값의 미제공/null/빈 문자열을 구분한다. source_key_status는 키 구조의 관찰값이며 DNM 대상 여부를 뜻하지 않는다.
 - 공통 메타 정답은 품질등급 없이 등록할 수 있다. 품질 지표에는 별도 `grade_n`을 사용하며 미판정을 G로 바꾸지 않는다. 재확정 대기 인텐트와 관리 표식은 SFT 정답에 포함하지 않는다.
+- 정답 메타(등급·인텐트·분류·요약·엔티티)는 값이 있던 축이 쓰기에서 빠지거나 빈 값이 되어도 DB 트리거 `prism_golden_meta_keep`이 이전 값을 유지한다. 삭제 후 재삽입은 최근 이력에서 되살린다. 의도적으로 비울 때만 같은 트랜잭션에서 `set local prism.golden_allow_meta_clear = 'on'`을 쓴다. 정답셋 업로드는 기본 병합이며 전체 교체는 `replace=1`을 명시한다.
 - 정답 수정·교체 이전 값은 `golden_history`에 보존한다. 평가 재개는 정답·프롬프트·설정 지문이 일치할 때만 허용한다. 지문이 없는 과거 런은 새로 시작한다.
 - 토픽의 삭제·운영 보류·명시적 대상 철회는 개별 포함으로 해제할 수 없다. 날짜는 KST 달력일 경계를 사용하며 발행일 부재를 적재일로 대체하지 않는다.
 - 조건식 `condition_expr`는 all/any/not 트리와 `{field,op,values}` 잎으로 보존한다. field는 entities/intent/content_category/source, op는 in/eq다. 미판정은 부정해도 미판정이다. 같은 축의 flat 복수값은 OR다.

@@ -186,8 +186,9 @@ def _clean_intent(vals) -> tuple:
     return ok, bad
 
 
-def register_golden(uid, team, rows, email="", merge=False) -> dict:
-    """관리자가 팀 골든셋 등록. merge=True 면 기존에 병합(upsert), False 면 전체 교체.
+def register_golden(uid, team, rows, email="", merge=True) -> dict:
+    """관리자가 팀 골든셋 등록. merge=True(기본) 면 기존에 병합(upsert), False 면 전체 교체.
+    기존 정답에 있던 축이 빈 값으로 덮이는 것은 DB 트리거(prism_golden_meta_keep)가 막는다.
     등록 전 검증·정규화: 등급을 제공하면 G|R, 공통 메타만 있는 정답은 등급 생략 가능,
     intent 사전 화이트리스트 정제(사전 밖 값은 드롭 + 경고 · 행 자체는 살린다)."""
     st = _SV.get_store()

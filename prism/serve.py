@@ -2875,15 +2875,15 @@ def _p_golden_intent_confirm(h, body):
     return r
 
 
-@_post_route("/golden")                              # 골든셋 등록(.jsonl 업로드 · merge 지원 · 권한은 register_golden 내부)
+@_post_route("/golden")                              # 골든셋 등록(.jsonl 업로드 · 기본 병합 · 전체 교체는 replace=1 명시 · 권한은 register_golden 내부)
 def _p_golden(h, body):
     ctype = h.headers.get("Content-Type", "")
-    merge = False
+    merge = True                                     # 파일에 없는 기존 정답을 지우지 않는다(2026-10-02 정답 유실 재발 방지)
     if "multipart/form-data" in ctype:
         fields = _parse_multipart(body, ctype.split("boundary=", 1)[1].strip())
         f = fields.get("file")
         raw = f.get("bytes", b"") if isinstance(f, dict) else b""
-        merge = str(fields.get("merge") or "").strip().lower() in ("1", "true")
+        merge = str(fields.get("replace") or "").strip().lower() not in ("1", "true")
     else:
         raw = body
     rows = [json.loads(ln) for ln in raw.decode("utf-8", "replace").splitlines() if ln.strip()]
