@@ -439,7 +439,8 @@ def admin_action(uid, team, data, email="") -> dict:
         _SV._LAST_RESULTS[:] = []                  # 메모리 미러 동반 정리(삭제 후 잔상 방지)
         _SV._agg_bump()                            # 대시보드·아레나 집계 캐시 즉시 무효화
     elif act == "clear_golden":                    # 정답셋 전체 삭제(되돌릴 수 없음)
-        st.register_golden(team, [], replace=True, source="manual")
+        st.clear_golden(team)                      # 빈 목록 register_golden 은 0건으로 끝나 아무것도 지우지 않았다
+        _SV._agg_bump()
     elif act == "delete_team":                     # 팀 삭제: 멤버 소속 해제 + 팀 행 삭제
         if not hasattr(st, "delete_team"):
             return {"ok": False, "error": "이 백엔드는 팀 삭제를 지원하지 않습니다"}
