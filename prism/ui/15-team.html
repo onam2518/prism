@@ -15,8 +15,8 @@
         <div x-show="adminTab === 'team' && canTeamTab" x-cloak class="w-full space-y-4">
         <section class="panel" x-show="backend !== 'supabase'"><div class="panel-hd"><b>팀 관리</b><span class="meta">로컬 단독 실행</span></div>
           <div class="panel-bd"><ul class="ds-bullets">
-            <li>팀 기능(팀 생성 · 초대 코드 · 멤버 관리)은 <b>팀 모드(공유 서버)</b>에서 동작합니다.</li>
-            <li>지금은 로컬 단독 실행이라 팀 없이 <b>개인 검수</b>로 진행됩니다 · 검수·평가·정답셋 등 나머지 기능은 동일하게 사용할 수 있습니다.</li>
+            <li>팀 기능(팀 생성 · 초대 코드 · 멤버 관리)은 <b>팀 모드(공유 서버)</b>에서 동작합니다</li>
+            <li>지금은 로컬 단독 실행이라 팀 없이 <b>개인 검수</b>로 진행됩니다<ul><li>검수·평가·정답셋 등 나머지 기능은 동일하게 사용할 수 있습니다</li></ul></li>
           </ul></div>
         </section>
         <template x-if="backend === 'supabase'">
@@ -24,8 +24,8 @@
         <section class="panel" data-fn><div class="panel-hd"><b>새 팀 만들기</b><span class="ds-badge ds-badge--neutral">관리자</span></div>
           <div class="panel-bd">
             <ul class="ds-bullets" style="margin-bottom:11px">
-              <li>새 팀을 만들면 <b>초대 코드</b>가 발급됩니다.</li>
-              <li>팀원은 가입 시 이 코드로 참가합니다(팀 생성은 관리자만).</li>
+              <li>새 팀을 만들면 <b>초대 코드</b>가 발급됩니다</li>
+              <li>팀원은 가입 시 이 코드로 참가합니다(팀 생성은 관리자만)</li>
             </ul>
             <div class="control-row">
               <input class="field" style="flex:1;min-width:200px" placeholder="팀 이름 (예: 콘텐츠검수팀)" x-model="newTeamName" x-on:keydown.enter="createTeam()">
@@ -67,7 +67,7 @@
               </div>
             </template>
             <div x-show="!(adminData&&adminData.members&&adminData.members.length)" class="text-xs text-muted" style="padding:8px">멤버가 없습니다</div>
-            <p class="text-xs text-muted" style="padding:8px 8px 0;line-height:1.5">🎖 <b class="text-ink">검수 마스터</b>(레벨 10) 멤버에게 관리자 권한을 위임해 정답셋·정책 관리를 함께 맡길 수 있습니다.</p>
+            <ul class="ds-bullets" style="padding:20px 8px 0"><li>🎖 <b>검수 마스터</b>(레벨 10) 멤버에게 관리자 권한을 위임해 정답셋·정책 관리를 함께 맡길 수 있습니다</li></ul>
           </div>
         </section>
         <!-- 비밀번호 재설정 결과: 임시 비밀번호는 이 화면에서만 1회 노출(저장 안 함) · 생성자가 직접 전달 -->
@@ -75,7 +75,7 @@
           <div class="ds-dialog" role="dialog" aria-modal="true" aria-label="임시 비밀번호 발급">
             <h2 class="ds-dialog__title"><span x-text="pwReset && pwReset.member"></span> 님 임시 비밀번호</h2>
             <div class="ds-dialog__body">
-              <p class="text-xs text-muted" style="margin:0 0 10px">이 비밀번호는 지금만 표시됩니다. 멤버에게 전달하고, 로그인 후 본인이 변경하도록 안내하세요.</p>
+              <ul class="ds-bullets" style="margin:0 0 20px"><li>이 비밀번호는 지금만 표시됩니다<ul><li>멤버에게 전달하고, 로그인 후 본인이 변경하도록 안내하세요</li></ul></li></ul>
               <div style="display:flex;gap:8px;align-items:center">
                 <code style="flex:1;font-size:16px;font-weight:700;letter-spacing:.5px;padding:10px 12px;border:1px solid var(--ds-divider-section);border-radius:var(--ds-radius-sm);background:var(--ds-surface-sunken,rgba(0,0,0,.03));user-select:all" x-text="pwReset && pwReset.pw"></code>
                 <button type="button" class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" x-on:click="copyText(pwReset && pwReset.pw, '임시 비밀번호 복사')">복사</button>
@@ -112,7 +112,7 @@
               <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-on:click="saveMenuPerms()">저장</button>
               <span class="text-xs text-muted" x-text="menuPermsMsg"></span>
             </div>
-            <p class="text-xs text-muted" style="margin-top:10px;line-height:1.5">체크 = 해당 역할에게 메뉴 노출(동작 가능) · 해제 = 숨김. 생성자·운영관리자는 항상 전체 · 시스템 설정은 운영관리자 전용(고정).</p>
+            <ul class="ds-bullets" style="margin-top:20px"><li>체크 = 해당 역할에게 메뉴 노출(동작 가능) · 해제 = 숨김<ul><li>생성자·운영관리자는 항상 전체 · 시스템 설정은 운영관리자 전용(고정)</li></ul></li></ul>
           </div>
         </section>
         <div x-show="adminData && !adminData.isAdmin" class="text-xs text-muted" style="padding:4px">멤버 관리는 팀 관리자(생성자·위임)만 가능합니다.</div>

@@ -993,11 +993,20 @@
     border-left:1px solid var(--ds-hairline-soft)}
   /* 헤더 그룹 구분선(정보·컨트롤·카드속성 사이 동일 간격·구분선 원칙) */
   .hd-divider{align-self:center;width:1px;height:18px;background:var(--ds-hairline-soft);margin:0 4px;flex:none}
-  /* 서술형 설명 = 상단 불릿(문장 단위·마침표). 텍스트 뭉침 방지 */
+  /* 서술형 설명 = 불릿(문장 단위 · 마침표 없음). 한 항목에 이어지는 문장은 하위 불릿(ul 중첩) */
   .ds-bullets{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px}
   .ds-bullets li{position:relative;padding-left:15px;font-size:12.5px;line-height:1.55;color:var(--ds-muted)}
   .ds-bullets li::before{content:"";position:absolute;left:3px;top:7px;width:4px;height:4px;border-radius:50%;background:var(--ds-primary)}
   .ds-bullets b{color:var(--ds-ink);font-weight:700}
+  .ds-bullets ul{list-style:none;margin:4px 0 0;padding:0;display:flex;flex-direction:column;gap:3px}
+  .ds-bullets li li{padding-left:13px}
+  .ds-bullets li li::before{left:2px;top:9px;width:6px;height:1.5px;border-radius:1px;background:var(--ds-muted)}
+  /* 영역 내 기능 블록: 기능 타이틀(GmarketSans · 패널 제목보다 작게) + 하위 조작·불릿 · 블록 사이 한 줄 이상 */
+  .fn-stack{display:flex;flex-direction:column;gap:20px}
+  .fn{display:flex;flex-direction:column;gap:8px;min-width:0}
+  .fn__title{font-family:var(--ds-font-game);font-size:14px;font-weight:700;line-height:1.4;letter-spacing:-.01em;color:var(--ds-ink)}
+  .fn-row{display:flex;flex-wrap:wrap;gap:20px}
+  .fn-row>.fn{flex:1 1 220px}
   /* 패널 타이틀은 카드 구분이 명확하도록 크게(전 페이지) · 홈 위젯 타이틀보다 한 단계 위 위계 */
   .panel-hd>.ds-widget__title{margin-right:auto;font-size:var(--ds-panel-heading-size);font-weight:700;line-height:var(--ds-heading-line-height);letter-spacing:var(--ds-heading-tracking)}
   .panel-hd>.ds-widget__title span{font-size:inherit;font-weight:inherit}

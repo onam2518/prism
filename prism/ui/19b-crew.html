@@ -17,11 +17,11 @@
       </template>
 
       <template x-if="mod === 'admin'">
-        <section x-show="adminTab === 'crew' && crewTab === 'dash'" x-cloak class="panel w-full" x-init="opsLoad()"><header class="panel-hd"><b>후속 조치·실제 작업시간</b><button class="copybtn ml-auto" type="button" x-on:click="opsLoad()">새로고침</button></header><section class="panel-bd">
-          <p class="tnum" x-text="opsList ? ('미종료 '+opsList.stats.open+' · 보류 '+opsList.stats.hold+' · 기한 초과 '+opsList.stats.overdue+' · 담당/기한 확인 필요 '+opsList.stats.unassigned) : '조회 중'"></p>
-          <button class="copybtn" type="button" x-on:click="selectMod('create');createTab='ops';opsLoad()">조치 목록 열기</button>
-          <p class="text-xs text-muted">아래 시간은 종료한 작업의 시작·중단·재개 기록 기준입니다 · 판정 저장 간격 기반 예상 처리율과 별도 집계입니다.</p>
-          <template x-for="entry in Object.entries((opsList||{}).seconds_by_type||{})" x-bind:key="entry[0]"><p class="tnum" x-text="entry[0].split('|')[0]+' · '+opsTypeLabel(entry[0].split('|')[1])+' · '+(entry[1]/60).toFixed(1)+'분'"></p></template>
+        <section x-show="adminTab === 'crew' && crewTab === 'dash'" x-cloak class="panel w-full" x-init="opsLoad()"><header class="panel-hd"><b>후속 조치·실제 작업시간</b><button class="copybtn ml-auto" type="button" x-on:click="opsLoad()">새로고침</button></header><section class="panel-bd fn-stack">
+          <div class="fn"><span class="fn__title">후속 조치</span><p class="tnum" x-text="opsList ? ('미종료 '+opsList.stats.open+' · 보류 '+opsList.stats.hold+' · 기한 초과 '+opsList.stats.overdue+' · 담당/기한 확인 필요 '+opsList.stats.unassigned) : '조회 중'"></p>
+          <div><button class="copybtn" type="button" x-on:click="selectMod('create');createTab='ops';opsLoad()">조치 목록 열기</button></div></div>
+          <div class="fn"><span class="fn__title">실제 작업시간</span><ul class="ds-bullets"><li>아래 시간은 종료한 작업의 시작·중단·재개 기록 기준입니다<ul><li>판정 저장 간격 기반 예상 처리율과 별도 집계입니다</li></ul></li></ul>
+          <template x-for="entry in Object.entries((opsList||{}).seconds_by_type||{})" x-bind:key="entry[0]"><p class="tnum" x-text="entry[0].split('|')[0]+' · '+opsTypeLabel(entry[0].split('|')[1])+' · '+(entry[1]/60).toFixed(1)+'분'"></p></template></div>
         </section></section>
       </template>
       <!-- ── 현황 ───────────────────────────────────────────────── -->
@@ -180,9 +180,9 @@
           </tbody></table></div>
           <div class="panel-bd">
             <ul class="ds-bullets">
-              <li><b>검수량 · 교정</b>은 활동 원장(판정 시점에 하루 단위로 쌓는 기록)이라 나중에 재검수해도 줄지 않습니다.</li>
-              <li><b>배정분 완료 · 마감 잔여</b>는 마감 시점 스냅샷입니다 · 스냅샷 이전 주는 <b>추정</b>으로 표시합니다.</li>
-              <li>마감된 주는 이 화면을 열 때 한 번 고정되고, 이후에는 다시 계산하지 않습니다.</li>
+              <li><b>검수량 · 교정</b>은 활동 원장(판정 시점에 하루 단위로 쌓는 기록)이라 나중에 재검수해도 줄지 않습니다</li>
+              <li><b>배정분 완료 · 마감 잔여</b>는 마감 시점 스냅샷입니다<ul><li>스냅샷 이전 주는 <b>추정</b>으로 표시합니다</li></ul></li>
+              <li>마감된 주는 이 화면을 열 때 한 번 고정되고, 이후에는 다시 계산하지 않습니다</li>
             </ul>
           </div>
         </section>
@@ -227,9 +227,9 @@
       <template x-if="mod === 'admin'">
         <div x-show="adminTab === 'crew' && crewTab === 'people'" x-cloak class="w-full space-y-4">
         <ul class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4)">
-          <li>왼쪽은 <b>신고 일정</b>(관리자 입력 · 본인 확인), 오른쪽은 <b>실측 기록</b>입니다.</li>
-          <li>상태가 휴가·교육 중·비활성이면 배정 대상에서 자동 제외됩니다.</li>
-          <li>검수 속도는 판정 간 간격으로 측정합니다. 시간당 <b x-text="(crewData&&crewData.settings?crewData.settings.rate_cap_per_hour:90)"></b>건을 넘는 구간은 처리량 산정에서 제외합니다(본문 통독이 불가능한 속도).</li>
+          <li>왼쪽은 <b>신고 일정</b>(관리자 입력 · 본인 확인), 오른쪽은 <b>실측 기록</b>입니다</li>
+          <li>상태가 휴가·교육 중·비활성이면 배정 대상에서 자동 제외됩니다</li>
+          <li>검수 속도는 판정 간 간격으로 측정합니다<ul><li>시간당 <b x-text="(crewData&&crewData.settings?crewData.settings.rate_cap_per_hour:90)"></b>건을 넘는 구간은 처리량 산정에서 제외합니다(본문 통독이 불가능한 속도)</li></ul></li>
         </ul>
         <template x-for="m in crewMembers" x-bind:key="m.id">
           <section class="panel">
@@ -326,13 +326,13 @@
       </template>
 
       <template x-if="mod === 'admin'">
-        <section x-show="adminTab === 'crew' && crewTab === 'assign'" x-cloak class="panel w-full" x-init="opsPlanInit()"><header class="panel-hd"><b>주간 주제별 계획·담당 배정</b></header><section class="panel-bd">
-          <p class="text-xs text-muted">1명당 여러 주제의 신규 1차 검수 합계 약 100개 기준 · 이월·재검수는 별도 집계</p>
-          <label>주차의 월요일 <input class="field" type="date" x-model="opsWeek"></label><label>담당자별 계획 수량 <input class="field" type="number" min="1" max="1000" x-model="opsPlanTarget"></label><label>수량 조정 사유 <input class="field" x-model="opsPlanReason"></label>
-          <label>추가할 대상의 기본 담당자 <select class="field" x-model="opsPlanDefaultOwner"><option value="">선택</option><template x-for="m in crewOwnerCandidates" x-bind:key="m.id"><option x-bind:value="m.id" x-text="m.name"></option></template></select></label><label>대표 운영 주제 <input class="field" x-model="opsPlanDefaultTopic"></label>
-          <label>검수 대상 여러 개 선택 <select class="field" multiple size="6" x-model="opsPlanPick"><template x-for="c in ((rawData||{}).items||[]).filter(c=>/^[0-9a-f]{16}$/.test(c.hash))" x-bind:key="c.hash"><option x-bind:value="c.hash" x-text="c.title"></option></template></select></label><button class="copybtn" type="button" x-bind:disabled="opsPlanBusy" x-on:click="opsPlanAdd()" x-text="opsPlanBusy?'기준 확인 중…':'선택 대상 추가'"></button>
+        <section x-show="adminTab === 'crew' && crewTab === 'assign'" x-cloak class="panel w-full" x-init="opsPlanInit()"><header class="panel-hd"><b>주간 주제별 계획·담당 배정</b></header><section class="panel-bd fn-stack">
+          <ul class="ds-bullets"><li>1명당 여러 주제의 신규 1차 검수 합계 약 100개 기준<ul><li>이월·재검수는 별도 집계</li></ul></li></ul>
+          <div class="fn-row"><label class="fn"><span class="fn__title">주차의 월요일</span><input class="field" type="date" x-model="opsWeek"></label><label class="fn"><span class="fn__title">담당자별 계획 수량</span><input class="field" type="number" min="1" max="1000" x-model="opsPlanTarget"></label><label class="fn"><span class="fn__title">수량 조정 사유</span><input class="field" x-model="opsPlanReason"></label></div>
+          <div class="fn-row"><label class="fn"><span class="fn__title">추가할 대상의 기본 담당자</span><select class="field" x-model="opsPlanDefaultOwner"><option value="">선택</option><template x-for="m in crewOwnerCandidates" x-bind:key="m.id"><option x-bind:value="m.id" x-text="m.name"></option></template></select></label><label class="fn"><span class="fn__title">대표 운영 주제</span><input class="field" x-model="opsPlanDefaultTopic"></label></div>
+          <div class="fn"><label class="fn"><span class="fn__title">검수 대상 여러 개 선택</span><select class="field" multiple size="6" x-model="opsPlanPick"><template x-for="c in ((rawData||{}).items||[]).filter(c=>/^[0-9a-f]{16}$/.test(c.hash))" x-bind:key="c.hash"><option x-bind:value="c.hash" x-text="c.title"></option></template></select></label><div><button class="copybtn" type="button" x-bind:disabled="opsPlanBusy" x-on:click="opsPlanAdd()" x-text="opsPlanBusy?'기준 확인 중…':'선택 대상 추가'"></button></div></div>
           <section class="overflow-auto"><table class="ds-table"><thead><tr><th>콘텐츠</th><th>담당자</th><th>대표 주제</th><th>표본</th><th>작업</th><th>원래 주차</th><th></th></tr></thead><tbody><template x-for="(e,i) in opsPlanRows" x-bind:key="e.hash"><tr><td x-text="e.title||e.hash"></td><td><select class="field" x-model="e.owner"><option value="">선택</option><template x-for="m in crewOwnerCandidates" x-bind:key="m.id"><option x-bind:value="m.id" x-text="m.name"></option></template></select></td><td><input class="field" x-model="e.topic" aria-label="대표 운영 주제"></td><td><select class="field" x-model="e.sample"><option value="general">일반</option><option value="focused">집중</option></select></td><td><select class="field" x-model="e.work_type"><option value="first">1차 검수</option><option value="recheck">재검수</option></select></td><td><input class="field" type="date" x-model="e.carry_from" aria-label="이월 원래 주차"></td><td><button class="copybtn" type="button" x-on:click="opsPlanRows.splice(i,1)">제외</button></td></tr></template></tbody></table></section>
-          <button class="ds-btn ds-btn--primary ds-btn--s-sm" type="button" x-on:click="opsPlanSave()">계획 저장·담당 배정</button>
+          <div><button class="ds-btn ds-btn--primary ds-btn--s-sm" type="button" x-on:click="opsPlanSave()">계획 저장·담당 배정</button></div>
           <section class="overflow-auto"><table class="ds-table"><thead><tr><th>주차</th><th>담당·주제</th><th>신규</th><th>이월</th><th>재검수</th><th>판정 저장</th><th>일반 / 집중</th></tr></thead><tbody><template x-for="(p,i) in ((opsList||{}).plan_progress||[])" x-bind:key="i"><tr><td x-text="p.week"></td><td x-text="p.owner+' / '+p.topic"></td><td x-text="p.new"></td><td x-text="p.carry"></td><td x-text="p.recheck"></td><td x-text="p.done"></td><td x-text="p.general+' / '+p.focused"></td></tr></template></tbody></table></section><details><summary>이전 주간 계획·변경 기록</summary><template x-for="entry in Object.entries((opsList||{}).plans||{})" x-bind:key="entry[0]"><section><button class="copybtn" type="button" x-on:click="opsPlanUse(entry[0].slice(9))" x-text="entry[0].slice(9)+' · 계획 '+entry[1].revision+'회'"></button><template x-for="(v,i) in entry[1].versions" x-bind:key="i"><p class="text-xs" x-text="fmtTs(v.ts)+' · '+v.entries.length+'개 · '+v.by+' · '+(v.adjustment_reason||'기준 수량')"></p></template></section></template></details>
         </section></section>
       </template>
@@ -597,10 +597,10 @@
               x-text="wkConfirmWeek + '주차' + (wkConfirmRange ? (' · ' + wkConfirmRange) : '')"></span></h2>
       <div class="ds-dialog__body">
         <ul class="ds-bullets" style="margin-bottom:14px">
-          <li>이번 주에 검수에 낼 수 있는 시간을 확인해 주세요.</li>
-          <li>배정량이 이 값에 맞춰집니다.</li>
-          <li><b>주간 가용 시간은 이번 주 전체 합계</b>입니다 · 하루 기준이 아닙니다.</li>
-          <li>휴가·교육 중·비활성으로 두면 이번 주 배정에서 빠집니다.</li>
+          <li>이번 주에 검수에 낼 수 있는 시간을 확인해 주세요</li>
+          <li>배정량이 이 값에 맞춰집니다</li>
+          <li><b>주간 가용 시간은 이번 주 전체 합계</b>입니다<ul><li>하루 기준이 아닙니다</li></ul></li>
+          <li>휴가·교육 중·비활성으로 두면 이번 주 배정에서 빠집니다</li>
         </ul>
         <div class="control-row" style="align-items:flex-end">
           <div style="width:170px"><label class="lbl">주간 가용 시간 (합계)</label>

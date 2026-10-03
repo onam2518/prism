@@ -15,21 +15,21 @@
         <div x-show="contentTab === 'auto'" x-cloak class="w-full space-y-4">
         <template x-if="!(backend === 'supabase' && adminData && adminData.isAdmin)">
           <ul class="ds-bullets hintbox" style="padding:14px 16px">
-            <li>자동 인입은 <b>운영(팀) 관리자</b> 전용입니다.</li>
-            <li>로컬 단독 실행에서는 <b>수동 추출</b>을 사용하세요.</li>
+            <li>자동 인입은 <b>운영(팀) 관리자</b> 전용입니다</li>
+            <li>로컬 단독 실행에서는 <b>수동 추출</b>을 사용하세요</li>
           </ul>
         </template>
         <template x-if="backend === 'supabase' && adminData && adminData.isAdmin">
         <div class="w-full space-y-4">
         <ul class="ds-bullets hintbox" style="padding:14px 16px">
-          <li>콘텐츠를 <b>자동으로 추가</b>하는 수집 소스를 설정합니다.</li>
-          <li>등록·활성화한 소스로 들어온 콘텐츠가 자동으로 추가되어 초안이 생성됩니다.</li>
-          <li>일회성 처리는 <b>수동 추가</b>를 사용하세요.</li>
+          <li>콘텐츠를 <b>자동으로 추가</b>하는 수집 소스를 설정합니다</li>
+          <li>등록·활성화한 소스로 들어온 콘텐츠가 자동으로 추가되어 초안이 생성됩니다</li>
+          <li>일회성 처리는 <b>수동 추가</b>를 사용하세요</li>
         </ul>
         <!-- 일회성 인입: 크롤러에서 수량 목표로 당겨오기(구 팀 관리 패널 이동) -->
         <section class="panel" data-fn><div class="panel-hd"><b>일회성 가져오기</b><span class="meta">크롤러에서 수량 목표로 당겨와 추가</span></div>
           <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:10px"><li>크롤러 엔드포인트에서 <b>수량 목표</b>로 당겨와 추출 → 전건을 팀 <b>검수 대기</b>에 적재합니다.</li><li>실시간 스트리밍 부담 없이 배치로 처리합니다.</li></ul>
+            <ul class="ds-bullets" style="margin-bottom:10px"><li>크롤러 엔드포인트에서 <b>수량 목표</b>로 당겨와 추출 → 전건을 팀 <b>검수 대기</b>에 적재합니다</li><li>실시간 스트리밍 부담 없이 배치로 처리합니다</li></ul>
             <div class="control-row">
               <input class="field" style="flex:1;min-width:240px" placeholder="크롤러 엔드포인트 · JSON 배열 반환 GET (예: https://my-crawler/items)" x-model="ingestEndpoint">
               <input class="field" type="number" style="width:96px" min="1" max="200" x-model.number="ingestN" placeholder="수량">
