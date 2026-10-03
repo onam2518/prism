@@ -118,6 +118,13 @@ class OperationsTests(unittest.TestCase):
         stats=O.overview(self.st,who='me',privileged=True,legacy=self.st.feedback_map())['stats']
         self.assertEqual(stats['unassigned'],0)                                                 # 담당 있음 · 기한 없음
 
+    def test_case_state_change_without_due(self):
+        self.st.save_feedback(self.ch,'뉴스','운영 검수','bad','review','수정 근거',1,reviewer='me')
+        self.request('import_legacy')
+        case=O.detail(self.st,self.ch,who='me')['cases'][0]
+        self.assertTrue(self.request('case',case_id=case['id'],state='recheck')['ok'])          # 기한 없이 재검수 대기
+        self.assertEqual(O.detail(self.st,self.ch,who='me')['cases'][0]['state'],'recheck')
+
     def test_golden_does_not_reuse_vote_after_metadata_changes(self):
         from prism import serve
         old=serve._STORE;serve._STORE=self.st

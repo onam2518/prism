@@ -210,7 +210,7 @@ def action(st, data, team=None, who='', privileged=False, final=False):
                 if key in data: case[key] = _date(data[key]) if key in ('due','next_check') else _text(data[key])
             if previous_owner != case.get('owner') and not case.get('handoff_reason'):
                 raise ValueError('담당 변경 사유를 입력하세요')
-            if not case.get('owner') or not case.get('due'): raise ValueError('담당자와 조치 기한을 입력하세요')
+            if not case.get('owner'): raise ValueError('담당자를 입력하세요')   # 조치 기한은 선택 항목
             if state == 'hold' and (not case.get('reason') or not case.get('next_check')):
                 raise ValueError('보류 사유와 다음 확인일을 입력하세요')
             if data.get('receipt'):
