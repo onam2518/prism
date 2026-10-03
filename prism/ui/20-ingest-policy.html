@@ -477,41 +477,109 @@
           </div>
           <div class="dve__sec" x-show="detail && detail.reasons && detail.reasons.length"><div class="dve__lbl">품질 사유</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.reasons:[])" x-bind:key="e"><span class="ds-badge ds-badge--reason" style="cursor:pointer" x-bind:data-tip="termDef('reason', e) + ' · 눌러서 기준 보기'" data-tip-pos="right" x-on:click="polShow('reason', e)" x-text="reasonBoth(e)"></span></template></div></div>
           <template x-if="opsDetail && detail && opsDetail.hash === detail.hash && mod !== 'metaq'">
-            <section class="dve__box">
-              <h3 class="dve__lbl">검수 기준·항목별 판정</h3>
-              <details><summary>분석 당시 저장 원문</summary><pre class="text-xs" style="white-space:pre-wrap" x-text="opsDetail.basis.body||'저장 원문 없음 · 원문 링크와 근거 확인 필요'"></pre></details>
-              <dl class="text-xs"><dt>원천 아이템</dt><dd x-text="opsDetail.basis.item_unique_key||'미확인'"></dd><dt>입력·정책·발행 버전</dt><dd x-text="(opsDetail.basis.input_revision||'미확인')+' / '+(opsDetail.basis.policy_version||'미확인')+' / '+(opsDetail.basis.publication_revision||'미확인')"></dd><dt>모델·프롬프트</dt><dd x-text="(opsDetail.basis.model||'미확인')+' / '+(opsDetail.basis.prompt_version||'미확인')"></dd></dl>
-              <p class="text-xs text-muted">원문·메타나 다른 담당자의 기록이 바뀌면 저장을 거절합니다 · 실제 적용 버전이 없는 과거 자료는 미확인으로 표시합니다.</p>
-              <template x-for="f in opsFields" x-bind:key="f.key"><fieldset class="fa-sec">
-                <legend x-text="f.label"></legend>
-                <label>판정 <select class="field" x-bind:aria-label="f.label+' 판정'" x-model="opsAxes[f.key].status"><option value="">선택</option><option value="accurate">정확</option><option value="needs_fix">수정 필요</option><option value="hold">보류</option></select></label>
-                <label x-show="opsAxes[f.key].status && opsAxes[f.key].status!=='accurate'">원문 근거·보류 사유 <textarea class="field" rows="2" x-model="opsAxes[f.key].reason" placeholder="분석 당시 원문의 근거 또는 확인이 필요한 사유"></textarea></label>
-                <label x-show="opsAxes[f.key].status==='needs_fix'">삭제·추가·수정 제안 <input class="field" x-model="opsAxes[f.key].proposal"></label>
-              </fieldset></template>
-              <button class="copybtn" type="button" x-on:click="opsAllAccurate()">원문 대조 후 4종 모두 정확 선택</button>
-              <button class="ds-btn ds-btn--primary ds-btn--s-sm" type="button" x-bind:disabled="opsBusy" x-on:click="opsSaveReview()">항목별 판정 저장</button>
-              <button class="copybtn" type="button" x-bind:disabled="opsBusy" x-on:click="opsSave({action:'undo'})">내 판정 철회</button>
-              <p class="text-xs">사람 정답 확인: <template x-for="f in opsFields" x-bind:key="'confirmed'+f.key"><span x-text="f.label+' '+(opsDetail.review && opsDetail.review.axes[f.key] && opsDetail.review.axes[f.key].status==='accurate' ? '확인' : '미확정')+' · '"></span></template></p>
-              <h3 class="dve__lbl">실제 작업시간</h3>
-              <label>작업 유형 <select class="field" x-model="opsTimeType"><template x-for="s in ['first','fix','recheck','final','operation']" x-bind:key="s"><option x-bind:value="s" x-text="opsTypeLabel(s)"></option></template></select></label>
-              <button class="copybtn" type="button" x-bind:disabled="opsBusy||!!opsMySession" x-on:click="opsTime('start')">시작</button><button class="copybtn" type="button" x-bind:disabled="opsBusy||!opsMySession" x-on:click="opsTime('pause')">중단</button><button class="copybtn" type="button" x-bind:disabled="opsBusy||!opsMySession" x-on:click="opsTime('resume')">재개</button><button class="copybtn" type="button" x-bind:disabled="opsBusy||!opsMySession" x-on:click="opsTime('finish')">종료</button>
-              <p class="text-xs text-muted" x-text="opsMySession ? (opsMySession.active_since ? '작업 진행 중 · 화면을 떠나기 전에 중단하세요' : '중단 중 · 중단 구간은 시간에서 제외') : '진행 중인 작업 없음'"></p>
-              <template x-if="opsCase"><fieldset class="fa-sec"><legend>조치 진행</legend>
-                <label>상태 <select class="field" aria-label="조치 상태" x-model="opsCase.state"><template x-for="s in ['open','working','recheck','verify','hold','closed']" x-bind:key="s"><option x-bind:value="s" x-text="opsStateLabel(s)"></option></template></select></label>
-                <label>담당자 식별값 <input class="field" x-model="opsCase.owner"></label><label>대체 담당자 <input class="field" x-model="opsCase.backup"></label>
-                <label>우선순위 <select class="field" x-model="opsCase.priority"><option value="urgent">긴급</option><option value="high">높음</option><option value="normal">일반</option></select></label>
-                <label>조치 기한 <input class="field" type="date" x-model="opsCase.due"></label><label>다음 확인일 <input class="field" type="date" x-model="opsCase.next_check"></label>
-                <label>근거·보류 사유 <textarea class="field" rows="2" x-model="opsCase.reason"></textarea></label><label>과제 링크 <input class="field" type="url" x-model="opsCase.task_url"></label>
-                <label>인계 사유 <input class="field" x-model="opsCase.handoff_reason"></label><label>현재 기준 재검수 근거 <textarea class="field" rows="2" x-model="opsCase.recheck_evidence"></textarea></label>
-                <label class="chk-inline"><input type="checkbox" x-model="opsCase.service_required" x-bind:disabled="!opsAdmin">서비스 반영 확인 필요</label>
-                <label x-show="opsAdmin && !opsCase.service_required">서비스 반영 확인 제외 사유 <input class="field" x-model="opsCase.service_waiver_reason"></label>
-                <label x-show="opsAdmin">서비스 수신 증빙 <textarea class="field" rows="2" x-model="opsCase.receipt_evidence" placeholder="현재 원천 아이템·발행 순번의 수신·활용 근거"></textarea></label>
-                <button class="ds-btn ds-btn--primary ds-btn--s-sm" type="button" x-bind:disabled="opsBusy" x-on:click="opsSaveCase()">조치 저장</button>
-              </fieldset></template>
-              <p class="text-xs">정답셋: <b x-text="opsDetail.golden?'편입 기록 있음':'미편입'"></b> · 서비스 발행 반영과 별도 확인</p>
-              <details><summary>기준별 작업 이력</summary><template x-for="(e,i) in opsDetail.history" x-bind:key="i"><article><p class="text-xs" x-text="fmtTs(e.ts)+' · '+e.by+' · '+e.action"></p><button class="copybtn" type="button" x-show="opsDetail.bases[e.basis.token]" x-on:click="opsHistoryBasis=e.basis.token">당시 원문·메타 확인</button></article></template><template x-if="opsHistoryBasis && opsDetail.bases[opsHistoryBasis]"><article><b x-text="opsDetail.bases[opsHistoryBasis].title"></b><pre class="text-xs" style="white-space:pre-wrap" x-text="opsDetail.bases[opsHistoryBasis].body"></pre><template x-for="f in opsFields" x-bind:key="f.key"><p class="text-xs" x-text="f.label+' · '+JSON.stringify((opsDetail.bases[opsHistoryBasis].snapshot.item_meta||{})[f.key]||'미확인')"></p></template></article></template></details>
-              <fieldset class="fa-sec" x-show="opsAdmin"><legend>검수 기준 합의</legend><label>합의 내용 <textarea class="field" rows="2" x-model="opsDecision"></textarea></label><label>원문·정책 근거 <input class="field" x-model="opsEvidence"></label><button class="copybtn" type="button" x-on:click="opsCalibrate()">현재 정책 기준으로 합의 저장</button></fieldset>
+            <!-- 항목별 판정(상시 검수 · opsreview): 기본 판정 영역과 같은 verdictbtn·ds-btn·dve__lbl 규격을 쓴다 -->
+            <div class="dve__opswrap">
+            <section class="dve__ops">
+              <div class="dve__lbl">검수 기준·항목별 판정</div>
+              <details class="dve__fold">
+                <summary>분석 당시 저장 원문·버전</summary>
+                <pre class="dve__pre" x-text="opsDetail.basis.body||'저장 원문 없음 · 원문 링크와 근거 확인 필요'"></pre>
+                <dl class="dve__kv">
+                  <dt>원천 아이템</dt><dd x-text="opsDetail.basis.item_unique_key||'미확인'"></dd>
+                  <dt>입력·정책·발행</dt><dd x-text="(opsDetail.basis.input_revision||'미확인')+' / '+(opsDetail.basis.policy_version||'미확인')+' / '+(opsDetail.basis.publication_revision||'미확인')"></dd>
+                  <dt>모델·프롬프트</dt><dd x-text="(opsDetail.basis.model||'미확인')+' / '+(opsDetail.basis.prompt_version||'미확인')"></dd>
+                </dl>
+                <p class="dve__hint">원문·메타나 다른 담당자의 기록이 바뀌면 저장을 거절합니다 · 실제 적용 버전이 없는 과거 자료는 미확인으로 표시합니다.</p>
+              </details>
+              <template x-for="f in opsFields" x-bind:key="f.key">
+                <div class="dve__axis" role="group" x-bind:aria-label="f.label+' 판정'">
+                  <div class="dve__axis-row">
+                    <span class="dve__axis-name" x-text="f.label"></span>
+                    <span class="ds-badge" x-bind:class="opsDetail.review && opsDetail.review.axes[f.key] && opsDetail.review.axes[f.key].status==='accurate' ? 'ds-badge--success' : 'ds-badge--neutral'" x-bind:data-tip="'저장된 사람 정답 확인 상태 · '+f.label" data-tip-pos="top" x-text="opsDetail.review && opsDetail.review.axes[f.key] && opsDetail.review.axes[f.key].status==='accurate' ? '확인' : '미확정'"></span>
+                    <div class="control-row control-row--compact dve__axis-btns">
+                      <button type="button" class="verdictbtn verdictbtn--good" x-bind:class="opsAxes[f.key].status==='accurate' ? 'is-on' : ''" x-bind:aria-pressed="opsAxes[f.key].status==='accurate'" x-on:click="opsAxes[f.key].status='accurate'"><span class="verdictbtn__dot"></span>정확</button>
+                      <button type="button" class="verdictbtn verdictbtn--bad" x-bind:class="opsAxes[f.key].status==='needs_fix' ? 'is-on' : ''" x-bind:aria-pressed="opsAxes[f.key].status==='needs_fix'" x-on:click="opsAxes[f.key].status='needs_fix'"><span class="verdictbtn__dot"></span>수정 필요</button>
+                      <button type="button" class="verdictbtn verdictbtn--hold" x-bind:class="opsAxes[f.key].status==='hold' ? 'is-on' : ''" x-bind:aria-pressed="opsAxes[f.key].status==='hold'" x-on:click="opsAxes[f.key].status='hold'"><span class="verdictbtn__dot"></span>보류</button>
+                    </div>
+                  </div>
+                  <label class="dve__field" x-show="opsAxes[f.key].status && opsAxes[f.key].status!=='accurate'" x-cloak><span class="dve__lbl">원문 근거·보류 사유</span><textarea class="field" rows="2" x-model="opsAxes[f.key].reason" placeholder="분석 당시 원문의 근거 또는 확인이 필요한 사유"></textarea></label>
+                  <label class="dve__field" x-show="opsAxes[f.key].status==='needs_fix'" x-cloak><span class="dve__lbl">삭제·추가·수정 제안</span><input class="field" x-model="opsAxes[f.key].proposal"></label>
+                </div>
+              </template>
+              <div class="control-row control-row--compact dve__actions">
+                <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-bind:disabled="opsBusy" x-on:click="opsSaveReview()">항목별 판정 저장</button>
+                <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="opsAllAccurate()" data-tip="원문과 대조한 뒤 4종을 모두 정확으로 선택합니다 · 저장은 따로 누릅니다" data-tip-pos="top">4종 모두 정확</button>
+                <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-bind:disabled="opsBusy" x-on:click="opsSave({action:'undo'})" data-tip="내 항목별 판정만 철회합니다 · 다른 검수자 기록은 유지됩니다" data-tip-pos="top">내 판정 철회</button>
+              </div>
             </section>
+            <section class="dve__ops">
+              <div class="dve__lbl">실제 작업시간</div>
+              <div class="control-row control-row--compact">
+                <select class="field field--compact dve__select" aria-label="작업 유형" x-model="opsTimeType"><template x-for="s in ['first','fix','recheck','final','operation']" x-bind:key="s"><option x-bind:value="s" x-text="opsTypeLabel(s)"></option></template></select>
+                <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="!opsMySession" x-bind:disabled="opsBusy" x-on:click="opsTime('start')">시작</button>
+                <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="opsMySession && opsMySession.active_since" x-bind:disabled="opsBusy" x-on:click="opsTime('pause')">중단</button>
+                <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="opsMySession && !opsMySession.active_since" x-bind:disabled="opsBusy" x-on:click="opsTime('resume')">재개</button>
+                <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-show="opsMySession" x-bind:disabled="opsBusy" x-on:click="opsTime('finish')">종료</button>
+              </div>
+              <p class="dve__hint" x-text="opsMySession ? (opsMySession.active_since ? '작업 진행 중 · 화면을 떠나기 전에 중단하세요' : '중단 중 · 중단 구간은 시간에서 제외') : '진행 중인 작업 없음'"></p>
+            </section>
+            <template x-if="opsCase">
+              <section class="dve__ops">
+                <div class="dve__lbl">조치 진행</div>
+                <div class="dve__form">
+                  <label class="dve__field"><span class="dve__lbl">상태</span><select class="field field--compact" x-model="opsCase.state"><template x-for="s in ['open','working','recheck','verify','hold','closed']" x-bind:key="s"><option x-bind:value="s" x-text="opsStateLabel(s)"></option></template></select></label>
+                  <label class="dve__field"><span class="dve__lbl">우선순위</span><select class="field field--compact" x-model="opsCase.priority"><option value="urgent">긴급</option><option value="high">높음</option><option value="normal">일반</option></select></label>
+                  <label class="dve__field"><span class="dve__lbl">담당자 식별값</span><input class="field field--compact" x-model="opsCase.owner"></label>
+                  <label class="dve__field"><span class="dve__lbl">대체 담당자</span><input class="field field--compact" x-model="opsCase.backup"></label>
+                  <label class="dve__field"><span class="dve__lbl">조치 기한</span><input class="field field--compact" type="date" x-model="opsCase.due"></label>
+                  <label class="dve__field"><span class="dve__lbl">다음 확인일</span><input class="field field--compact" type="date" x-model="opsCase.next_check"></label>
+                  <label class="dve__field dve__field--wide"><span class="dve__lbl">근거·보류 사유</span><textarea class="field" rows="2" x-model="opsCase.reason"></textarea></label>
+                  <label class="dve__field dve__field--wide"><span class="dve__lbl">과제 링크</span><input class="field field--compact" type="url" x-model="opsCase.task_url"></label>
+                  <label class="dve__field dve__field--wide"><span class="dve__lbl">인계 사유</span><input class="field field--compact" x-model="opsCase.handoff_reason"></label>
+                  <label class="dve__field dve__field--wide"><span class="dve__lbl">현재 기준 재검수 근거</span><textarea class="field" rows="2" x-model="opsCase.recheck_evidence"></textarea></label>
+                  <label class="chk-inline dve__field--wide"><input type="checkbox" x-model="opsCase.service_required" x-bind:disabled="!opsAdmin">서비스 반영 확인 필요</label>
+                  <label class="dve__field dve__field--wide" x-show="opsAdmin && !opsCase.service_required"><span class="dve__lbl">서비스 반영 확인 제외 사유</span><input class="field field--compact" x-model="opsCase.service_waiver_reason"></label>
+                  <label class="dve__field dve__field--wide" x-show="opsAdmin"><span class="dve__lbl">서비스 수신 증빙</span><textarea class="field" rows="2" x-model="opsCase.receipt_evidence" placeholder="현재 원천 아이템·발행 순번의 수신·활용 근거"></textarea></label>
+                </div>
+                <div class="control-row control-row--compact dve__actions"><button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-bind:disabled="opsBusy" x-on:click="opsSaveCase()">조치 저장</button></div>
+              </section>
+            </template>
+            <section class="dve__ops">
+              <div class="dve__axis-row">
+                <span class="dve__lbl dve__lbl--inline">정답셋</span>
+                <span class="ds-badge" x-bind:class="opsDetail.golden ? 'ds-badge--success' : 'ds-badge--neutral'" data-tip="정답셋 편입 기록 여부 · 서비스 발행 반영과는 별도로 확인합니다" data-tip-pos="top" x-text="opsDetail.golden ? '편입 기록 있음' : '미편입'"></span>
+              </div>
+              <details class="dve__fold">
+                <summary>기준별 작업 이력</summary>
+                <div class="histbox">
+                  <template x-for="(e,i) in opsDetail.history" x-bind:key="i">
+                    <div class="histrow">
+                      <span class="histrow__ts tnum" x-text="fmtTs(e.ts)"></span>
+                      <span class="histrow__who" x-text="e.by"></span>
+                      <span class="histrow__label" x-text="e.action"></span>
+                      <button type="button" class="copybtn histrow__act" x-show="opsDetail.bases[e.basis.token]" x-on:click="opsHistoryBasis=e.basis.token">당시 원문·메타</button>
+                    </div>
+                  </template>
+                  <div class="text-xs text-muted" x-show="!(opsDetail.history||[]).length">아직 기록이 없습니다</div>
+                </div>
+                <template x-if="opsHistoryBasis && opsDetail.bases[opsHistoryBasis]">
+                  <div class="dve__basis">
+                    <b x-text="opsDetail.bases[opsHistoryBasis].title"></b>
+                    <pre class="dve__pre" x-text="opsDetail.bases[opsHistoryBasis].body"></pre>
+                    <dl class="dve__kv"><template x-for="f in opsFields" x-bind:key="'hb'+f.key"><div class="dve__kv-row"><dt x-text="f.label"></dt><dd x-text="JSON.stringify((opsDetail.bases[opsHistoryBasis].snapshot.item_meta||{})[f.key]||'미확인')"></dd></div></template></dl>
+                  </div>
+                </template>
+              </details>
+            </section>
+            <section class="dve__ops" x-show="opsAdmin">
+              <div class="dve__lbl">검수 기준 합의</div>
+              <div class="dve__form">
+                <label class="dve__field dve__field--wide"><span class="dve__lbl">합의 내용</span><textarea class="field" rows="2" x-model="opsDecision"></textarea></label>
+                <label class="dve__field dve__field--wide"><span class="dve__lbl">원문·정책 근거</span><input class="field field--compact" x-model="opsEvidence"></label>
+              </div>
+              <div class="control-row control-row--compact dve__actions"><button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="opsCalibrate()">현재 정책 기준으로 합의 저장</button></div>
+            </section>
+            </div>
           </template>
           <!-- 작업 이력: 판정·교정·재실행 타임라인(접이식 · 회의 소요) · 운영은 팀 생성자·슈퍼관리자 전용 -->
           <div class="dve__sec" x-show="backend !== 'supabase' || (adminData && adminData.isSuperAdmin)" x-cloak>

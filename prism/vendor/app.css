@@ -386,6 +386,42 @@
   /* 검수 보조 스타일은 이 자리에 없다 — 2026-08-13 에 검수 상세 안 패널에서 화면 우하단
      대화창이 되면서 정책 팔레트 옆(.asxfab/.asxchat 블록)으로 옮겼다. */
   .dve__verdict{margin-top:auto;padding-top:var(--ds-space-4);border-top:1px solid var(--ds-divider-section)}
+  /* 항목별 판정(상시 검수) 영역: 기본 판정과 같은 구획선·라벨·verdictbtn 규격 · 구획 사이 헤어라인 */
+  .dve__opswrap{display:flex;flex-direction:column;border-top:1px solid var(--ds-divider-section)}
+  .dve__ops{display:flex;flex-direction:column;gap:var(--ds-space-2);padding:var(--ds-space-4) 0}
+  .dve__ops + .dve__ops{border-top:1px solid var(--ds-hairline)}
+  .dve__ops > .dve__lbl{margin-bottom:0}
+  .dve__lbl--inline{margin-bottom:0}
+  .dve__hint{font-size:12px;line-height:1.5;color:var(--ds-muted);margin:0}
+  .dve__fold > summary{cursor:pointer;font-size:12.5px;font-weight:600;color:var(--ds-body)}
+  .dve__fold[open] > summary{margin-bottom:var(--ds-space-2)}
+  .dve__pre{margin:0 0 var(--ds-space-2);padding:10px 12px;max-height:220px;overflow:auto;white-space:pre-wrap;
+    font-family:var(--ds-font);font-size:12.5px;line-height:1.6;color:var(--ds-text-secondary);
+    background:var(--ds-surface-on);border-radius:var(--ds-radius-md)}
+  .dve__kv{display:grid;grid-template-columns:96px minmax(0,1fr);gap:4px 12px;margin:0 0 var(--ds-space-2);font-size:12px}
+  .dve__kv dt{color:var(--ds-muted);font-weight:600}
+  .dve__kv dd{margin:0;color:var(--ds-ink);overflow-wrap:anywhere}
+  .dve__kv-row{display:contents}
+  .dve__axis{display:flex;flex-direction:column;gap:var(--ds-space-2);padding:var(--ds-space-2) 0}
+  .dve__axis + .dve__axis{border-top:1px dashed var(--ds-hairline)}
+  .dve__axis-row{display:flex;align-items:center;flex-wrap:wrap;gap:var(--ds-space-2)}
+  .dve__axis-name{min-width:56px;font-size:13px;font-weight:700;color:var(--ds-ink)}
+  .dve__axis-btns{flex-basis:100%}
+  .dve__axis-btns .verdictbtn{padding:0 12px}
+  .dve__field{display:flex;flex-direction:column;gap:4px;min-width:0}
+  .dve__field > .dve__lbl{margin-bottom:0}
+  .dve__field > textarea.field{min-height:64px}
+  .dve__form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--ds-space-3)}
+  .dve__field--wide{grid-column:1/-1}
+  .dve__select{width:auto;min-width:120px}
+  .dve__actions{margin-top:var(--ds-space-1)}
+  .dve__basis{display:flex;flex-direction:column;gap:var(--ds-space-2);margin-top:var(--ds-space-2)}
+  .histrow__act{margin-left:auto;flex:none}
+  .verdictbtn--hold .verdictbtn__dot{background:var(--ds-warning)}
+  .verdictbtn--hold.is-on{border-color:var(--ds-warning);color:var(--ds-text-secondary);background:rgba(255,148,41,.12);
+    box-shadow:0 0 0 3px rgba(255,148,41,.15),0 8px 18px -8px rgba(255,148,41,.6)}
+  .verdictbtn--hold.is-on .verdictbtn__dot{box-shadow:0 0 0 2px rgba(255,148,41,.35),0 0 10px 2px rgba(255,148,41,.8)}
+  @media (max-width:520px){.dve__form{grid-template-columns:1fr}}
   @media (max-width:720px){.detailview__body{grid-template-columns:1fr}.detailview__content{border-right:0;border-bottom:1px solid var(--ds-divider-section)}}
   /* ── 하이브리드 선택형 입력(최종 검수 수정 · 시안 3): 추천 칩(점선) + 검색 드롭다운 ── */
   .hybreco{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 10px;border-radius:var(--ds-radius-full);
