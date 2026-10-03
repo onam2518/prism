@@ -103,6 +103,21 @@ class OperationsTests(unittest.TestCase):
         self.assertEqual(len(result['items']),1)
         self.assertTrue(result['items'][0]['legacy'])
 
+    def test_legacy_lists_only_unsettled_bad_consensus(self):
+        self.st.save_feedback(self.ch,'뉴스','운영 검수','bad','review','수정 근거',1,reviewer='me')
+        self.st.save_feedback(self.ch,'뉴스','운영 검수','good','review','',2,reviewer='other')
+        fmap=self.st.feedback_map()
+        self.assertEqual(O.overview(self.st,who='me',privileged=True,legacy=fmap)['items'],[])     # 의견 갈림 = 최종 검수 몫
+        self.st.save_feedback(self.ch,'뉴스','운영 검수','bad','review','수정 근거',3,reviewer='third')
+        fmap=self.st.feedback_map()
+        self.assertEqual(len(O.overview(self.st,who='me',privileged=True,legacy=fmap)['items']),1)  # 수정 필요 합의
+        self.assertEqual(O.overview(self.st,who='me',privileged=True,legacy=fmap,settled={self.ch})['items'],[])  # 정답 편입·최종 판정
+
+    def test_missing_due_is_not_unassigned(self):
+        self.st.save_feedback(self.ch,'뉴스','운영 검수','bad','review','수정 근거',1,reviewer='me')
+        stats=O.overview(self.st,who='me',privileged=True,legacy=self.st.feedback_map())['stats']
+        self.assertEqual(stats['unassigned'],0)                                                 # 담당 있음 · 기한 없음
+
     def test_golden_does_not_reuse_vote_after_metadata_changes(self):
         from prism import serve
         old=serve._STORE;serve._STORE=self.st
