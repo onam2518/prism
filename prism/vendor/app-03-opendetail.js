@@ -352,6 +352,9 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       elemStage(id) { const e = this.FIX_ELEMENTS.find((x) => x.id === id); return e ? e.stage : 'analyze'; },
       elemLabel(id) { const e = this.FIX_ELEMENTS.find((x) => x.id === id); return e ? e.label : ''; },
+      sents(t) {                                         // 서버 문구 → 불릿 문장 배열(' · '·문장 끝 '.' 기준 분리 · 마침표 제거)
+        return String(t || '').split(/\.?\s+·\s+|(?<=[가-힣)\w])\.\s+/).map((s) => s.trim().replace(/(?<![.\d])\.$/, '')).filter(Boolean);
+      },
       fmtTs(ts) {                                        // epoch(초) → 'M.D HH:mm'
         if (!ts) return '';
         const d = new Date((ts > 1e12 ? ts : ts * 1000));

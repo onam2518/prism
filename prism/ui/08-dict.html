@@ -134,7 +134,7 @@
           <section class="panel" data-fn><div class="panel-hd"><b>기준 계약 · 아이템 메타 4호출</b><span class="meta">코어 규칙·골드 예시는 계약(읽기 전용) · 수정은 기준 문서 개정으로</span>
             <span class="ds-badge ds-badge--success ml-auto" x-show="learnedStages.extract || learnedStages.analyze" style="cursor:help" data-tip="배치 결과 피드백이 각 호출 프롬프트에 자동 병기 중">학습 보정 반영</span></div>
             <div class="panel-bd">
-              <ul class="ds-bullets" style="margin-bottom:10px">
+              <ul class="ds-bullets" style="margin-bottom:20px">
                 <li>추출은 <b>독립 4호출</b>입니다: ① 리드문 · ② 엔티티 · ③ 인텐트(사전: 전 출처 공통 68개) · ④ 콘텐츠 카테고리(사전: Tier1/Tier2 + 구분 기준)<ul><li>네 호출은 제목·본문에서 각각 추출하며, 하나가 비거나 실패해도 나머지는 그대로 실행합니다</li></ul></li>
                 <li>호출 뒤 <b>기계 검증</b>: 사전 불일치 값 드롭 · 전량 드롭 시 1회 재요청 · 엔티티는 개수 상한 없이 대표성 순(복합 명사는 원형 유지)</li>
                 <li>모델 입력은 <b>제목·본문</b>만입니다(서비스명은 수집·저장에만 유지)<ul><li>발행 키(item_unique_key·service_code·cp_type)는 모델에 보내지 않고 발행·라우팅 정보로 함께 저장합니다</li></ul></li>
@@ -149,7 +149,7 @@
             </div></section>
           <section class="panel" data-fn><div class="panel-hd"><b>모델별 쿡북 래퍼</b><span class="meta">수정 단위는 계열 래퍼만 · 코어 규칙·사전·예시는 자동 삽입</span></div>
             <div class="panel-bd">
-              <ul class="ds-bullets" style="margin-bottom:10px">
+              <ul class="ds-bullets" style="margin-bottom:20px">
                 <li>계열별 쿡북 관례(GPT 출력 계약 · Gemini 스키마 재명시 · Claude 배경 제공 · Solar CRITICAL+자가 검증)를 이 래퍼가 담당합니다</li>
                 <li>플레이스홀더 <b>{ROLE} {SCHEMA} {RULES} {EXAMPLES} {SELF_CHECK} {LEARNED}</b> 위치에 계약 요소가 삽입됩니다<ul><li>비우고 저장하면 기본 래퍼로 복원됩니다</li></ul></li>
               </ul>

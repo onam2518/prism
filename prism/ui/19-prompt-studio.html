@@ -95,7 +95,7 @@
         <div x-show="studioTab === 'prompt' && promptSub === 'deploy'" x-cloak class="w-full space-y-4">
         <section class="panel" data-fn><div class="panel-hd"><b>프롬프트 배포 · 외부 API 제공</b><span class="meta">스냅샷 버전을 slug 에 고정(pin) · 외부 서비스가 키로 당겨 씁니다</span></div>
           <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:11px">
+            <ul class="ds-bullets" style="margin-bottom:20px">
               <li>배포 = <b>slug + 프롬프트 스냅샷 버전 pin</b> · pin 을 바꾸면 호출측 코드 수정 없이 서빙 프롬프트가 즉시 교체됩니다(버전 0 = 항상 최신)</li>
               <li>API 키는 <b>발급 순간 1회만</b> 표시됩니다(서버는 해시만 저장)<ul><li>유출 시 회수하고 새로 발급하세요</li></ul></li>
               <li>호출 예: <code class="tnum" x-text="'curl -H \'Authorization: Bearer pr_live_…\' ' + location.origin + '/api/v1/prompt?slug=<slug>'"></code></li>
@@ -156,7 +156,7 @@
         <div x-show="studioTab === 'prompt' && promptSub === 'library'" x-cloak class="w-full space-y-4">
         <section class="panel" data-fn><div class="panel-hd"><b>프롬프트 라이브러리</b><span class="meta">잘 나온 프롬프트를 저장해 두고 · 복사·단계 적용으로 재사용</span></div>
           <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:11px">
+            <ul class="ds-bullets" style="margin-bottom:20px">
               <li>빌더 결과·직접 작성한 프롬프트를 <b>패턴으로 저장</b>합니다<ul><li>자주 쓰는 항목은 <b>핀</b>으로 위에 고정</li></ul></li>
               <li>항목은 복사해 쓰거나 <b>단계 원천 지시로 적용</b>할 수 있습니다(적용 경로는 사전·정책 · 메타 프롬프트 탭과 동일)</li>
             </ul>

@@ -1006,6 +1006,7 @@
   .fn{display:flex;flex-direction:column;gap:8px;min-width:0}
   .fn__title{font-family:var(--ds-font-game);font-size:14px;font-weight:700;line-height:1.4;letter-spacing:-.01em;color:var(--ds-ink)}
   .fn-row{display:flex;flex-wrap:wrap;gap:20px}
+  .fn-stack>.ds-btn{align-self:flex-start}
   .fn-row>.fn{flex:1 1 220px}
   /* 패널 타이틀은 카드 구분이 명확하도록 크게(전 페이지) · 홈 위젯 타이틀보다 한 단계 위 위계 */
   .panel-hd>.ds-widget__title{margin-right:auto;font-size:var(--ds-panel-heading-size);font-weight:700;line-height:var(--ds-heading-line-height);letter-spacing:var(--ds-heading-tracking)}

@@ -25,7 +25,7 @@
 
         <section class="panel"><div class="panel-hd"><b>MCP 파트너 키</b><span class="meta">외부 서비스·다른 팀이 프리즘 MCP 를 부를 때 쓰는 키입니다</span><span class="ds-badge ds-badge--neutral ml-auto">내 키만</span></div>
           <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:11px">
+            <ul class="ds-bullets" style="margin-bottom:20px">
               <li>키는 <b>발급한 순간 한 번만</b> 전체가 보입니다<ul><li>서버는 해시만 저장하므로 <b>잃어버리면 다시 볼 수 없고</b>, 새로 발급해야 합니다</li></ul></li>
               <li>아래 목록은 <b>내가 만든 키</b>만 보여 줍니다<ul><li>같은 팀 다른 사람의 키는 보이지도, 폐기되지도 않습니다</li></ul></li>
               <li>권한은 <b>발급한 사람의 권한을 넘지 않습니다</b><ul><li>관리자 전용 도구는 관리자가 발급한 키에만 보입니다</li></ul></li>
@@ -35,7 +35,7 @@
             <!-- 대리 발급 경고: 서버가 막을 수 없는 일이라 화면이 대신 말한다(위 주석 ③) -->
             <div class="hintbox" style="padding:var(--ds-space-3) var(--ds-space-4);margin-bottom:12px;border-left:3px solid var(--ds-warning, var(--ds-primary))">
               <b>이 키는 나에게 묶입니다 · 남에게 건네지 마세요</b>
-              <ul class="ds-bullets" style="margin-top:6px">
+              <ul class="ds-bullets" style="margin-top:20px">
                 <li>발급하는 순간 키에 <b>내 계정</b>이 박힙니다<ul><li>이 키로 일어난 <b>모든 호출이 내 이름으로</b> 기록됩니다</li></ul></li>
                 <li>남을 대신해 발급해 건네면 <b>사용 기록도, 폐기 권한도 전부 나를 가리킵니다</b><ul><li>실제로 쓴 사람이 누구인지 추적할 방법이 사라지고, 그 사람은 자기 키를 스스로 끊을 수도 없습니다</li></ul></li>
                 <li>다른 사람이 써야 하면 <b>그 사람이 직접 이 화면에서 발급</b>하게 하세요</li>
@@ -92,13 +92,13 @@
         <div x-show="labMcpView === 'connect'" class="w-full space-y-4">
         <section class="panel"><div class="panel-hd"><b>연결 방법</b><span class="meta">Claude 등 MCP 클라이언트에서 프리즘에 붙이는 절차</span></div>
           <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:11px">
+            <ul class="ds-bullets" style="margin-bottom:20px">
               <li><b>① 키 발급</b>: '내 키' 에서 본인 계정으로 발급합니다(남이 준 키를 쓰지 마세요 · 기록이 그 사람 이름으로 남습니다)</li>
               <li><b>② 클라이언트에 등록</b>: 아래 한 줄이면 됩니다</li>
               <li><b>③ 확인</b>: 도구 목록에 프리즘 도구가 보이면 연결된 것입니다<ul><li>보이는 도구는 <b>키에 박힌 권한</b>에 따라 다릅니다</li></ul></li>
             </ul>
             <div class="codeblock"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>등록<span class="codeblock__stage">CLI</span></div><textarea readonly spellcheck="false" style="min-height:44px" x-bind:value="'claude mcp add --transport http prism ' + location.origin + '/mcp --header \'Authorization: Bearer pmk_…\''"></textarea></div>
-            <ul class="ds-bullets" style="margin-top:11px">
+            <ul class="ds-bullets" style="margin-top:20px">
               <li>인증 헤더: <code class="tnum">Authorization: Bearer pmk_…</code> · 키 없이 부르면 전부 거절됩니다</li>
               <li>팀은 <b>넘기지 않습니다</b><ul><li>키에 박힌 팀의 데이터만 보입니다(도구 인자로 팀을 받지 않습니다)</li></ul></li>
               <li>상한을 넘으면 잠시 뒤 다시 시도하라는 응답이 옵니다<ul><li>키 하나당 <b class="tnum" x-text="'분당 ' + (mkMeta.per_min || 60) + '회 · 하루 ' + (mkMeta.per_day || 5000) + '회'"></b></li></ul></li>
