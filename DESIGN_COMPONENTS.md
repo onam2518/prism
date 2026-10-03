@@ -66,6 +66,8 @@
 | `.content-section` | 한 패널 안에서 목적이 바뀌는 구획. 앞의 표시 중인 구획과 간격32px + 구분선1px + 내부 상단24px. 600px 이하는24/20px. 숨긴 구획은 간격 기준에서 제외 |
 | `.content-section-stack` / `.content-section--panel` | 독립 작업 영역은 바깥 패널 밖에서 stack으로 묶고 각 section에 panel과 panel 변형을 적용. 패널 사이24px, 내부24px·좌우 공통 패널 여백, 선명한 content 경계색. 카드 안에 중첩하지 않는다 |
 | `.content-section__head` | 내부 div에 제목과 설명을 묶고, 별도 `.content-section__actions`에 조작 배치. 내부 구획 제목 GmarketSans16px(좁은 화면15px), 독립 패널 제목은 기존 패널과 동일한16.5px·700·줄높이1.4·자간−0.015em. 설명 Pretendard13px·줄높이1.6 |
+| `.ds-bullets` | 내용을 설명하는 텍스트는 단독 `p`가 아니라 반드시 불릿. `.`으로 끝나는 문장(또는 `다 ·`로 이어진 문장) 단위로 줄을 나누고 마침표는 쓰지 않는다. 한 항목의 첫 문장이 불릿, 이어지는 문장은 중첩 `ul`의 하위 불릿(대시 마커). 상태·오류 메시지(`role=status`, 동적 x-text)는 제외 |
+| `.fn-stack` / `.fn` / `.fn__title` / `.fn-row` | 영역 내 기능 블록. `.fn__title`은 GmarketSans14px·700으로 패널 제목(16.5px)보다 작게, 아래에 조작·불릿을 배치(`label.fn`이면 타이틀 span + field). 블록 사이 간격20px(빈 줄 1개 이상), 같은 행 필터는 `.fn-row`로 묶는다 |
 | `.result-notes` | 결과 해석 안내용 `ul > li` 목록. 13px·줄높이1.6·항목 간격8px. 단일 문장과 상태 메시지는 `.content-section__description` 사용 |
 | `.item-compare-table` | 콘텐츠240px + 정답70px + 동일 너비 모델 열 최소160px. 넘침은 표 wrapper 안에서 처리 |
 | `.item-compare-table--metadata` | 등급 외 메타 전문을 표시할 때 사용. `.item-compare-content` col은240px, 정답·모델 col은 고정폭 없이 동일 너비·최소200px. `.item-compare-expected`의70px 폭을 적용하지 않는다 |

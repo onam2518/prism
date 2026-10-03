@@ -7,8 +7,8 @@
       <template x-if="mod === 'content'">
         <div class="w-full space-y-4">
         <ul class="ds-bullets hintbox" style="padding:14px 16px">
-          <li>추가된 콘텐츠(자동·수동 불문)에 <b>모델을 실행</b>해 검수용 초안을 만듭니다(수동 실행).</li>
-          <li>실행 결과는 버전 <b class="text-ink tnum" x-text="verTxt"></b> 로 기록됩니다(버전 = 학습 반영 회차 + 1).</li>
+          <li>추가된 콘텐츠(자동·수동 불문)에 <b>모델을 실행</b>해 검수용 초안을 만듭니다(수동 실행)</li>
+          <li>실행 결과는 버전 <b class="text-ink tnum" x-text="verTxt"></b> 로 기록됩니다(버전 = 학습 반영 회차 + 1)</li>
         </ul>
         <!-- 사용 모델: 리드문·메타 추출과 단건·일괄 실행의 기본값(제공자 불문 전 모델 노출) -->
         <section class="panel" data-fn><div class="panel-hd"><b>사용 모델</b><span class="meta">기본 실행 모델 · 리드문·메타 추출과 실행의 기본값</span></div>
@@ -21,7 +21,7 @@
               <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-bind:disabled="bulkBusy || (bulkScope==='pending' && !pendingCount)" x-on:click="runBulk()" x-text="bulkBusy ? '실행 중…' : ('실행 (' + (bulkScope==='pending' ? pendingCount : contentsCount) + '건)')"></button>
               <span class="text-xs text-muted" x-text="bulkMsg || modelsMsg"></span>
             </div>
-            <ul class="ds-bullets" style="margin:10px 0 0"><li><b>미실행만</b> = 추가만 된 콘텐츠(기본) · <b>전체 재실행</b> = 기존 초안을 이력에 남기고 덮어씁니다 · 건당 비용 발생 · 진행은 STEP 3 실행 큐.</li></ul>
+            <ul class="ds-bullets" style="margin:10px 0 0"><li><b>미실행만</b> = 추가만 된 콘텐츠(기본) · <b>전체 재실행</b> = 기존 초안을 이력에 남기고 덮어씁니다<ul><li>건당 비용 발생 · 진행은 STEP 3 실행 큐</li></ul></li></ul>
           </div>
         </section>
         <!-- 처리 대기 화면: Processing(캐릭터) + Steps (디자인 시스템) -->
