@@ -71,6 +71,24 @@ class TestReviewerRoles(TwoTierBase):
 
 
 class TestFinalQueue(TwoTierBase):
+    def test_rewrite_items_join_final_queue_without_source(self):
+        """수정 필요 합의 건을 다시 생성해 원장(final_rewrite)에 올리면 최종 검수 대상 · 모델 표기 없음."""
+        serve, st = self._with_store()
+        ch = self._put_reviewed(st, "수정 합의 건", [("A", "bad"), ("B", "bad")])
+        self.assertNotIn(ch, [i["hash"] for i in serve.final_review_queue(None)["items"]])   # 기본 규칙: 기초 큐 몫
+        serve._report_save("final_rewrite", {"items": {ch: {"model": "m-x", "added_ts": 1}}}, None)
+        q = serve.final_review_queue(None)
+        row = {i["hash"]: i for i in q["items"]}[ch]
+        self.assertEqual(row["final_reason"], "수정 반영 확인")
+        self.assertEqual(row["model"], "")
+        self.assertEqual(len(serve.final_review_queue(None, reason="수정 반영 확인")["items"]), 1)
+        from prism import reviewops as RV
+        self.assertTrue(all(not o["model"] and "m-x" not in o["label"] for o in RV.drafts_for(ch)["items"]))
+        serve.set_final_verdict(ch, "good", by="리드", team=None)
+        serve.build_golden_from_reviews(None)
+        self.assertIn(ch, st.golden_hashes())                   # 편입 확정 → 정답 승격
+        self.assertNotIn(ch, [i["hash"] for i in serve.final_review_queue(None)["items"]])
+
     def test_queue_sorts_supabase_iso_timestamps(self):
         """supabase feedback ts 는 UTC 문자열 · float() 직변환으로 ValueError → '페이지 조건' 오류로 큐 전체가 비던 회귀(2026-10-04)."""
         serve, st = self._with_store()

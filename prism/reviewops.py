@@ -119,6 +119,17 @@ def set_final_verdict(hash_, verdict, by="", team=None) -> dict:
     return {"ok": True, "final": items.get(h)}
 
 
+REWRITE_REASON = "수정 반영 확인"
+
+
+def rewrite_items(team=None) -> dict:
+    """수정 필요 합의 건을 다시 생성해 최종 검수로 올린 원장 {hash: {added_ts, model, note}}.
+    reports kind='final_rewrite'(팀 스코프). 출처(모델)는 원장에만 남기고 검수 화면에는 표시하지 않는다
+    (최종 검수자가 초안 출처에 끌리지 않게 · 2026-10-04 운영 결정)."""
+    rep = _SV._report_get("final_rewrite", team, {}) or {}
+    return dict(rep.get("items") or {})
+
+
 # ── 2층 검수: 최종검수자 역할 + 최종검수 큐 ─────────────────────────────────
 def reviewer_roles(team=None) -> dict:
     """최종검수자 역할 {reviewer_id: 'final'} · reports kind='reviewer_roles'(팀 스코프 · DDL 불필요).
@@ -168,11 +179,21 @@ def final_review_queue(team=None, reviewer: str = "", offset=0, limit=200, reaso
         golden = st.golden_hashes(team)
     except Exception:
         golden = set()
+    rewrite = rewrite_items(team)
     out = []
     for r in reversed(rows):                       # 최근순
         ref = r.get("content_ref") or {}
         ch = _row_key(ref)                         # 스토어 키 지름길(본문 SHA 재계산 생략 · 내용 동일)
         fb = fmap.get(ch)
+        if ch in rewrite and ch not in golden:     # 다시 생성한 수정 필요 건 · 기초 합의와 무관하게 최종 결정 대상
+            d = _SV._detail_row(r)
+            d["version"] = int((r.get("trace") or {}).get("version") or 0) or None
+            d["model"] = ""                        # 출처 비표시(원장에만 기록)
+            d["final_reason"] = REWRITE_REASON
+            fv = finals.get(ch) or {}
+            d["final"], d["final_by"], d["final_ts"] = fv.get("verdict", ""), fv.get("by", ""), fv.get("ts", 0)
+            out.append(d)
+            continue
         if not fb or ch in golden:                 # 기초 검수 없음 · 이미 골든 확정 → 대상 아님
             continue
         gw = sum(weights.get(v.get("reviewer_id") or v.get("reviewer"), 1.0)
@@ -1156,6 +1177,7 @@ def content_history(content_hash: str, team=None) -> dict:
     ch = (content_hash or "").strip()
     if not (st and ch):
         return {"ok": False, "items": []}
+    masked = ch in rewrite_items(team)
     items = []
     try:
         fb = (st.feedback_map(team=team) or {}).get(ch) or {}
@@ -1178,7 +1200,8 @@ def content_history(content_hash: str, team=None) -> dict:
             if el.startswith("rerun:"):
                 items.append({"kind": "rerun", "who": "",
                               "ts": _hist_epoch(pr.get("ts")),
-                              "label": "초안 재실행 · " + el[len("rerun:"):].replace("->", " → "), "note": ""})
+                              "label": ("초안 갱신" if masked else
+                                        "초안 재실행 · " + el[len("rerun:"):].replace("->", " → ")), "note": ""})
             elif el == "undo:verdict":             # 판정 실행취소(표 행은 삭제돼도 취소 사실은 남긴다)
                 items.append({"kind": "undo", "who": pr.get("reviewer") or "",
                               "ts": _hist_epoch(pr.get("ts")), "label": "판정 취소", "note": ""})
@@ -1248,6 +1271,7 @@ def drafts_for(content_hash: str, team=None) -> dict:
     if cur:
         outs.append(cur)
     seen = {(o.get("model") or "", o.get("version")) for o in outs}
+    masked = ch in rewrite_items(team)
     had_history = False
     if st and hasattr(st, "draft_history"):
         try:
@@ -1270,6 +1294,10 @@ def drafts_for(content_hash: str, team=None) -> dict:
             outs.append({"label": f"{bf.get('model') or '모델 미기록'} · 이전({p.get('element','')[6:]})",
                          "model": bf.get("model", ""), "version": None,
                          "item_meta": bf.get("item_meta") or {}, "quality_meta": bf.get("quality_meta") or {}})
+    if masked:                                     # 출처 비표시: 모델명 대신 순서만(원장에는 기록)
+        for i, o in enumerate(outs):
+            o["model"] = ""
+            o["label"] = "현재 초안" if (cur and i == 0) else f"이전 초안 {i}"
     return {"ok": True, "items": outs, "n": len(outs)}
 
 
