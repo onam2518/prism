@@ -87,7 +87,7 @@
         <section class="panel" data-fn x-show="arenaData && arenaData.leaderboard && arenaData.leaderboard.length"><div class="panel-hd"><b>주간 순위 · 승급/강등</b>
           <span class="meta">최근 7일 · <b class="text-ink" x-text="leagueActive()"></b>명 활동</span></div>
           <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:10px"><li>이번 주 획득 점수로 매기는 순위입니다</li><li>상위 <b>승급권</b>은 지위 보상, 하위 <b>강등권</b>은 분발 신호입니다(지난주 대비 이동 표시)</li></ul>
+            <ul class="ds-bullets" style="margin-bottom:20px"><li>이번 주 획득 점수로 매기는 순위입니다</li><li>상위 <b>승급권</b>은 지위 보상, 하위 <b>강등권</b>은 분발 신호입니다(지난주 대비 이동 표시)</li></ul>
             <template x-for="r in weeklyLeague()" x-bind:key="r.reviewer">
               <div class="lb-row lb-row--league" x-show="r.wp>0 || leagueActive()===0" x-bind:class="r.reviewer===reviewer ? 'lb-row--me' : ''">
                 <span class="lb-rank" x-text="rankMedal(r.rank-1)"></span>

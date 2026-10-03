@@ -74,7 +74,7 @@
                         <tr><td x-text="ng.title || '(제목 없음)'"></td><td class="text-muted" x-text="ng.service"></td></tr>
                       </template>
                     </tbody></table></div>
-                    <ul class="ds-bullets" style="margin-top:8px">
+                    <ul class="ds-bullets" style="margin-top:20px">
                       <li><b>콘텐츠 검수 · 검수 대상 콘텐츠</b>에서 해당 콘텐츠 상세를 열어 분류를 골라 주세요 <button type="button" class="copybtn" x-on:click="selectMod('create')">콘텐츠 검수 열기 →</button></li>
                     </ul>
                   </div>
@@ -136,7 +136,7 @@
                 <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-show="schedEditing" x-on:click="saveLearnSched()">저장</button>
                 <span class="text-xs" style="color:var(--ds-success)" x-text="learnSchedMsg"></span>
               </div>
-              <ul class="ds-bullets" style="margin-top:10px">
+              <ul class="ds-bullets" style="margin-top:20px">
                 <li>의견을 모아 <b>지정한 일시(모델 버전 시한)</b>에 한 번에 반영해 결과가 흔들리지 않게 합니다<ul><li>반영 후 목표는 소진되고 새 퀘스트를 생성합니다</li></ul></li>
                 <li>'정확' 합의는 <b>정답셋</b>으로 쌓이고, 바뀐 프롬프트는 정답셋으로 다시 평가합니다</li>
                 <li>'즉시 반영'은 목표 일시와 무관하게 지금까지 모인 의견을 바로 반영합니다</li>
@@ -210,7 +210,7 @@
                   </div>
                 </template>
               </div>
-              <div class="meta" style="padding:4px 2px" x-show="!verRows.length">아직 반영된 버전이 없습니다 · 검수 목표를 채우거나 즉시 반영하면 v2가 만들어집니다.</div>
+              <div class="meta" style="padding:4px 2px" x-show="!verRows.length">아직 반영된 버전이 없습니다 · 검수 목표를 채우거나 즉시 반영하면 v2가 만들어집니다</div>
 
               </section>
               <!-- 지시 원본 관리: 잘못 들어간 보정 하나만 끄기(전체 재컴파일 불필요 · 원본 보존) -->
@@ -289,7 +289,7 @@
                   <template x-for="s in dmStageList()" x-bind:key="s">
                     <label class="dmchk"><input type="checkbox" x-model="dmStages[s]"><span class="ds-badge ds-badge--neutral" x-text="({extract:'추출',analyze:'분석',review:'검수',judge:'판정'})[s]"></span><span class="dmtx" x-text="dmDir(s)"></span></label>
                   </template>
-                  <div class="meta" x-show="dmSnap && !dmStageList().length" style="padding:4px 2px">이 버전엔 적용할 지시가 없습니다.</div>
+                  <div class="meta" x-show="dmSnap && !dmStageList().length" style="padding:4px 2px">이 버전엔 적용할 지시가 없습니다</div>
                 </div>
               </div>
               <div class="dmodal__ft">
@@ -313,7 +313,7 @@
           </span>
         </div>
           <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:10px"><li>정답은 <b>검수 '정확' 합의</b>가 학습 반영 때 누적 승격됩니다</li><li>평가와 어긋나 <b>오류 의심 · 교정 필요</b> 표시된 항목은 확인 후 제거하세요(정답 오류는 모델 순위를 뒤집습니다)</li><li>인텐트 후보가 <b>전 출처 공통 68개</b>로 바뀌어(2026-09-22) 기존 정답의 인텐트는 <b>재확정 필요</b> 표시가 붙고 확정 전까지 인텐트 측정에서 빠집니다<ul><li>폐기된 값이 남은 항목은 <b>재판정(폐기값)</b>으로 먼저 보이며, 행의 <b>인텐트 확정</b>으로 새 후보 기준으로 다시 고르면 측정에 포함됩니다</li></ul></li></ul>
+            <ul class="ds-bullets" style="margin-bottom:20px"><li>정답은 <b>검수 '정확' 합의</b>가 학습 반영 때 누적 승격됩니다</li><li>평가와 어긋나 <b>오류 의심 · 교정 필요</b> 표시된 항목은 확인 후 제거하세요(정답 오류는 모델 순위를 뒤집습니다)</li><li>인텐트 후보가 <b>전 출처 공통 68개</b>로 바뀌어(2026-09-22) 기존 정답의 인텐트는 <b>재확정 필요</b> 표시가 붙고 확정 전까지 인텐트 측정에서 빠집니다<ul><li>폐기된 값이 남은 항목은 <b>재판정(폐기값)</b>으로 먼저 보이며, 행의 <b>인텐트 확정</b>으로 새 후보 기준으로 다시 고르면 측정에 포함됩니다</li></ul></li></ul>
             <div class="flexrow" style="gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px" x-show="goldenList && goldenList.intent_review_counts">
               <span class="text-xs text-muted tnum" x-text="'인텐트 재확정 · 필요 ' + ((goldenList.intent_review_counts||{}).needed||0) + '건 · 확정 ' + ((goldenList.intent_review_counts||{}).confirmed||0) + '건 · 폐기값 남은 행 ' + ((goldenList.intent_review_counts||{}).retired||0) + '건'"></span>
               <button type="button" class="srcfilter__chip" x-bind:class="giOnly ? 'sel' : ''" x-bind:aria-pressed="giOnly ? 'true' : 'false'" x-on:click="giOnly = !giOnly">재확정 필요만 보기</button>
@@ -410,7 +410,7 @@
                   <td class="text-xs text-muted" x-text="r.basis"></td></tr>
               </template>
             </tbody></table></div>
-            <ul class="ds-bullets" style="margin:10px 16px 14px">
+            <ul class="ds-bullets" style="margin:20px 16px">
               <li>기준치 출처: 클래스당 8(SetFit 2022) · SFT 1k(LIMA 2023) · 운영급 13.5k(Llama Guard 2023) · 선호쌍 33k(InstructGPT 2022 참고 상한) · 평가셋 100(tinyBenchmarks 2024)</li>
             </ul>
         </section>
@@ -501,7 +501,7 @@
                 <x-modelpick key="rm" value="rawModel" set="rawModel=$v" options="rawModels" first-label="전체" first-value="" width="228px"></x-modelpick>
               </span>
             </div>
-            <ul class="ds-bullets" style="margin:10px 0 0">
+            <ul class="ds-bullets" style="margin-top:20px">
               <li>선택한 모델이 <b>초기 판정한 초안</b>만 목록에 표시됩니다(누적 · 모델별 정답셋의 재료)</li>
               <li>검수 합의는 <b>이 모델의 정답셋</b>으로 쌓입니다</li>
               <li>버전 간 비교는 <b>결과 비교</b> 탭에서 합니다</li>
@@ -519,7 +519,7 @@
           </span>
         </div>
           <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:11px" x-show="rawModel" x-cloak><li>현재 <b class="text-ink" x-text="rawModel"></b> 초안만 표시 중입니다</li></ul>
+            <ul class="ds-bullets" style="margin-bottom:20px" x-show="rawModel" x-cloak><li>현재 <b class="text-ink" x-text="rawModel"></b> 초안만 표시 중입니다</li></ul>
             <!-- 필터: 검색 + '필터' 버튼 하나(2026-08-03 통합).
                  이전엔 등급·서비스·검수 상태·분류 부족 우선이 상단에 늘어서 폭이 좁아지면 줄이 접히고
                  검색창이 뭉개졌다. 자주 쓰는 검색만 남기고 나머지 조건은 팝오버 한 곳으로 모은다.
