@@ -212,8 +212,8 @@ def final_review_queue(team=None, reviewer: str = "", offset=0, limit=200, reaso
         out = [r for r in out if r.get("final_reason") == filter_reason]
     def waiting_since(row):
         fb = fmap.get(row['hash']) or {}
-        stamps = [float(v.get('ts') or 0) for v in fb.get('verdicts', []) if v.get('ts')]
-        return min(stamps) if stamps else (row.get('fb') or {}).get('ts') or 0
+        stamps = [_fb_epoch(v.get('ts')) for v in fb.get('verdicts', []) if v.get('ts')]   # supabase ts = UTC 문자열
+        return min(stamps) if stamps else _fb_epoch((row.get('fb') or {}).get('ts') or 0)
     out.sort(key=waiting_since, reverse=order == "newest")
     total = len(out)
     offset, limit = max(0, int(offset)), max(1, min(200, int(limit)))

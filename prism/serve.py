@@ -594,12 +594,7 @@ def _fb_public(fb: dict, reviewer: str = "") -> dict:
     빈 피드백도 0 값 딕셔너리로 반환(/raw 의 fb.n==0 계약 · e2e 스모크가 검증)."""
     fb = fb or {}
     vs = fb.get("verdicts") or []
-    last_ts = 0
-    for v in vs:
-        try:
-            last_ts = max(last_ts, float(v.get("ts") or 0))
-        except Exception:
-            pass
+    last_ts = max([_fb_epoch(v.get("ts")) for v in vs if v.get("ts")] or [0])   # supabase ts = UTC 문자열(float 직변환 시 0 고정)
     out = {"verdict": fb.get("consensus") or fb.get("verdict") or "",
            "n": fb.get("n", 0), "good": fb.get("good", 0), "bad": fb.get("bad", 0),
            "ts": last_ts, "note": fb.get("note") or "", "stage": fb.get("stage") or "",
@@ -1732,12 +1727,12 @@ def _g_final_queue(h, q):
                         or is_final_reviewer(uid, h._req_team())):
         h._send(403, json.dumps({"error": "최종검수자 전용입니다"}, ensure_ascii=False), _JSON)
         return None
-    try:
-        return final_review_queue(h._req_team(), reviewer=uid or "",
-                offset=int(q.get("offset", ["0"])[0]), limit=int(q.get("limit", ["200"])[0]),
-                reason=q.get("reason", [""])[0], order=q.get("order", ["oldest"])[0])
+    try:                                             # 페이지 값 해석 실패만 '페이지 조건' 오류(내부 오류를 이 문구로 덮지 않는다)
+        offset, limit = int(q.get("offset", ["0"])[0]), int(q.get("limit", ["200"])[0])
     except ValueError:
         return {"ok": False, "error": "페이지 조건을 확인하세요"}
+    return final_review_queue(h._req_team(), reviewer=uid or "", offset=offset, limit=limit,
+                              reason=q.get("reason", [""])[0], order=q.get("order", ["oldest"])[0])
 
 
 

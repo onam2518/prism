@@ -71,6 +71,25 @@ class TestReviewerRoles(TwoTierBase):
 
 
 class TestFinalQueue(TwoTierBase):
+    def test_queue_sorts_supabase_iso_timestamps(self):
+        """supabase feedback ts 는 UTC 문자열 · float() 직변환으로 ValueError → '페이지 조건' 오류로 큐 전체가 비던 회귀(2026-10-04)."""
+        serve, st = self._with_store()
+        late = self._put_reviewed(st, "늦은 갈림", [("A", "good"), ("B", "bad")])
+        early = self._put_reviewed(st, "이른 갈림", [("A", "good"), ("B", "bad")])
+        fmap = st.feedback_map()
+        iso = {late: "2026-09-30T05:00:00.123+00:00", early: "2026-09-01T05:00:00+00:00"}
+        for ch, e in fmap.items():
+            for v in e["verdicts"]:
+                v["ts"] = iso[ch]
+        from prism import reviewops as RV
+        orig = RV._SV.feedback_map_cached
+        RV._SV.feedback_map_cached = lambda team=None: fmap
+        self.addCleanup(lambda: setattr(RV._SV, "feedback_map_cached", orig))
+        q = serve.final_review_queue(None, order="oldest")
+        self.assertEqual([i["title"] for i in q["items"]], ["이른 갈림", "늦은 갈림"])
+        q = serve.final_review_queue(None, order="newest")
+        self.assertEqual([i["title"] for i in q["items"]], ["늦은 갈림", "이른 갈림"])
+
     def test_queue_selection_rules(self):
         serve, st = self._with_store()
         ch_split = self._put_reviewed(st, "의견 갈림 건", [("A", "good"), ("B", "bad")])
