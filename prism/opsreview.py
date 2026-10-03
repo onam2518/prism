@@ -354,7 +354,7 @@ def save_plan(st, data, team, who):
     return {'ok':True,'plan':new,'week':week,'new_counts':counts}
 
 
-def overview(st, team=None, who='', privileged=False, legacy=None, live_hashes=None):
+def overview(st, team=None, who='', privileged=False, legacy=None, live_hashes=None, settled=None):
     records=reports(st,'ops_review_',team); items=[]; sessions=[]; calibrations=[]; now=time.time()
     for key,record in records.items():
         ch=key[len('ops_review_'):]
@@ -370,6 +370,9 @@ def overview(st, team=None, who='', privileged=False, legacy=None, live_hashes=N
         known={c['hash'] for c in items}
         for ch,fb in legacy.items():
             if ch in known or records.get('ops_review_'+ch, {}).get('cases') or live_hashes is not None and ch not in live_hashes: continue
+            # 이전 판정 미조치는 '수정 필요' 합의가 남은 건만: 정답 편입·최종 판정(settled)은 끝난 건이고
+            # 의견 갈림은 최종 검수 큐 몫이다(2026-10-04 · 한 표만 수정 필요여도 올라와 814건으로 부풀던 문제)
+            if ch in (settled or ()) or fb.get('consensus')!='bad': continue
             bad=[v for v in fb.get('verdicts',[]) if v.get('verdict')=='bad' and (privileged or (v.get('reviewer_id') or v.get('reviewer'))==who)]
             if bad:
                 v=bad[-1];items.append({'id':'legacy:'+ch,'hash':ch,'title':v.get('title') or ch,'state':'open','owner':v.get('reviewer_id') or v.get('reviewer'),'due':'','reason':'기존 수정 필요 · 조치 결과 확인 필요','opened_at':0,'overdue':False,'check_overdue':False,'legacy':True})
@@ -398,7 +401,7 @@ def overview(st, team=None, who='', privileged=False, legacy=None, live_hashes=N
     return {'ok':True,'items':items,'sessions':sessions,'seconds_by_type':seconds,'calibrations':calibrations,
             'plans':plans,'plan_progress':progress,
             'stats':{'open':sum(c['state']!='closed' for c in items),'overdue':sum(c['overdue'] for c in items),
-                     'hold':sum(c['state']=='hold' for c in items),'unassigned':sum(not c.get('owner') or not c.get('due') for c in items)}}
+                     'hold':sum(c['state']=='hold' for c in items),'unassigned':sum(not c.get('owner') for c in items)}}   # 기한은 선택 항목 · 담당자 없음만 미배정
 
 
 def human_expected(st, ch, team=None):
