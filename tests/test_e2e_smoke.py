@@ -90,6 +90,10 @@ class TestE2ESmoke(unittest.TestCase):
         self.assertIn(".panel", css)                               # app.css
         self.assertIn("--ds-primary", css)                         # ds-theme.css
         self.assertIn("@font-face", css)                           # pretendard/gmarket
+        # 항목별 판정(상시 검수): 축별 셀렉트가 아니라 판정 버튼 3종 규격(DESIGN_COMPONENTS 판정 컨트롤)
+        self.assertIn("dve__axis", page)
+        self.assertIn("verdictbtn--hold", page)
+        self.assertIn(".verdictbtn--hold", css)
 
         # ①-b 모바일 검수 페이지(/m): 전용 셸 + 벤더 버스터 · 기존 /m* 프리픽스 라우트 비잠식
         m = _req(base, "/m")
