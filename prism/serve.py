@@ -1663,12 +1663,15 @@ def _g_ops_review(h, q):
     ch = q.get("hash", [""])[0]
     try:
         if ch:
-            return O.detail(get_store(), ch, h._req_team(), who, privileged)
+            out = O.detail(get_store(), ch, h._req_team(), who, privileged)
+            if ch in RV.rewrite_items(h._req_team()):          # 출처 비표시(최종 검수 재작성분)
+                out["basis"] = dict(out["basis"], model="")
+            return out
         team = h._req_team()
         return O.overview(get_store(), team, who, privileged,
                legacy=feedback_map_cached(team),
                live_hashes={_row_key(r.get("content_ref") or {}) for r in results_rows(team=team)},
-               settled=set(get_store().golden_hashes(team)) | set(final_verdicts(team)))
+               settled=set(get_store().golden_hashes(team)) | set(final_verdicts(team)) | set(RV.rewrite_items(team)))
     except (ValueError, TypeError) as exc:
         return {"ok": False, "error": str(exc)}
 
