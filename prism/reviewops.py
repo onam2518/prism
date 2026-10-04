@@ -122,6 +122,13 @@ def set_final_verdict(hash_, verdict, by="", team=None) -> dict:
 REWRITE_REASON = "수정 반영 확인"
 
 
+def rewrite_pending(team=None) -> dict:
+    """재생성을 기다리는 수정 필요 건(reports kind='final_rewrite_pending') · 재생성 성공 시 final_rewrite 로 옮긴다.
+    대기 중에는 오류·보류 처리 목록에 다시 올리지 않는다(이미 조치 경로가 정해진 건)."""
+    rep = _SV._report_get("final_rewrite_pending", team, {}) or {}
+    return dict(rep.get("items") or {})
+
+
 def rewrite_items(team=None) -> dict:
     """수정 필요 합의 건을 다시 생성해 최종 검수로 올린 원장 {hash: {added_ts, model, note}}.
     reports kind='final_rewrite'(팀 스코프). 출처(모델)는 원장에만 남기고 검수 화면에는 표시하지 않는다

@@ -71,6 +71,16 @@ class TestReviewerRoles(TwoTierBase):
 
 
 class TestFinalQueue(TwoTierBase):
+    def test_rewrite_pending_is_settled_for_ops_list(self):
+        serve, st = self._with_store()
+        ch = self._put_reviewed(st, "재생성 대기 건", [("A", "bad"), ("B", "bad")])
+        from prism import opsreview as O
+        from prism import reviewops as RV
+        settled = lambda: set(st.golden_hashes()) | set(RV.rewrite_items(None)) | set(RV.rewrite_pending(None))
+        self.assertEqual(len(O.overview(st, privileged=True, who="me", legacy=st.feedback_map(), settled=settled())["items"]), 1)
+        serve._report_save("final_rewrite_pending", {"items": {ch: {"model": "m"}}}, None)
+        self.assertEqual(O.overview(st, privileged=True, who="me", legacy=st.feedback_map(), settled=settled())["items"], [])
+
     def test_rewrite_items_join_final_queue_without_source(self):
         """수정 필요 합의 건을 다시 생성해 원장(final_rewrite)에 올리면 최종 검수 대상 · 모델 표기 없음."""
         serve, st = self._with_store()
