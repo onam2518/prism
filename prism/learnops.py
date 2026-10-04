@@ -1003,25 +1003,41 @@ def prompt_zip(payload: dict, title: str) -> bytes:
 
 
 MIN_INTENT_N = 20                                # 인텐트 스칼라 가드 최소 측정 표본
+MIN_GUARD_N = 20                                 # 버킷·인텐트 값별 가드 최소 표본(5건이면 1건 변동이 20%p)
+MIN_FLIP = 3                                     # 버킷·인텐트 값별 가드: 실제로 뒤집힌 건이 이 수 이상일 때만 회귀
+MIN_HARM_FLIP = 2                                # 유해 미탐: 미탐이 이 건수 이상 늘 때만 회귀(기대 R 7~9건이면 1건 = 11~14%p)
 INTENT_JACCARD_DROP = 0.05                       # 인텐트 자카드 허용 악화 폭(초과 시 회귀)
 REGRESS_GRADE_DROP = 0.02                        # 정합성 허용 악화 폭(초과 시 회귀 · config.thresholds.regress_grade_drop 로 재정의)
+
+
+_GUARD_KEYS = ("grade_accuracy", "evaluated", "harm_miss_rate", "harm_expected_n", "by_reason_bucket",
+               "intent_n", "intent_jaccard", "by_intent_value", "cat_n", "cat_hf1", "ent_n", "ent_f1",
+               "summary_n", "summary_sim")
+
+
+def _guard_view(m: dict) -> dict:
+    """원복 가드가 읽는 지표만 추린 사본(학습 리포트 보존용 · 사후 재판정 근거)."""
+    return {k: m.get(k) for k in _GUARD_KEYS if k in (m or {})}
 
 
 def _regress_grade_drop() -> float:
     return float(getattr(Config.load().thresholds, "regress_grade_drop", REGRESS_GRADE_DROP) or REGRESS_GRADE_DROP)
 
 
-def _batch_regressions(pre: dict, post: dict, min_bucket_n: int = 5,
+def _batch_regressions(pre: dict, post: dict, min_bucket_n: int = MIN_GUARD_N,
                        min_intent_n: int = MIN_INTENT_N, grade_drop: float = REGRESS_GRADE_DROP) -> list:
     """개선 후 평가가 전보다 나빠진 지점 목록(원복 사유 문구 · 없으면 빈 목록).
     ① 정합성 2%p 초과 악화 AND 두 신뢰구간(ci_overlap) 비중첩(표본 노이즈로 겹치면 동등 처리 ·
        n(evaluated) 없는 구 리포트는 CI 판단 불가라 종전처럼 점 추정치만으로 판정)
-    ② 유해 미탐률(harm_miss_rate) 악화 — 단 어느 한쪽이라도 None(기대 R 행 0 = **측정 불가**)이면
+    ② 유해 미탐률(harm_miss_rate) 악화 — 미탐이 MIN_HARM_FLIP 건 이상 늘 때만(분모 harm_expected_n ·
+       없는 구 리포트는 종전처럼 조금이라도 늘면). 어느 한쪽이라도 None(기대 R 행 0 = **측정 불가**)이면
        비교하지 않는다. 0.0 으로 읽으면 '악화 없음'이 되어 가드가 영원히 안 걸리고,
        유해 축을 아예 못 잰 런이 조용히 통과한다.
-    ③ 버킷별 정합성 10%p 초과 하락(표본 min_bucket_n 이상 버킷만 · 소표본 노이즈 배제)
+    ③ 버킷별 정합성 10%p 초과 하락 AND MIN_FLIP 건 이상 뒤집힘(표본 min_bucket_n 이상 버킷만)
     ④ 인텐트 자카드 5%p 초과 악화(측정 표본 min_intent_n 이상일 때만)
-    ⑤ 인텐트 값별 F1 10%p 초과 하락(support min_bucket_n 이상 · ③과 동일 규칙)
+    ⑤ 인텐트 값별 F1 10%p 초과 하락 AND MIN_FLIP 건 이상(support min_bucket_n 이상 · ③과 동일 규칙)
+    ②·③·⑤ 를 건수로도 거는 이유(2026-10-04): 5건 버킷·기대 R 7건에서는 1~2건 변동이 임계를 넘어,
+    수십 개 버킷·인텐트 값을 함께 보는 가드가 중립 보정까지 거의 매번 원복했다(v15~v20 연속 미반영).
     ⑥ 카테고리 F1·엔티티 F1·리드문 유사도 5%p 초과 악화(표본 min_intent_n 이상 · ④와 동일 규칙 ·
        오토파일럿 목표·종합 점수가 읽는 5축 전부를 원복 가드도 읽게).
     cli tune RegressionGuard 를 서버 자동 배치로 이식(단일 스칼라 가드의 사각 해소).
@@ -1047,7 +1063,12 @@ def _batch_regressions(pre: dict, post: dict, min_bucket_n: int = 5,
     pre_miss, post_miss = pre.get("harm_miss_rate"), post.get("harm_miss_rate")
     if pre_miss is not None and post_miss is not None:      # None = 기대 R 행 0(측정 불가) → 비교 안 함
         pre_miss, post_miss = float(pre_miss), float(post_miss)
-        if post_miss > pre_miss + 1e-9:
+        hn_pre, hn_post = int(pre.get("harm_expected_n") or 0), int(post.get("harm_expected_n") or 0)
+        if hn_pre and hn_post:                               # 건수 비교(같은 정답셋이면 분모 동일)
+            worse = round(post_miss * hn_post) - round(pre_miss * hn_pre) >= MIN_HARM_FLIP
+        else:                                                # 분모 없는 구 리포트: 종전 판정
+            worse = post_miss > pre_miss + 1e-9
+        if worse:
             out.append(f"유해 미탐 {pre_miss:.1%}→{post_miss:.1%} 악화")
     post_b = post.get("by_reason_bucket") or {}
     for b, pv in (pre.get("by_reason_bucket") or {}).items():
@@ -1055,7 +1076,7 @@ def _batch_regressions(pre: dict, post: dict, min_bucket_n: int = 5,
             continue
         ba = float((pv or {}).get("grade_acc") or 0.0)
         ca = float((post_b.get(b) or {}).get("grade_acc", ba))
-        if ca < ba - 0.10:
+        if ca < ba - 0.10 and (ba - ca) * int(pv["n"]) >= MIN_FLIP - 1e-9:
             out.append(f"버킷 {b} {ba:.0%}→{ca:.0%} 회귀")
     # ④·⑤ 인텐트 · 구 리포트(키 없음)는 표본 0 으로 읽혀 자동 skip(하위호환)
     pre_in = int(pre.get("intent_n") or 0)
@@ -1074,7 +1095,7 @@ def _batch_regressions(pre: dict, post: dict, min_bucket_n: int = 5,
                 continue
             bf = float((pv or {}).get("f1") or 0.0)
             cf = float((post_i.get(v) or {}).get("f1", bf))
-            if cf < bf - 0.10:
+            if cf < bf - 0.10 and (bf - cf) * int(pv["n"]) >= MIN_FLIP - 1e-9:
                 out.append(f"인텐트 {v} F1 {bf:.0%}→{cf:.0%} 회귀")
     for k in ("cat_hf1", "ent_f1", "summary_sim"):                       # ⑥ 메타 나머지 축
         nk = ME._FIELD_N[k]
@@ -1130,6 +1151,7 @@ def learning_batch(team=None, models=None, model: str = "", golden_hashes=None, 
                 improve = dict(improve or {})
                 improve["reverted"] = True
                 improve["revert_reason"] = " · ".join(regressions) + " → 이번 보정 미반영(이전 프롬프트 유지)"
+                improve["tried"] = _guard_view(evalr)        # 원복된 시도의 지표(사후 재판정 근거)
                 evalr = eval_pre                             # 유지되는 프롬프트 기준 점수로 보고
         else:
             evalr = eval_pre
@@ -1160,7 +1182,7 @@ def learning_batch(team=None, models=None, model: str = "", golden_hashes=None, 
         report = {"ok": True, "ts": time.time(), "improve": improve, "golden": golden,
                   "quest_bonus": quest_bonus,       # 완주 보너스 지급 결과(수령자·회차) — 리포트로 추적
                   "eval": evalr, "compare": compare, "prompt_snapshot": snap,
-                  "eval_pre": ({"grade_accuracy": eval_pre.get("grade_accuracy"), "n": eval_pre.get("evaluated")}
+                  "eval_pre": (dict(_guard_view(eval_pre), n=eval_pre.get("evaluated"))
                                if eval_pre.get("ok") else None),
                   "improve_delta": delta, "final_rerun": final_rerun,
                   "grade_accuracy": evalr.get("grade_accuracy") if evalr.get("ok") else None}

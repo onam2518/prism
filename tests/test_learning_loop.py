@@ -549,9 +549,9 @@ class TestBatchRegressions(unittest.TestCase):
     def test_harm_and_bucket_regressions_detected(self):
         from prism.learnops import _batch_regressions
         pre = {"grade_accuracy": 0.9, "harm_miss_rate": 0.0,
-               "by_reason_bucket": {"ad": {"n": 10, "grade_acc": 0.9}}}
+               "by_reason_bucket": {"ad": {"n": 20, "grade_acc": 0.9}}}
         post = {"grade_accuracy": 0.9, "harm_miss_rate": 0.05,
-                "by_reason_bucket": {"ad": {"n": 10, "grade_acc": 0.7}}}
+                "by_reason_bucket": {"ad": {"n": 20, "grade_acc": 0.7}}}     # 20건 중 4건 뒤집힘
         r = _batch_regressions(pre, post)
         self.assertEqual(len(r), 2)
         self.assertTrue(any("유해 미탐" in x for x in r))

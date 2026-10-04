@@ -188,8 +188,8 @@ class TestIntentRegressionGuard(unittest.TestCase):
 
     def test_per_value_f1_regression(self):
         from prism import learnops as LO
-        pre = self._rep(0.80, by={"포토·영상 중심": {"n": 8, "f1": 0.80}})
-        post = self._rep(0.80, by={"포토·영상 중심": {"n": 8, "f1": 0.60}})
+        pre = self._rep(0.80, by={"포토·영상 중심": {"n": 20, "f1": 0.80}})
+        post = self._rep(0.80, by={"포토·영상 중심": {"n": 20, "f1": 0.60}})
         g = LO._batch_regressions(pre, post)
         self.assertTrue(any("포토·영상 중심" in x and "F1" in x for x in g), g)
 
@@ -203,6 +203,26 @@ class TestIntentRegressionGuard(unittest.TestCase):
         self.assertFalse(any("카테고리" in x for x in g), g)      # n=3 < 최소 표본
         post["ent_f1"] = 0.77
         self.assertEqual(LO._batch_regressions(pre, post), [])
+
+    def test_noise_level_flips_do_not_revert(self):
+        """운영 v18·v19 사례: 소표본 1~2건 변동은 원복 사유가 아니다(2026-10-04 기준 재설계)."""
+        from prism import learnops as LO
+        pre = dict(self._rep(0.8), harm_miss_rate=0.4444, harm_expected_n=9,
+                   by_reason_bucket={"ad": {"n": 5, "grade_acc": 0.8}},
+                   by_intent_value={"트렌드·시장 분석": {"n": 5, "f1": 0.8}})
+        post = dict(self._rep(0.8), harm_miss_rate=0.5556, harm_expected_n=9,          # 미탐 +1건
+                    by_reason_bucket={"ad": {"n": 5, "grade_acc": 0.4}},              # 5건 버킷
+                    by_intent_value={"트렌드·시장 분석": {"n": 5, "f1": 0.6}})
+        self.assertEqual(LO._batch_regressions(pre, post), [])
+        post["harm_miss_rate"] = 0.6667                                                # 미탐 +2건
+        self.assertTrue(any("유해 미탐" in x for x in LO._batch_regressions(pre, post)))
+
+    def test_large_support_value_drop_still_reverts(self):
+        """운영 v20 사례: 지지 표본이 큰 인텐트 값의 큰 하락은 원복한다."""
+        from prism import learnops as LO
+        pre = self._rep(0.8, by={"보도자료·공식발표": {"n": 30, "f1": 0.91}})
+        post = self._rep(0.8, by={"보도자료·공식발표": {"n": 30, "f1": 0.44}})
+        self.assertTrue(any("보도자료·공식발표" in x for x in LO._batch_regressions(pre, post)))
 
     def test_per_value_low_support_ignored(self):
         from prism import learnops as LO
