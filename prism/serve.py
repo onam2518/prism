@@ -1671,7 +1671,7 @@ def _g_ops_review(h, q):
         return O.overview(get_store(), team, who, privileged,
                legacy=feedback_map_cached(team),
                live_hashes={_row_key(r.get("content_ref") or {}) for r in results_rows(team=team)},
-               settled=set(get_store().golden_hashes(team)) | set(final_verdicts(team)) | set(RV.rewrite_items(team)))
+               settled=set(get_store().golden_hashes(team)) | set(final_verdicts(team)) | set(RV.rewrite_items(team)) | set(RV.rewrite_pending(team)))
     except (ValueError, TypeError) as exc:
         return {"ok": False, "error": str(exc)}
 
