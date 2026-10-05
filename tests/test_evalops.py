@@ -637,14 +637,40 @@ class TestAutopilotGoldenFreeze(TestAutopilot):
 
 
 class TestAutopilotStalled(TestAutopilot):
-    def test_status_marks_dead_running_as_stopped(self):
+    def test_status_resumes_dead_running_run(self):
+        """서버 재시작으로 스레드를 잃은 running 런은 중단 처리 대신 끊긴 라운드부터 재개된다(2026-10-05)."""
         serve, st = self._with_serve()
         _seed_golden(st, 3)
         self._patch_batch([0.95])
-        rid = st.autopilot_create(None, 0.9, 5)                    # running 인데 스레드는 없다(서버 재시작 상황)
+        rid = st.autopilot_create(None, 0.9, 5, model="m-a")          # running 인데 스레드는 없다(서버 재시작 상황)
         r = serve.autopilot_status(None)
-        self.assertEqual(r["run"]["id"], rid); self.assertTrue(r["run"]["stalled"])
+        self.assertEqual(r["run"]["id"], rid)
+        self.assertEqual(r["run"]["status"], "running")
+        self.assertIn("이어서 실행", r["run"]["stop_reason"])
+        run = self._wait(st)
+        self.assertEqual(run["status"], "done")                         # 재개된 런이 끝까지 돈다
+        self.assertEqual(run["resumes"], 1)
+        self.assertEqual(run["model"], "m-a")                           # 시작 시 고른 모델로 재개
+
+    def test_resume_continues_after_completed_rounds(self):
+        """완료 라운드 이력으로 상태를 복원해 다음 라운드부터 돈다(완료 라운드를 다시 돌지 않는다)."""
+        from prism import evalops as EV
+        serve, st = self._with_serve()
+        _seed_golden(st, 3)
+        self._patch_batch([0.70])
+        rid = st.autopilot_create(None, 0.99, 4)
+        done = [{"round": 1, "accuracy": 0.70, "metrics": {"overall": 0.70, "n": 300}, "reverted": True}]
+        st.autopilot_update(rid, history=done, round=2)
+        self.assertEqual(len(EV.autopilot_resume_all()), 1)
+        run = self._wait(st)
+        self.assertEqual([h["round"] for h in run["history"]][:2], [1, 2])   # 라운드 2부터 이어서
+        self.assertEqual(run["history"][0], done[0])                     # 완료 라운드는 그대로
+
+    def test_resume_gives_up_after_repeated_restarts(self):
+        serve, st = self._with_serve()
+        _seed_golden(st, 3)
+        rid = st.autopilot_create(None, 0.9, 5)
+        st.autopilot_update(rid, resumes=3)
+        r = serve.autopilot_status(None)
         self.assertEqual(r["run"]["status"], "stopped")
-        self.assertEqual(st.autopilot_latest(None)["status"], "stopped")   # DB 에도 정리 → 시작 폼이 다시 보인다
-        self.assertTrue(serve.autopilot_start(None, target=0.9, max_rounds=1).get("ok"))
-        self._wait(st)                                             # 스레드가 끝난 뒤 정리(가짜 배치 복원 전에 실런 방지)
+        self.assertEqual(st.autopilot_latest(None)["status"], "stopped")   # 장애 반복 시 무한 재개하지 않는다

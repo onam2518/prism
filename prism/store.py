@@ -383,6 +383,11 @@ class Store:
             c.execute("ALTER TABLE autopilot_runs ADD COLUMN meta_target REAL"); c.commit()   # 아이템 메타 일치율 목표
         if "golden_hashes" not in [r[1] for r in c.execute("PRAGMA table_info(autopilot_runs)")]:
             c.execute("ALTER TABLE autopilot_runs ADD COLUMN golden_hashes TEXT"); c.commit()  # 고정 정답셋
+        _ap_cols = [r[1] for r in c.execute("PRAGMA table_info(autopilot_runs)")]
+        if "model" not in _ap_cols:                    # 재시작 후 재개용: 라운드 평가 모델 · 재개 횟수
+            c.execute("ALTER TABLE autopilot_runs ADD COLUMN model TEXT NOT NULL DEFAULT ''"); c.commit()
+        if "resumes" not in _ap_cols:
+            c.execute("ALTER TABLE autopilot_runs ADD COLUMN resumes INTEGER NOT NULL DEFAULT 0"); c.commit()
         if "answered_at" not in bcols:
             c.execute("ALTER TABLE board ADD COLUMN answered_at REAL"); c.commit()
 
@@ -1687,20 +1692,20 @@ class Store:
 
     # ── 오토파일럿 런 · Atelier autopilot 이식 · supastore 와 동일 계약 ─────
     def autopilot_create(self, team, target, max_rounds, created_by="", meta_target=None,
-                         golden_hashes=None) -> int:
+                         golden_hashes=None, model="") -> int:
         c = self._conn()
         cur = c.execute("INSERT INTO autopilot_runs(team,status,target,meta_target,max_rounds,round,created_by,"
-                        "golden_hashes,ts) VALUES(?,?,?,?,?,0,?,?,?)",
+                        "golden_hashes,ts,model) VALUES(?,?,?,?,?,0,?,?,?,?)",
                         (team or "", "running", float(target), meta_target, int(max_rounds),
                          created_by or "", json.dumps(sorted(golden_hashes or []), ensure_ascii=False),
-                         time.time()))
+                         time.time(), model or ""))
         c.commit()
         return int(cur.lastrowid)
 
     def autopilot_update(self, run_id, team=None, **fields):
         sets, vals = [], []
         for k in ("status", "round", "start_accuracy", "best_accuracy", "last_accuracy",
-                  "stop_reason", "error", "heartbeat", "finished"):
+                  "stop_reason", "error", "heartbeat", "finished", "resumes"):
             if k in fields:
                 sets.append(f"{k}=?")
                 vals.append(fields[k])
@@ -1716,7 +1721,7 @@ class Store:
 
     _PILOT_COLS = ("id,team,status,target,max_rounds,round,start_accuracy,best_accuracy,"
                    "last_accuracy,history,stop_reason,error,created_by,ts,heartbeat,finished,meta_target,"
-                   "golden_hashes")
+                   "golden_hashes,model,resumes")
 
     def _pilot_row(self, r) -> dict:
         try:
@@ -1732,7 +1737,7 @@ class Store:
                 "last_accuracy": r[8], "history": history, "stop_reason": r[10] or "",
                 "error": r[11] or "", "created_by": r[12] or "", "ts": r[13],
                 "heartbeat": r[14], "finished": r[15], "meta_target": r[16],
-                "golden_hashes": frozen}
+                "golden_hashes": frozen, "model": r[18] or "", "resumes": int(r[19] or 0), "team": r[1] or None}
 
     def autopilot_get(self, run_id, team=None):
         r = self._conn().execute(f"SELECT {self._PILOT_COLS} FROM autopilot_runs WHERE id=?",
@@ -1744,6 +1749,12 @@ class Store:
         r = c.execute(f"SELECT {self._PILOT_COLS} FROM autopilot_runs "
                       "ORDER BY id DESC LIMIT 1").fetchone()
         return self._pilot_row(r) if r else None
+
+    def autopilot_running(self) -> list:
+        """status=running 런 전부(서버 시작 시 재개 대상)."""
+        c = self._conn()
+        return [self._pilot_row(r) for r in c.execute(
+            f"SELECT {self._PILOT_COLS} FROM autopilot_runs WHERE status='running' ORDER BY id")]
 
     def autopilot_list(self, team=None, limit=10) -> list:
         c = self._conn()
