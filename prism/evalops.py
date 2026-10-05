@@ -387,7 +387,7 @@ def autopilot_start(team=None, target=0.9, max_rounds=5, created_by="", model: s
             return {"ok": False, "error": f"모델 호출 불가({route}): {model}"}
     frozen = sorted(st.golden_hashes(team))       # 라운드마다 정답셋이 늘면 최고/정체 비교가 다른 셋끼리가 된다 → 시작 셋으로 고정
     rid = st.autopilot_create(team, target, max_rounds, created_by=created_by or "", meta_target=meta_target,
-                              golden_hashes=frozen)
+                              golden_hashes=frozen, model=model)
     th = threading.Thread(target=_pilot_loop, args=(rid, team, target, max_rounds, model, meta_target, frozen),
                           name=f"prism-autopilot-{rid}", daemon=True)
     with _LOCK:
@@ -427,11 +427,11 @@ def autopilot_status(team=None) -> dict:
             run["stalled"] = bool(run.get("status") == "running"
                                   and not (run["id"] in _PILOT_ACTIVE
                                            and _PILOT_ACTIVE[run["id"]].is_alive()))
-        if run["stalled"]:                        # 스레드가 없는 running = 서버 재시작(배포)으로 죽은 런 → 기록으로 정리해 화면을 풀어 준다
+        if run["stalled"]:                        # 스레드가 없는 running = 서버 재시작(배포)으로 끊긴 런 → 끊긴 라운드부터 재개
             try:
-                st.autopilot_update(run["id"], team=team, status="stopped",
-                                    stop_reason="서버 재시작으로 중단 · 다시 시작하세요", finished=time.time())
-                run["status"], run["stop_reason"] = "stopped", "서버 재시작으로 중단 · 다시 시작하세요"
+                res = _pilot_resume(dict(run, team=team))
+                run["status"], run["stop_reason"] = res["status"], res["stop_reason"]
+                run["stalled"] = res["status"] != "running"
             except Exception:
                 pass
         if run.get("status") == "running":
@@ -449,23 +449,93 @@ def _meta_gate() -> float:
     return float(getattr(Config.load().thresholds, "meta_gate", 0.6) or 0.6)
 
 
+PILOT_MAX_RESUMES = 3                             # 재시작마다 자동 재개 · 같은 런이 계속 죽으면(장애 반복) 이 횟수 뒤 중단
+
+
+def _pilot_resume(run: dict) -> dict:
+    """서버 재시작(배포)으로 스레드를 잃은 running 런을 끊긴 라운드부터 이어서 실행한다.
+    완료된 라운드는 history 에 영속돼 있어 최고·정체 판정을 그대로 복원한다. 끊긴 라운드의 미검증 보정은
+    프로세스와 함께 사라졌으므로 그 라운드를 처음부터 다시 돈다."""
+    st = _SV.get_store()
+    rid, team = run["id"], run.get("team")
+    with _LOCK:
+        if rid in _PILOT_ACTIVE and _PILOT_ACTIVE[rid].is_alive():
+            return {"status": "running", "stop_reason": run.get("stop_reason") or ""}
+        resumes = int(run.get("resumes") or 0)
+        history = list(run.get("history") or [])
+        if resumes >= PILOT_MAX_RESUMES:
+            reason = f"서버 재시작이 {resumes}회 반복돼 중단 · 장애를 확인한 뒤 다시 시작하세요"
+            st.autopilot_update(rid, team=team, status="stopped", stop_reason=reason, finished=time.time())
+            return {"status": "stopped", "stop_reason": reason}
+        reason = f"서버 재시작 후 라운드 {len(history) + 1}부터 이어서 실행({resumes + 1}회째 재개)"
+        st.autopilot_update(rid, team=team, resumes=resumes + 1, stop_reason=reason, heartbeat=time.time())
+        th = threading.Thread(target=_pilot_loop,
+                              args=(rid, team, float(run.get("target") or 0.9), int(run.get("max_rounds") or 1),
+                                    run.get("model") or "", float(run.get("meta_target") or _meta_gate()),
+                                    run.get("golden_hashes") or None),
+                              kwargs={"history": history}, name=f"prism-autopilot-{rid}", daemon=True)
+        _PILOT_ACTIVE[rid] = th
+    th.start()
+    print(f"  [autopilot] #{rid} {reason}")
+    return {"status": "running", "stop_reason": reason}
+
+
+def autopilot_resume_all() -> list:
+    """서버 시작 시: 직전 프로세스에서 돌던 오토파일럿을 모두 재개(팀 무관)."""
+    st = _SV.get_store()
+    if not (st and hasattr(st, "autopilot_running")):
+        return []
+    out = []
+    for run in st.autopilot_running():
+        try:
+            out.append(dict(_pilot_resume(run), id=run["id"]))
+        except Exception as e:
+            print(f"  [autopilot] #{run.get('id')} 재개 실패: {e}")
+    return out
+
+
 def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = "", meta_target: float = 0.6,
-                golden_hashes=None):
+                golden_hashes=None, history=None):
     """라운드 반복: learning_batch → 정확도 추적 → 종료 조건 판정. 이력은 라운드마다 영속.
     향상 판정 = 종합 점수 상승 AND 등급 신뢰구간이 최고 라운드와 안 겹침(ci_overlap) ·
     두 구간이 겹치면 점 추정치가 올라도 '동등'으로 보고 향상 없음으로 집계한다(표본 노이즈 방지).
     n(evaluated) 을 모르는 라운드는 CI 판단이 불가하므로 종전처럼 종합 점수만으로 판정한다."""
     from . import learnops as LO
     st = _SV.get_store()
-    history = []
+    history = list(history or [])                    # 재개: 완료 라운드 이력 · 새 런: 빈 목록
     best = None          # 최고 등급 일치율(화면 표시용)
     best_score = None    # 최고 종합 점수(정체 판정용 · 목표 판정과 같은 5축)
     best_acc, best_acc_n = None, None   # 최고 라운드의 등급 일치율·표본 n(CI 동등 판정용)
     no_improve = 0
     stall_rounds = int(getattr(Config.load().thresholds, "pilot_stall_rounds", PILOT_STALL_ROUNDS)
                        or PILOT_STALL_ROUNDS)
+
+    def _judge(acc, overall, n_cur):
+        """라운드 결과를 최고 기록과 비교해 향상 여부 판정 · 상태 갱신(새 라운드·재개 복원 공용)."""
+        nonlocal best, best_score, best_acc, best_acc_n, no_improve
+        best = acc if best is None else max(best, acc)
+        up = best_score is None or overall > best_score + 1e-9   # 정체는 종합 점수로(등급 한 축 아님)
+        # 종합이 올라도 등급 CI 가 최고 라운드와 겹치면(표본 노이즈로 동등) 향상으로 안 친다.
+        # n(evaluated) 을 모르는(구 리포트·페이크) 라운드는 CI 판단 불가 → 종전처럼 종합 점수만으로 판정.
+        if up and best_score is not None and n_cur and best_acc_n \
+                and LO.ci_overlap(acc, n_cur, best_acc, best_acc_n):
+            up = False
+        if up:
+            best_score, best_acc, best_acc_n = overall, acc, n_cur
+        no_improve = 0 if up else no_improve + 1
+        return up
+
+    for h in history:                                 # 재개: 완료 라운드로 최고·정체 상태 복원
+        hm = h.get("metrics") or {}
+        if h.get("accuracy") is not None and hm.get("overall") is not None:
+            _judge(float(h["accuracy"]), float(hm["overall"]), int(hm.get("n") or 0))
     try:
-        for rnd in range(1, max_rounds + 1):
+        if history and no_improve >= stall_rounds:    # 끊기기 직전 라운드에서 이미 정체 조건 충족
+            st.autopilot_update(rid, team=team, status="done",
+                                stop_reason=f"개선 정체 · {stall_rounds}라운드 연속 종합 향상 없음(재개 시 확인)",
+                                finished=time.time())
+            return
+        for rnd in range(len(history) + 1, max_rounds + 1):
             if rid in _PILOT_STOP:
                 st.autopilot_update(rid, team=team, status="stopped",
                                     stop_reason=f"수동 중지(라운드 {rnd - 1} 완료)",
@@ -516,17 +586,9 @@ def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = "",
             history.append({"round": rnd, "ts": time.time(), "accuracy": acc, "pre": pre, "model": model, "metrics": metrics,
                             "delta": rep.get("improve_delta"), "reverted": reverted,
                             "version": int((rep.get("prompt_snapshot") or {}).get("version") or 0)})
-            best = acc if best is None else max(best, acc)
             n_cur = int(ev.get("evaluated") or 0)
-            overall_up = best_score is None or ov["overall"] > best_score + 1e-9   # 정체는 종합 점수로(등급 한 축 아님)
-            # 종합이 올라도 등급 CI 가 최고 라운드와 겹치면(표본 노이즈로 동등) 향상으로 안 친다.
-            # n(evaluated) 을 모르는(구 리포트·페이크) 라운드는 CI 판단 불가 → 종전처럼 종합 점수만으로 판정.
-            if overall_up and best_score is not None and n_cur and best_acc_n \
-                    and LO.ci_overlap(acc, n_cur, best_acc, best_acc_n):
-                overall_up = False
-            improved = overall_up
-            if improved:
-                best_score, best_acc, best_acc_n = ov["overall"], acc, n_cur
+            metrics["n"] = n_cur or metrics.get("n")   # 재개 시 CI 판정 복원용 표본 n
+            _judge(acc, ov["overall"], n_cur)
             fields = {"last_accuracy": acc, "best_accuracy": best,
                       "history": history, "heartbeat": time.time()}
             if rnd == 1:
@@ -537,7 +599,6 @@ def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = "",
                                     stop_reason=f"목표 달성 · 일치율 {acc:.0%} ≥ 목표 {target:.0%} · 메타 {meta_target:.0%} 전부 통과 · 종합 {ov['overall']:.0%}",
                                     finished=time.time())
                 return
-            no_improve = 0 if improved else no_improve + 1
             if no_improve >= stall_rounds:
                 st.autopilot_update(rid, team=team, status="done",
                                     stop_reason=f"개선 정체 · {stall_rounds}라운드 연속 종합 향상 없음"

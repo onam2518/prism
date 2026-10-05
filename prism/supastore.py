@@ -2153,10 +2153,10 @@ class SupabaseStore:
 
     # ── 오토파일럿 런 · Atelier autopilot 이식 · SQLite Store 와 동일 계약 ──
     def autopilot_create(self, team, target, max_rounds, created_by="", meta_target=None,
-                         golden_hashes=None) -> int:
+                         golden_hashes=None, model="") -> int:
         row = {"status": "running", "target": float(target), "meta_target": meta_target, "max_rounds": int(max_rounds),
                "round": 0, "created_by": created_by or "",
-               "golden_hashes": sorted(golden_hashes or [])}
+               "golden_hashes": sorted(golden_hashes or []), "model": model or ""}
         if team:
             row["team_id"] = team
         rows = self._req("POST", "autopilot_runs", body=[row], prefer="return=representation")
@@ -2165,7 +2165,7 @@ class SupabaseStore:
     def autopilot_update(self, run_id, team=None, **fields):
         body = {}
         for k in ("status", "round", "start_accuracy", "best_accuracy", "last_accuracy",
-                  "stop_reason", "error", "history"):
+                  "stop_reason", "error", "history", "resumes"):
             if k in fields:
                 body[k] = fields[k]
         for k in ("heartbeat", "finished"):
@@ -2185,7 +2185,12 @@ class SupabaseStore:
                 "history": r.get("history") or [], "stop_reason": r.get("stop_reason") or "",
                 "error": r.get("error") or "", "created_by": r.get("created_by") or "",
                 "ts": _epoch(r.get("created_at")), "heartbeat": _epoch(r.get("heartbeat_at")),
-                "finished": _epoch(r.get("finished_at")), "golden_hashes": r.get("golden_hashes") or []}
+                "finished": _epoch(r.get("finished_at")), "golden_hashes": r.get("golden_hashes") or [],
+                "model": r.get("model") or "", "resumes": int(r.get("resumes") or 0), "team": r.get("team_id")}
+
+    def autopilot_running(self) -> list:
+        """status=running 런 전부(전 팀 · 서버 시작 시 재개 대상)."""
+        return [self._pilot_row(r) for r in self._get("autopilot_runs", "select=*&status=eq.running&order=id&limit=50")]
 
     def autopilot_get(self, run_id, team=None):
         rows = self._get("autopilot_runs", f"select=*&{self._team_q(team)}&id=eq.{int(run_id)}&limit=1")
