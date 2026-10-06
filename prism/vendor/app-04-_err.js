@@ -322,7 +322,7 @@ window.PRISM_APP_PARTS.push(() => ({
         const rows = [
           ['평가 건수', 'n', 'raw'], ['등급 일치율', 'grade_accuracy'], ['등급 표본', 'grade_n', 'raw'],
           ['사유 일치', 'reason_jaccard'], ['종합 점수', 'overall'],
-          ['인텐트 F1', 'intent_f1', '', 'intent_n'], ['카테고리 F1(계층)', 'cat_hf1', '', 'cat_n'],
+          ['인텐트 적중률', 'intent_hit', '', 'intent_n'], ['인텐트 F1(참고)', 'intent_f1', '', 'intent_n'], ['카테고리 F1(계층)', 'cat_hf1', '', 'cat_n'],
           ['엔티티 F1', 'ent_f1', '', 'ent_n'], ['리드문 유사도', 'summary_sim', '', 'summary_n'],
           ['유해 미탐률', 'harm_miss_rate'], ['빈 결과', 'empty_rate'], ['입력 필요', 'meta_hold_rate'],
           ['비용($)', 'cost_usd', 'cost'], ['응답 속도 p50', 'latency_p50_ms', 'lat'], ['응답 속도 p95', 'latency_p95_ms', 'lat']
@@ -437,7 +437,8 @@ window.PRISM_APP_PARTS.push(() => ({
                       mk('유해 놓침', 'harm_miss_rate', true), mk('빈 결과', 'empty_rate', true),
                       mk('비용($)', 'cost_usd', true, 'raw'),
                       // 아이템 메타 4축(ME.FIELD_KO 와 같은 라벨) · 표본(n) 없는 축은 '·'
-                      mk('인텐트 F1', 'intent_f1', false, '', 'intent_n'),
+                      mk('인텐트 적중률', 'intent_hit', false, '', 'intent_n'),
+                      mk('인텐트 F1(참고)', 'intent_f1', false, '', 'intent_n'),
                       mk('카테고리 F1(계층)', 'cat_hf1', false, '', 'cat_n'),
                       mk('엔티티 F1', 'ent_f1', false, '', 'ent_n'),
                       mk('리드문 유사도', 'summary_sim', false, '', 'summary_n')];
@@ -512,7 +513,7 @@ window.PRISM_APP_PARTS.push(() => ({
       // 모델별 정합성 비교(골든셋 평가 탭) · 슬롯 N개(2~6) 동시 실호출 · 이항 95% CI 표기 · 건별 비교표
       cmpModels: ['', ''], cmpBusy: false, cmpResult: null, cmpLoopModel: '', cookBusy: false,
       cmpHist: [], cmpHistKey: '',            // 저장된 비교 회차 목록 · 고른 회차 키('' = 최신)
-      _CMP_FIELD_KO: { grade_accuracy: '등급 일치율', intent_f1: '인텐트 F1', cat_hf1: '카테고리 F1', ent_f1: '엔티티 F1', summary_sim: '리드문 유사도', grade: '등급', intent: '인텐트', category: '카테고리', entities: '엔티티', summary: '리드문' },
+      _CMP_FIELD_KO: { grade_accuracy: '등급 일치율', intent_hit: '인텐트 적중률', intent_f1: '인텐트 F1', cat_hf1: '카테고리 F1', ent_f1: '엔티티 F1', summary_sim: '리드문 유사도', grade: '등급', intent: '인텐트', category: '카테고리', entities: '엔티티', summary: '리드문' },
       cmpFieldKo(k) { return this._CMP_FIELD_KO[k] || k; },
       get cmpIssues() {                        // 개선 루프 대상 모델(기본 best)의 진단 목록
         const c = this.evalCols; if (!c.length) return [];

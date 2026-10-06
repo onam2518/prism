@@ -114,6 +114,7 @@ def intent_tally(acc: dict, exp: dict, out) -> None:
     u = sw | sg
     acc["intent_jac_sum"] = acc.get("intent_jac_sum", 0.0) + ((len(sw & sg) / len(u)) if u else 1.0)
     acc["intent_f1_sum"] = acc.get("intent_f1_sum", 0.0) + (2 * len(sw & sg) / (len(sw) + len(sg)) if sw or sg else 1.0)   # 샘플 기준 F1
+    acc["intent_hit"] = acc.get("intent_hit", 0) + int(bool(sw & sg) or not u)   # 하나라도 맞음(둘 다 빈 no_value 도 맞음)
     acc["intent_top1"] = acc.get("intent_top1", 0) + int(bool(got) and bool(want) and got[0] == want[0])
     per = acc.setdefault("per_intent", {})
     for v in sw | sg:
@@ -142,6 +143,7 @@ def intent_report(acc: dict) -> dict:
         "intent_exact": round(acc.get("intent_exact", 0) / n, 4) if n else 0,
         "intent_jaccard": round(acc.get("intent_jac_sum", 0.0) / n, 4) if n else 0,
         "intent_f1": round(acc.get("intent_f1_sum", 0.0) / n, 4) if n else 0,
+        "intent_hit": round(acc.get("intent_hit", 0) / n, 4) if n else 0,   # 게이트 지표(metaeval.WEIGHTS)
         "intent_unconfirmed": acc.get("intent_unconfirmed", 0),   # 재확정 필요로 측정에서 뺀 정답 수
         "intent_top1": round(acc.get("intent_top1", 0) / n, 4) if n else 0,
         "by_intent_value": by,
