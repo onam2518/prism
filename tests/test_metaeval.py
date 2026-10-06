@@ -53,9 +53,22 @@ class TestMetaScore(unittest.TestCase):
         self.assertIn("cat_hf1", m); self.assertEqual(m["intent_f1"], 1.0)
 
     def test_overall_and_gate(self):
-        o = ME.overall({"grade_accuracy": 0.9, "intent_f1": 0.5, "intent_n": 4, "cat_n": 0, "ent_n": 0, "summary_n": 0}, 0.85, 0.6)
-        self.assertEqual(o["gate_fails"], ["intent_f1"])
+        o = ME.overall({"grade_accuracy": 0.9, "intent_hit": 0.5, "intent_n": 4, "cat_n": 0, "ent_n": 0, "summary_n": 0}, 0.85, 0.6)
+        self.assertEqual(o["gate_fails"], ["intent_hit"])
         self.assertAlmostEqual(o["overall"], (0.4 * 0.9 + 0.15 * 0.5) / 0.55, 3)
+
+    def test_intent_gate_is_hit_rate_capped(self):
+        """인텐트 게이트 = 하나라도 맞은 비율 · 선은 min(메타 목표, INTENT_HIT_GATE) · F1 은 게이트에 안 쓴다."""
+        from prism import abtest
+        acc = {}
+        abtest.intent_tally(acc, {"intent": ["a", "b"]}, {"item_meta": {"intent": ["a", "c"]}})
+        abtest.intent_tally(acc, {"intent": ["a"]}, {"item_meta": {"intent": ["d"]}})
+        rep = abtest.intent_report(acc)
+        self.assertEqual(rep["intent_hit"], 0.5); self.assertEqual(rep["intent_f1"], 0.25)
+        m = {"grade_accuracy": 0.9, "intent_n": 10, "cat_n": 0, "ent_n": 0, "summary_n": 0}
+        self.assertTrue(ME.overall({**m, "intent_hit": ME.INTENT_HIT_GATE, "intent_f1": 0.3}, 0.85, 0.9)["passed"])
+        self.assertFalse(ME.overall({**m, "intent_hit": 0.7}, 0.85, 0.9)["passed"])
+        self.assertTrue(ME.overall({**m, "intent_hit": 0.62}, 0.85, 0.6)["passed"])   # 목표가 낮으면 목표를 따른다
 
     def test_diagnose_recipes(self):
         acc = {}

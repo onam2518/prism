@@ -134,6 +134,7 @@ class TestEvalRunFlow(unittest.TestCase):
             self.assertIn(k, rep)
         self.assertEqual(rep["intent_n"], 1)
         self.assertEqual(rep["intent_f1"], 1.0)              # 기대·산출 인텐트 완전 일치
+        self.assertEqual(rep["intent_hit"], 1.0)
         self.assertEqual(rep["ent_n"], 1)
         self.assertGreater(rep["ent_f1"], 0)                 # 산출 엔티티에 기대값이 부분적으로 포함
         self.assertEqual(rep["cat_n"], 1)
@@ -538,8 +539,8 @@ class TestAutopilotRoundMetrics(TestAutopilot):
         serve, st = self._with_serve()
         _seed_golden(st, 3)
         orig = LO.learning_batch
-        evs = [{"grade_accuracy": 0.95, "intent_n": 10, "intent_f1": 0.4, "cat_n": 10, "cat_hf1": 0.9, "cost_usd": 0.5, "empty_rate": 0.0},
-               {"grade_accuracy": 0.96, "intent_n": 10, "intent_f1": 0.8, "cat_n": 10, "cat_hf1": 0.9, "cost_usd": 0.4, "empty_rate": 0.0}]
+        evs = [{"grade_accuracy": 0.95, "intent_n": 10, "intent_hit": 0.4, "cat_n": 10, "cat_hf1": 0.9, "cost_usd": 0.5, "empty_rate": 0.0},
+               {"grade_accuracy": 0.96, "intent_n": 10, "intent_hit": 0.8, "cat_n": 10, "cat_hf1": 0.9, "cost_usd": 0.4, "empty_rate": 0.0}]
         state = {"i": 0}
         def fake(team=None, models=None, **kw):
             ev = evs[min(state["i"], 1)]; state["i"] += 1
@@ -553,7 +554,7 @@ class TestAutopilotRoundMetrics(TestAutopilot):
         run = self._wait(st)
         h = run["history"]
         self.assertEqual(len(h), 2)                                  # 1라운드는 인텐트 게이트 미달 → 계속 · 2라운드 통과
-        self.assertEqual(h[0]["metrics"]["gate_fails"], ["intent_f1"]); self.assertFalse(h[0]["metrics"]["passed"])
+        self.assertEqual(h[0]["metrics"]["gate_fails"], ["intent_hit"]); self.assertFalse(h[0]["metrics"]["passed"])
         self.assertTrue(h[1]["metrics"]["passed"]); self.assertIn("overall", h[1]["metrics"])
         self.assertEqual(h[1]["metrics"]["cat_hf1"], 0.9)
         self.assertIn("전부 통과", run["stop_reason"])

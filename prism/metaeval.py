@@ -16,6 +16,10 @@ from . import meta_contract as MC
 from .entdict import normalize_name
 
 EMBED_FN = None                  # 리드문 임베딩 주입 훅([텍스트] → [벡터]) · None 이면 실키가 있을 때만 클라이언트 생성
+# 인텐트는 한 콘텐츠에 겹치는 값이 여럿 붙는 다중 라벨이라 정답 묶음과의 F1 이 구조적으로 낮다
+# (공통 68 전환 전 641건: F1 0.60~0.65 · 하나라도 맞음 0.80~0.86). 게이트는 하나라도 맞은 건의 비율로 보고
+# 선은 실측에서 넓어진 라벨 몫을 뺀 값. 메타 목표가 이보다 낮으면 목표를 따른다. F1 은 참고 수치로 남긴다.
+INTENT_HIT_GATE = 0.75
 SUMMARY_FALLBACK_GATE = 0.4      # 2-gram 폴백일 때 리드문에만 쓰는 게이트 · 메타 게이트(0.6)는 코사인 기준
 _ENT_STRIP = re.compile(r"\(주\)|㈜|주식회사|\([^)]*\)|[\s·,.'\"]+")
 
@@ -203,9 +207,9 @@ def meta_report(acc: dict) -> dict:
 # ── 종합 점수 · 게이트 ───────────────────────────────────────────────────────
 # 등급(정합성)이 원 목적이라 0.4 로 절반 가중, 나머지 메타 4축(인텐트·카테고리·엔티티·리드문)은
 # 서로 우열 없이 0.15 씩 균등 배분(0.4 + 0.15*4 = 1.0).
-WEIGHTS = {"grade_accuracy": 0.4, "intent_f1": 0.15, "cat_hf1": 0.15, "ent_f1": 0.15, "summary_sim": 0.15}
-_FIELD_N = {"intent_f1": "intent_n", "cat_hf1": "cat_n", "ent_f1": "ent_n", "summary_sim": "summary_n"}
-FIELD_KO = {"grade_accuracy": "등급 일치율", "intent_f1": "인텐트 F1", "cat_hf1": "카테고리 F1(계층)",
+WEIGHTS = {"grade_accuracy": 0.4, "intent_hit": 0.15, "cat_hf1": 0.15, "ent_f1": 0.15, "summary_sim": 0.15}
+_FIELD_N = {"intent_hit": "intent_n", "cat_hf1": "cat_n", "ent_f1": "ent_n", "summary_sim": "summary_n"}
+FIELD_KO = {"grade_accuracy": "등급 일치율", "intent_hit": "인텐트 적중률", "cat_hf1": "카테고리 F1(계층)",
             "ent_f1": "엔티티 F1", "summary_sim": "리드문 유사도"}
 
 
@@ -219,6 +223,8 @@ def overall(m: dict, grade_gate: float, meta_gate: float) -> dict:
         v = float(m.get(k) or 0)
         s += w * v; tot += w
         g = grade_gate if k == "grade_accuracy" else meta_gate
+        if k == "intent_hit":
+            g = min(g, INTENT_HIT_GATE)
         if k == "summary_sim" and m.get("summary_sim_method") == "bigram_f1":
             g = SUMMARY_FALLBACK_GATE            # 2-gram 은 어순 차이에 박하다 → 리드문만 낮은 선
         if v < g:

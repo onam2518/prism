@@ -55,7 +55,7 @@
     (r.models || []).forEach(function (m) {
       h += '<tr><td>' + (m.model === r.best ? '<span class="ds-badge ds-badge--success">★ best</span> ' : '') + '<b>' + esc(m.model) + '</b></td>'
         + '<td class="tnum"><b>' + pct(m.overall) + '</b></td><td><span class="ds-badge ' + (m.passed ? 'ds-badge--success' : 'ds-badge--warning') + '">' + (m.passed ? '통과' : '미달 ' + (m.gate_fails || []).length) + '</span></td>'
-        + '<td class="tnum">' + pct(m.grade_accuracy) + '</td><td class="tnum">' + (m.intent_n ? pct(m.intent_f1) : '·') + '</td>'
+        + '<td class="tnum">' + pct(m.grade_accuracy) + '</td><td class="tnum">' + (m.intent_n ? pct(m.intent_hit) : '·') + '</td>'
         + '<td class="tnum">' + (m.cat_n ? pct(m.cat_hf1) : '·') + '</td><td class="tnum">' + (m.ent_n ? pct(m.ent_f1) : '·') + '</td>'
         + '<td class="tnum">' + (m.summary_n ? pct(m.summary_sim) : '·') + '</td>'
         + '<td class="tnum">' + (m.cost_usd != null ? ('$' + Math.round(m.cost_usd * 10000) / 10000) : '·') + '</td>'

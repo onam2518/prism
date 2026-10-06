@@ -441,7 +441,7 @@ def autopilot_status(team=None) -> dict:
 
 
 _ROUND_KEYS = ("n", "grade_accuracy", "reason_jaccard", "harm_miss_rate", "empty_rate", "meta_hold_rate",
-               "intent_n", "intent_f1", "cat_n", "cat_hf1", "ent_n", "ent_f1", "summary_n", "summary_sim",
+               "intent_n", "intent_hit", "intent_f1", "cat_n", "cat_hf1", "ent_n", "ent_f1", "summary_n", "summary_sim",
                "cost_usd", "latency_p50_ms", "latency_p95_ms")
 
 
