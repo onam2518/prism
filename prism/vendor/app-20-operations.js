@@ -138,6 +138,13 @@ window.PRISM_APP_PARTS.push(() => ({
   },
   opsDnm:null, opsDnmMsg:'', opsDnmWiki:{},
   async opsDnmLoad() {try{this.opsDnm=await this.opsRequest('/dnm');const c=(this.opsDnm.wiki||{}).config||{};this.opsDnmWiki=Object.assign({},c,{policy_pages:(c.policy_pages||[]).join(', ')});}catch(e){this.opsDnmMsg=e.message;}},
+  opsDnmLink() {
+    const c=(this.opsDnm||{}).control||{};
+    if(!this.opsDnm)return {dot:'ds-statusdot--mock',text:'조회 중'};
+    if(c.registry&&c.policy)return {dot:'ds-statusdot--ok',text:'등록표·정책 연결됨'};
+    if(c.registry||c.policy)return {dot:'ds-statusdot--warn',text:(c.policy?'정책 연결됨 · 등록표 미연결':'등록표 연결됨 · 정책 미연결')};
+    return {dot:'ds-statusdot--mock',text:'등록표·정책 미연결'};
+  },
   async opsDnmWikiSave() {
     try {await this.opsRequest('/dnm',Object.assign({action:'wiki_config'},this.opsDnmWiki,{interval_min:Number(this.opsDnmWiki.interval_min)||30}));await this.opsDnmLoad();this.opsDnmMsg='위키 연동 설정 저장 완료';}
     catch(e){this.opsDnmMsg=e.message;}

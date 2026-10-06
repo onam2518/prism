@@ -1,28 +1,37 @@
       <!-- ═══ 모듈: 시스템 설정(운영 관리자) · 데이터 관리(상단) + API 키·모델(하단) ═══ -->
       <template x-if="mod === 'system'">
         <section class="panel w-full" x-init="opsDnmLoad()"><header class="panel-hd"><b>DNM 연결·전환 상태</b><button class="copybtn ml-auto" type="button" x-on:click="opsDnmLoad()">새로고침</button></header><section class="panel-bd fn-stack"><div class="fn"><span class="fn__title">연결 상태</span>
-          <p x-text="opsDnm ? (opsDnm.control && opsDnm.control.registry && opsDnm.control.policy?'실제 등록표·정책 연결됨':'등록표·정책 미연결') : '조회 중'"></p>
-          <p class="text-xs" x-text="'정책 버전 · '+((((opsDnm||{}).control||{}).policy||{}).policy_version||'미연결')"></p>
-          <p class="text-xs" x-text="'전환 승인 · '+(((opsDnm||{}).control||{}).approval?'근거 연결됨':'미승인')"></p><p class="text-xs" x-text="'등록표 버전 · '+(((((opsDnm||{}).control||{}).registry)||{}).version||'미연결')"></p></div>
+          <p class="flex items-center gap-2"><span class="ds-statusdot" x-bind:class="opsDnmLink().dot"><span class="ds-statusdot__dot"></span></span><span x-text="opsDnmLink().text"></span></p>
+          <div class="ds-fieldrow"><span class="ds-fieldrow__label">정책 버전</span><span class="ds-fieldrow__value tnum" x-text="((((opsDnm||{}).control||{}).policy||{}).policy_version||'미연결')"></span></div>
+          <div class="ds-fieldrow"><span class="ds-fieldrow__label">등록표 버전</span><span class="ds-fieldrow__value tnum" x-text="(((((opsDnm||{}).control||{}).registry)||{}).version||'미연결')"></span></div>
+          <div class="ds-fieldrow"><span class="ds-fieldrow__label">전환 승인</span><span class="ds-fieldrow__value" x-text="(((opsDnm||{}).control||{}).approval?'근거 연결됨':'미승인')"></span></div></div>
           <ul class="ds-bullets"><li>등록표와 승인 근거는 실제 원천·적용 정책을 확인한 파일만 사용하세요<ul><li>API 존재와 서비스 수신 완료는 구분합니다</li></ul></li></ul>
-          <label class="fn"><span class="fn__title">원천 등록표 파일</span><input class="field" type="file" accept="application/json,.json" x-on:change="opsDnmFile($event,'configure')"></label>
-          <div class="fn"><span class="fn__title">정책 연결</span><div><button class="copybtn" type="button" x-on:click="opsDnmPrepare()">현재 모델·사전 기준의 정책 연결</button></div></div>
           <div class="fn"><span class="fn__title">컨플루언스 연동</span>
-            <label class="text-xs"><input type="checkbox" x-model="opsDnmWiki.enabled"> 주기 자동 확인</label>
-            <label class="text-xs">확인 간격(분) <input class="field" type="number" min="5" x-model="opsDnmWiki.interval_min"></label>
-            <label class="text-xs">등록표 문서 ID <input class="field" inputmode="numeric" x-model="opsDnmWiki.registry_page" placeholder="비우면 파일 업로드만 사용"></label>
-            <label class="text-xs">기록 문서 ID('프리즘 자동 기록' 제목 아래 표만 갱신) <input class="field" inputmode="numeric" x-model="opsDnmWiki.record_page"></label>
-            <label class="text-xs">사전·정책 버전 문서 ID(쉼표 구분) <input class="field" x-model="opsDnmWiki.policy_pages"></label>
-            <div><button class="copybtn" type="button" x-on:click="opsDnmWikiSave()">설정 저장</button> <button class="copybtn" type="button" x-on:click="opsDnmWikiSync()">지금 확인</button></div>
+            <div class="control-row">
+              <span class="ds-toggle"><button type="button" role="switch" class="ds-toggle__track" aria-labelledby="dnm-wiki-auto" x-bind:aria-checked="opsDnmWiki.enabled ? 'true' : 'false'" x-on:click="opsDnmWiki.enabled = !opsDnmWiki.enabled"><span class="ds-toggle__thumb"></span></button><span id="dnm-wiki-auto" class="ds-toggle__label">주기 자동 확인</span></span>
+              <label class="selctl"><span class="selctl__tag">간격(분)</span><input type="number" min="5" class="tnum bg-transparent text-[13px]" style="border:none;outline:none;width:56px" x-model="opsDnmWiki.interval_min"></label>
+            </div>
+            <div class="control-row">
+              <label class="selctl" style="flex:1;min-width:220px"><span class="selctl__tag">등록표 문서</span><input inputmode="numeric" placeholder="문서 ID · 비우면 파일 업로드만 사용" x-model="opsDnmWiki.registry_page" class="w-full bg-transparent text-[13px]" style="border:none;outline:none;min-width:0"></label>
+              <label class="selctl" style="flex:1;min-width:220px"><span class="selctl__tag">기록 문서</span><input inputmode="numeric" placeholder="문서 ID" x-model="opsDnmWiki.record_page" class="w-full bg-transparent text-[13px]" style="border:none;outline:none;min-width:0"></label>
+            </div>
+            <div class="control-row">
+              <label class="selctl" style="flex:1;min-width:240px"><span class="selctl__tag">버전 문서</span><input placeholder="사전·정책 버전 문서 ID · 쉼표로 구분" x-model="opsDnmWiki.policy_pages" class="w-full bg-transparent text-[13px]" style="border:none;outline:none;min-width:0"></label>
+              <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-on:click="opsDnmWikiSave()">설정 저장</button>
+              <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="opsDnmWikiSync()">지금 확인</button>
+            </div>
+            <p class="ds-hint">기록 문서는 '프리즘 자동 기록' 제목 바로 아래 표만 갱신 · 등록표·정책이 바뀌면 재승인 필요</p>
             <template x-if="((opsDnm||{}).wiki||{}).status"><div>
-              <p class="text-xs" x-text="'마지막 확인 · '+new Date(opsDnm.wiki.status.checked_at*1000).toLocaleString()+' · '+(opsDnm.wiki.status.actions.join(' · ')||'변경 없음')"></p>
-              <template x-for="m in opsDnm.wiki.status.mismatch"><p class="text-xs" x-text="'코드와 다른 위키 버전 · '+m"></p></template>
-              <template x-for="m in opsDnm.wiki.status.errors"><p class="text-xs" x-text="'오류 · '+m"></p></template>
+              <p class="content-section__description" x-text="'마지막 확인 · '+new Date(opsDnm.wiki.status.checked_at*1000).toLocaleString()+' · '+(opsDnm.wiki.status.actions.join(' · ')||'변경 없음')"></p>
+              <template x-for="m in opsDnm.wiki.status.mismatch"><p class="ds-hint" x-text="'코드와 다른 위키 버전 · '+m"></p></template>
+              <template x-for="m in opsDnm.wiki.status.errors"><p class="ds-hint ds-hint--error" x-text="'오류 · '+m"></p></template>
             </div></template>
           </div>
-          <label class="fn"><span class="fn__title">전환 승인 증빙 파일</span><input class="field" type="file" accept="application/json,.json" x-on:change="opsDnmFile($event,'approve')"></label>
-          <label class="fn"><span class="fn__title">실제 원천 이벤트 파일</span><input class="field" type="file" accept="application/json,.json" x-on:change="opsDnmFile($event,'event')"></label>
-          <p role="status" x-text="opsDnmMsg"></p>
+          <div class="fn"><span class="fn__title">정책 연결</span><div><button class="ds-btn ds-btn--secondary ds-btn--s-sm" type="button" x-on:click="opsDnmPrepare()">현재 모델·사전 기준의 정책 연결</button></div></div>
+          <div class="fn"><span class="fn__title">원천 등록표 파일</span><div><label class="ds-btn ds-btn--secondary ds-btn--s-sm">파일 선택<input class="sr-only" type="file" accept="application/json,.json" x-on:change="opsDnmFile($event,'configure')"></label></div></div>
+          <div class="fn"><span class="fn__title">전환 승인 증빙 파일</span><div><label class="ds-btn ds-btn--secondary ds-btn--s-sm">파일 선택<input class="sr-only" type="file" accept="application/json,.json" x-on:change="opsDnmFile($event,'approve')"></label></div></div>
+          <div class="fn"><span class="fn__title">실제 원천 이벤트 파일</span><div><label class="ds-btn ds-btn--secondary ds-btn--s-sm">파일 선택<input class="sr-only" type="file" accept="application/json,.json" x-on:change="opsDnmFile($event,'event')"></label></div></div>
+          <p class="content-section__description" role="status" x-text="opsDnmMsg"></p>
         </section></section>
       </template>
       <template x-if="mod === 'system'">
