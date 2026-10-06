@@ -200,10 +200,13 @@ class TestButtonsEndToEnd(unittest.TestCase):
         self.ok("/config", {"meta_call_models": {}})
         # 프롬프트 내려받기: 현재 합성(.md · 4호출 · ③ 인텐트는 2026-09-22 부터 출처 공통 하나) · 없는 버전은 JSON 오류
         self.assertTrue(self.ok("/prompt-export?model=solar-pro2").startswith("PK"))   # zip
-        # 파일명 = 모델_일자_버전 · 모델명의 '/' 등은 '-' · ts 는 낮 시각(UTC 13시)이라 어느 시간대든 같은 날
-        self.assertEqual(self.serve._prompt_zip_name({"model": "openai/gpt-5.4", "ts": 1757336400, "version": 3}),
-                         "openai-gpt-5.4_20250908_v3.zip")
-        self.assertEqual(self.serve._prompt_zip_name({"ts": 1757336400}), "model_20250908_v0.zip")
+        # 파일명 = 모델_버전_요청일자 · 모델명의 '/' 등은 '-' · 일자는 요청 시점 KST(UTC 16시 = 다음 날 01시)
+        from unittest.mock import patch
+        with patch.object(self.serve.time, "time", return_value=1757347200):
+            self.assertEqual(self.serve._export_name(None, "zip", model="openai/gpt-5.4", version=3),
+                             "openai-gpt-5.4_v3_20250909.zip")
+            self.assertEqual(self.serve._export_name(None, "jsonl", "sft", model="", version=None).split("_")[0], "model")
+            self.assertTrue(self.serve._export_name(None, "md", "finetune_spec", model="m", version=2).endswith("_20250909_finetune_spec.md"))
         files = self.serve.LO.prompt_files(self.serve.LO.compose_prompts(None, "solar-pro2"), "t")
         self.assertEqual(sorted(files), ["01-quality.txt", "02-summary.txt", "03-entities.txt", "04-intent.txt", "05-category.txt", "README.md"])
         it = files["04-intent.txt"]                                          # 호출 하나 = 파일 하나

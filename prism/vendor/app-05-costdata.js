@@ -345,7 +345,8 @@ window.PRISM_APP_PARTS.push(() => ({
           const res = await fetch('/learn-export?kind=' + kind, { headers: this._authHeaders() });
           if (!res.ok) { this._err('내보내기 실패'); return; }
           const blob = await res.blob(); const a = document.createElement('a');
-          a.href = URL.createObjectURL(blob); a.download = 'prism_' + kind + '.jsonl';
+          const m = (res.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/);
+          a.href = URL.createObjectURL(blob); a.download = (m && m[1]) || ('prism_' + kind + '.jsonl');
           a.click(); URL.revokeObjectURL(a.href);
         } catch (e) { this._err('내보내기 실패'); }
       },
@@ -355,7 +356,8 @@ window.PRISM_APP_PARTS.push(() => ({
           const res = await fetch('/learn-spec', { headers: this._authHeaders() });
           if (!res.ok) { this._err('소요서 생성 실패'); return; }
           const blob = await res.blob(); const a = document.createElement('a');
-          a.href = URL.createObjectURL(blob); a.download = 'prism_finetune_spec.md'; a.click(); URL.revokeObjectURL(a.href);
+          const m = (res.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/);
+          a.href = URL.createObjectURL(blob); a.download = (m && m[1]) || 'prism_finetune_spec.md'; a.click(); URL.revokeObjectURL(a.href);
         } catch (e) { this._err('소요서 생성 실패'); }
       },
       async exportHandoff() {
