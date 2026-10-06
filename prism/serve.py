@@ -1867,11 +1867,19 @@ def _with_quality(snap: dict) -> dict:
     return {**snap, "quality": {**q, "fallback": "기록 당시 품질 프롬프트 없음 · 현재 기준으로 채움"}}
 
 
-def _prompt_zip_name(snap: dict) -> str:
-    """내려받기 파일명 = 모델_일자_버전.zip · 일자는 기록 시각 · 모델명의 경로·구분 문자는 '-'(헤더는 ASCII 만)."""
-    model = re.sub(r"[^A-Za-z0-9._-]+", "-", str(snap.get("model") or "model")).strip("-") or "model"
-    day = time.strftime("%Y%m%d", time.localtime(float(snap.get("ts") or time.time())))
-    return f"{model}_{day}_v{snap.get('version') or 0}.zip"
+def _export_name(team, ext: str, kind: str = "", model=None, version=None) -> str:
+    """내려받기·내보내기 파일명 = 모델_버전_요청일자[_종류].확장자 · 일자는 요청 시점 KST · 헤더는 ASCII 만이라
+    모델명의 경로·구분 문자는 '-'. model·version 생략 시 현재 설정 모델과 다음 학습 버전(compose_prompts 와 같은 규칙)."""
+    if model is None:
+        model = Config.load().model
+    if version is None:
+        try:
+            version = int(get_store().batch_seq(team)) + 1
+        except Exception:
+            version = 0
+    model = re.sub(r"[^A-Za-z0-9._-]+", "-", str(model or "model")).strip("-") or "model"
+    day = time.strftime("%Y%m%d", time.gmtime(time.time() + 9 * 3600))  # KST
+    return f"{model}_v{version or 0}_{day}" + (f"_{kind}" if kind else "") + f".{ext}"
 
 
 @_get_route("/prompt-export", admin=True)            # 프롬프트 내려받기(zip · 호출별 파일) · run=평가 런 · v=학습 버전 · 없으면 현재 합성(model 지정 가능)
@@ -1888,7 +1896,8 @@ def _g_prompt_export(h, q):
     else:
         snap = LO.compose_prompts(h._req_team(), (q.get("model") or [""])[0])
         title = f"현재 합성 · v{snap.get('version')}"
-    h._send_file(LO.prompt_zip(snap, title), "application/zip", _prompt_zip_name(snap))
+    h._send_file(LO.prompt_zip(snap, title), "application/zip",
+                 _export_name(h._req_team(), "zip", model=snap.get("model"), version=snap.get("version")))
 
 
 @_get_route("/learn-report")                         # 최근 배치 결과(GET) · ?v=N 이면 그 버전 리포트
@@ -1914,13 +1923,14 @@ def _g_learn_export(h, q):
     if not fname:
         h._send(400, json.dumps({"error": text}, ensure_ascii=False), _JSON)
         return None
-    h._send_file(text.encode("utf-8"), "application/x-ndjson; charset=utf-8", fname)
+    h._send_file(text.encode("utf-8"), "application/x-ndjson; charset=utf-8",
+                 _export_name(h._req_team(), "jsonl", fname[len("prism_"):-len(".jsonl")]))
 
 
 @_get_route("/learn-spec", admin=True)               # 파인튜닝 스펙·소요서(.md · 관리자)
 def _g_learn_spec(h, q):
     h._send_file(learn_spec_md(h._req_team()).encode("utf-8"), "text/markdown; charset=utf-8",
-                 "prism_finetune_spec.md")
+                 _export_name(h._req_team(), "md", "finetune_spec"))
 
 
 @_get_route("/handoff-export", admin=True)           # 모델러 핸드오프 번들(.zip · 관리자)
@@ -1929,7 +1939,7 @@ def _g_handoff_export(h, q):
     if not fname:
         h._send(400, json.dumps({"error": blob}, ensure_ascii=False), _JSON)
         return None
-    h._send_file(blob, "application/zip", fname)
+    h._send_file(blob, "application/zip", _export_name(h._req_team(), "zip", "handoff"))
 
 
 @_get_route("/learn-data", admin=True)               # 학습 데이터 현황(관리자)
