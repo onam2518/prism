@@ -6,7 +6,9 @@ from prism import abtest, decide as DC, dictionaries as D
 class DecideTest(unittest.TestCase):
     def test_questions_contract(self):
         q = DC.questions()
-        self.assertEqual(len(q), len(D.QUALITY_METAS) + len(D.INTENT_VALUE_DEFS) + 1 + len(D.CONTENT_CATEGORY_TIER2))
+        self.assertEqual(len(q), len(D.QUALITY_METAS) + len(D.INTENT_VALUE_DEFS) + 1)
+        self.assertLessEqual(len(q), DC.MAX_QUESTIONS)   # 한 요청 질문 상한(운영 422 재발 방지)
+        q.update(DC.cat2_questions(range(len(D.CONTENT_CATEGORY_TIER2))))
         for k, v in q.items():
             if v["type"] == "noul":
                 self.assertNotIn("criteria", v)          # noul 은 criteria 키 자체를 빼야 한다(null 도 거부)
@@ -25,12 +27,17 @@ class DecideTest(unittest.TestCase):
         ans["cat1"] = {"type": "choice", "choice": "A", "probabilities": {"A": 0.6, "C": 0.35, "Z": 0.05}}
         ans["cat2_0"] = {"type": "choice", "choice": "B", "probabilities": {"B": 0.7, "A": 0.3}}
         ans["cat2_2"] = {"type": "choice", "choice": "A", "probabilities": {"A": 0.9}}
-        fake = lambda body, key: {"answers": ans, "usage": {"input_tokens": 5000, "output_tokens": 0}}
+        calls = []
+        def fake(body, key):
+            calls.append(sorted(body["questions"]))
+            return {"answers": {k: v for k, v in ans.items() if k in body["questions"]},
+                    "usage": {"input_tokens": 2500, "output_tokens": 0}}
         out = DC.judge({"title": "t", "body": "b"}, 0.5, fake, "k")
         self.assertEqual(out["quality_meta"], {"finalGrade": "R", "reasons": ["ad"], "review": ""})
         self.assertEqual(out["item_meta"]["intent"], [names[3], names[5], names[7]])   # 임계 이상 상위 INTENT_MAX 개
         self.assertEqual(out["item_meta"]["content_category"], [path(0, 1), path(2, 0)])   # 1차 2순위 ≥ CAT_SECOND 면 그 경로도
-        self.assertAlmostEqual(out["trace"]["cost_usd"], 5000 * DC.PRICE_IN, 6)
+        self.assertAlmostEqual(out["trace"]["cost_usd"], 5000 * DC.PRICE_IN, 6)   # 두 호출 토큰 합
+        self.assertEqual(calls[1], ["cat2_0", "cat2_2"])                           # 2차는 고른 대분류만
         none = DC.to_output({"answers": {"cat1": {"choice": "Z", "probabilities": {"Z": 0.9}}}})
         self.assertEqual(none["item_meta"]["content_category"], [])
         self.assertEqual(none["quality_meta"]["finalGrade"], "G")

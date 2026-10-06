@@ -8,7 +8,7 @@
           <div class="panel-hd"><b>솔라 디사이드 판정 시험</b><span class="meta">Upstage solar-decide · 판정만 하고 글은 쓰지 않는 모델</span><span class="ds-badge ds-badge--neutral ml-auto">운영자 전용</span></div>
           <div class="panel-bd dc-body">
             <ul class="ds-bullets">
-              <li>품질 메타 11종·인텐트 68종은 <b>예/아니오 확률</b>, 카테고리는 <b>대분류 → 소분류</b>를 한 번의 호출로 묻습니다<ul><li>품질 메타가 하나라도 기준 확률 이상이면 R · 엔티티·리드문·근거 문장은 이 모델이 만들 수 없어 채점하지 않습니다</li></ul></li>
+              <li>품질 메타 11종·인텐트 68종은 <b>예/아니오 확률</b>, 카테고리는 <b>대분류</b>를 한 번에 묻고, 고른 대분류의 <b>소분류</b>를 한 번 더 묻습니다(건당 호출 2회 · 요청당 질문 100개 제한)<ul><li>품질 메타가 하나라도 기준 확률 이상이면 R · 엔티티·리드문·근거 문장은 이 모델이 만들 수 없어 채점하지 않습니다</li></ul></li>
               <li>확신도는 그대로 믿지 마세요 · 골든셋 결과로 기준 확률을 맞춘 뒤에만 자동 처리 규칙을 정할 수 있습니다</li>
             </ul>
             <div class="dc-row">
