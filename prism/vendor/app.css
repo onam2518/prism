@@ -1679,6 +1679,10 @@ button.tbchip:disabled{cursor:default;opacity:.8}
      등급 dot·서비스(콘텐츠 관리) + 정확/수정 배지·확신도 막대·확정 버튼(검수).
      영역은 .ar-body 의 gap 으로 균일하게 띄워 가독성을 높인다. */
   .ar-body{display:flex;flex-direction:column;gap:22px}
+  /* 실험실 › 솔라 디사이드(19h-decide): 영역 세로 간격 · 입력 한 줄 배치 · 숫자 입력 폭 */
+  .dc-body{display:flex;flex-direction:column;gap:var(--ds-space-4)}
+  .dc-row{display:flex;align-items:flex-end;gap:var(--ds-space-4);flex-wrap:wrap}
+  .dc-num{width:8em}
   .ar-prog{display:flex;align-items:center;gap:20px;flex-wrap:wrap;background:var(--ds-surface-on);
     border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-md);padding:13px 16px}
   .ar-stat{display:flex;flex-direction:column;gap:2px;min-width:64px}

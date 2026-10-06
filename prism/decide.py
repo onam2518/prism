@@ -4,7 +4,8 @@ Upstage Solar Decide 는 글을 쓰지 않고 타입이 정해진 판정(choice�
 판정 전용 모델이다(TypeSafe Jev 와 같은 /v1/systemone 형식). 그래서 맡길 수 있는 것만 묻는다:
   · 품질 메타 11종 → noul 각각 · 하나라도 임계 이상이면 R (파이프라인 등급 규칙과 같음)
   · 인텐트 68종  → noul 각각 · 임계 이상 상위 INTENT_MAX 개(없으면 최고 1개)
-  · 카테고리 95종 → choice 1개 · 2순위 확률이 CAT_SECOND 이상이면 함께
+  · 카테고리     → 1차(21종+해당 없음) choice + 1차별 2차 choice 21개를 같은 호출에 · 고른 1차의 2차 1위를 쓴다
+                  (1차 2순위 확률이 CAT_SECOND 이상이면 그 경로도 함께) · choice 선택지는 한 문항 26개 상한(라벨=A~Z 한 글자)
 엔티티·리드문·근거 문장은 글을 써야 해서 묻지 않는다(리포트에서도 뺀다).
 
 채점은 abtest.score 단일 소스를 그대로 쓴다 — 산출을 파이프라인 Output 모양으로 되돌려 넘긴다.
@@ -36,27 +37,26 @@ CAT_SECOND = 0.3
 BODY_MAX = 8000                              # ponytail: 본문 앞부분만 보낸다 · 긴 글 손해가 보이면 늘린다
 WORKERS = 8                                  # 독립 측정에서 동시 8건이 처리량 포화점
 TIMEOUT = 30
-_NONE = "none"                               # 카테고리 '해당 없음'(없으면 범위 밖에도 확신 높게 아무거나 고른다)
-
-
-def _cat_paths() -> list:
-    return [f"{t1} / {t2}" for t1, t2s in D.CONTENT_CATEGORY_TIER2.items() for t2 in t2s]
+_LABELS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"         # choice 라벨 = 한 글자(라우트가 한 토큰 라벨 26개까지만 받는다)
+_NONE = "Z"                                  # 1차 카테고리 '해당 없음'(없으면 범위 밖에도 확신 높게 아무거나 고른다)
 
 
 def questions() -> dict:
-    """프리즘 정의문 → 질문 목록. 키는 ASCII(q·i·c 접두 + 순번) · 정의문 원천은 dictionaries 하나뿐."""
+    """프리즘 정의문 → 질문 목록. 키는 ASCII(q_·i·cat 접두 + 순번) · 정의문 원천은 dictionaries 하나뿐."""
     q = {}
     for k, desc in D.QUALITY_METAS.items():
         q["q_" + k] = {"type": "noul", "instructions": "이 콘텐츠가 다음에 해당하는가? " + desc}
     for i, (name, desc) in enumerate(D.INTENT_VALUE_DEFS.items()):
         q[f"i{i}"] = {"type": "noul", "instructions": f"이 콘텐츠에 인텐트 '{name}'을(를) 붙이는가? 정의: {desc}"}
-    crit = {}
-    for i, path in enumerate(_cat_paths()):
-        t1, t2 = path.split(" / ")
-        d = (D.TIER2_DEFS.get(t2) or ("",))[0] or D.IAB_TIER1_DESC.get(t1, "")
-        crit[f"c{i}"] = f"{path}: {d}" if d else path
+    t1s = list(D.CONTENT_CATEGORY_TIER2)
+    crit = {_LABELS[i]: f"{t1}: {D.IAB_TIER1_DESC.get(t1, '')}".rstrip(": ") for i, t1 in enumerate(t1s)}
     crit[_NONE] = "어느 카테고리에도 해당하지 않는다"
-    q["category"] = {"type": "choice", "instructions": "이 콘텐츠의 주제 카테고리는?", "criteria": crit}
+    q["cat1"] = {"type": "choice", "instructions": "이 콘텐츠의 주제 대분류는?", "criteria": crit}
+    for i, t1 in enumerate(t1s):
+        t2s = D.CONTENT_CATEGORY_TIER2[t1]
+        q[f"cat2_{i}"] = {"type": "choice", "instructions": f"대분류가 {t1}이라면 소분류는?",
+                          "criteria": {_LABELS[j]: f"{t2}: {(D.TIER2_DEFS.get(t2) or ('',))[0]}".rstrip(": ")
+                                       for j, t2 in enumerate(t2s)}}
     return q
 
 
@@ -87,7 +87,7 @@ def _mock_post(body: dict, key: str) -> dict:
         if q["type"] == "noul":
             ans[k] = {"type": "noul", "noul": 0.9 if k in ("i0", "q_ad") else 0.05}
         else:
-            ans[k] = {"type": "choice", "choice": "c0", "probabilities": {"c0": 0.8, "c1": 0.2}}
+            ans[k] = {"type": "choice", "choice": "A", "probabilities": {"A": 0.8, "B": 0.2}}
     return {"model": MODEL + "-mock", "answers": ans, "usage": {"input_tokens": 1000, "output_tokens": 0}}
 
 
@@ -99,12 +99,19 @@ def to_output(resp: dict, gate: float = NOUL_GATE) -> dict:
     names = list(D.INTENT_VALUE_DEFS)
     scored = sorted(((noul(f"i{i}"), n) for i, n in enumerate(names)), reverse=True)
     intents = [n for p, n in scored if p >= gate][:INTENT_MAX] or ([scored[0][1]] if scored else [])
-    paths = _cat_paths()
-    cat = a.get("category") or {}
-    probs = cat.get("probabilities") or {cat.get("choice"): 1.0}
-    ranked = [k for k, _ in sorted(probs.items(), key=lambda kv: -(kv[1] or 0)) if k and k != _NONE]
-    picks = ranked[:1] + [k for k in ranked[1:2] if (probs.get(k) or 0) >= CAT_SECOND]
-    cats = [paths[int(k[1:])] for k in picks if k[:1] == "c" and k[1:].isdigit() and int(k[1:]) < len(paths)]
+    t1s = list(D.CONTENT_CATEGORY_TIER2)
+    ranked = lambda q: sorted(((v or 0, k) for k, v in (q.get("probabilities") or {q.get("choice"): 1.0}).items() if k),
+                              reverse=True)
+    top1 = [(p, k) for p, k in ranked(a.get("cat1") or {}) if k != _NONE and k in _LABELS[:len(t1s)]]
+    cats = []
+    for rank, (p, k) in enumerate(top1[:2]):
+        if rank and p < CAT_SECOND:
+            break
+        i = _LABELS.index(k)
+        t2s = D.CONTENT_CATEGORY_TIER2[t1s[i]]
+        sub2 = [k2 for _, k2 in ranked(a.get(f"cat2_{i}") or {}) if k2 in _LABELS[:len(t2s)]]
+        if sub2:
+            cats.append(f"{t1s[i]} / {t2s[_LABELS.index(sub2[0])]}")
     return {"quality_meta": {"finalGrade": "R" if reasons else "G", "reasons": reasons, "review": ""},
             "item_meta": {"intent": intents, "content_category": cats},
             "probs": {"meta": {k: round(noul("q_" + k), 3) for k in D.QUALITY_METAS},
@@ -161,6 +168,10 @@ def start(team=None, n: int = 100, scope: str = "all", gate: float = NOUL_GATE) 
     if rows is None:
         return {"ok": False, "error": err}
     rows = rows[:max(1, min(int(n or 100), len(rows)))]
+    try:                                         # 첫 건을 먼저 불러 형식·권한 오류면 바로 멈춘다(100건 헛호출 방지)
+        judge(rows[0].get("content") or {}, gate, post, key)
+    except Exception as e:
+        return {"ok": False, "error": f"첫 건 호출 실패 · {e}"}
     with _LOCK:
         _SEQ += 1
         rid = _SEQ

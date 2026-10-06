@@ -1,53 +1,105 @@
       <!-- 실험실 › 솔라 디사이드(운영자 전용) · 서브탭 labTab==='decide' · 06-quality-lab 탭 바에 의존
-           판정 전용 모델(글을 쓰지 않음) 시험: 한 건 직접 입력 + 골든셋 일괄 채점 · 로직은 prism/decide.py -->
+           판정 전용 모델(글을 쓰지 않음) 시험: 한 건 직접 입력 + 골든셋 일괄 채점 · 로직은 prism/decide.py
+           디자인 시스템(ds-components.css) 컴포넌트만 사용 · 영역 간격은 .dc-body gap -->
       <template x-if="mod === 'lab'">
-        <div x-show="labTab === 'decide'" x-cloak class="w-full">
+        <div x-show="labTab === 'decide'" x-cloak class="w-full dc-body">
+
         <section class="panel">
           <div class="panel-hd"><b>솔라 디사이드 판정 시험</b><span class="meta">Upstage solar-decide · 판정만 하고 글은 쓰지 않는 모델</span><span class="ds-badge ds-badge--neutral ml-auto">운영자 전용</span></div>
-          <div class="panel-bd">
-            <ul class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4)">
-              <li>품질 메타 11종·인텐트 68종은 <b>예/아니오 확률</b>, 카테고리 95종은 <b>하나 고르기</b>로 한 번에 묻습니다<ul><li>품질 메타가 하나라도 기준 확률 이상이면 R · 엔티티·리드문·근거 문장은 이 모델이 만들 수 없어 채점하지 않습니다</li></ul></li>
+          <div class="panel-bd dc-body">
+            <ul class="ds-bullets">
+              <li>품질 메타 11종·인텐트 68종은 <b>예/아니오 확률</b>, 카테고리는 <b>대분류 → 소분류</b>를 한 번의 호출로 묻습니다<ul><li>품질 메타가 하나라도 기준 확률 이상이면 R · 엔티티·리드문·근거 문장은 이 모델이 만들 수 없어 채점하지 않습니다</li></ul></li>
               <li>확신도는 그대로 믿지 마세요 · 골든셋 결과로 기준 확률을 맞춘 뒤에만 자동 처리 규칙을 정할 수 있습니다</li>
             </ul>
+            <div class="dc-row">
+              <div>
+                <label class="ds-label" for="dc-gate">기준 확률</label>
+                <input id="dc-gate" class="ds-field dc-num" type="number" min="0.05" max="0.99" step="0.05" x-model.number="dcGate">
+              </div>
+              <p class="ds-hint">품질 메타·인텐트를 '해당'으로 볼 확률 선 · 한 건 시험과 골든셋 시험에 함께 씁니다</p>
+            </div>
+          </div>
+        </section>
 
-            <h4 style="margin:var(--ds-space-4) 0 var(--ds-space-2)">한 건 시험</h4>
-            <input class="field w-full" x-model="dcTitle" placeholder="제목">
-            <textarea class="field w-full" rows="4" x-model="dcBody" placeholder="본문" style="margin-top:var(--ds-space-2)"></textarea>
-            <div class="flex items-center gap-2" style="margin-top:var(--ds-space-2)">
-              <label class="meta" for="dc-gate">기준 확률</label>
-              <input id="dc-gate" class="field" type="number" min="0.05" max="0.99" step="0.05" x-model.number="dcGate" style="width:6em">
-              <button type="button" class="ds-btn ds-btn--solid ds-btn--c-primary ds-btn--s-sm" x-bind:disabled="dcTrying || !(dcTitle || dcBody)" x-on:click="dcTry()" x-text="dcTrying ? '판정 중…' : '판정해 보기'"></button>
+        <section class="panel">
+          <div class="panel-hd"><b>한 건 시험</b><span class="meta">접근 권한·응답 모양 확인</span></div>
+          <div class="panel-bd dc-body">
+            <div>
+              <label class="ds-label" for="dc-title">제목</label>
+              <input id="dc-title" class="ds-field" x-model="dcTitle" placeholder="콘텐츠 제목">
+            </div>
+            <div>
+              <label class="ds-label" for="dc-body">본문</label>
+              <textarea id="dc-body" class="ds-field" rows="4" x-model="dcBody" placeholder="본문 (앞 8,000자까지 보냅니다)"></textarea>
+            </div>
+            <div class="flex items-center gap-3">
+              <button type="button" class="ds-btn ds-btn--solid ds-btn--c-primary ds-btn--s-sm" x-bind:class="dcTrying ? 'ds-btn--loading' : ''" x-bind:disabled="dcTrying || !(dcTitle || dcBody)" x-on:click="dcTry()" x-text="dcTrying ? '판정 중…' : '판정해 보기'"></button>
+              <p class="ds-hint ds-hint--error" x-show="dcOneErr" x-cloak x-text="dcOneErr"></p>
             </div>
             <template x-if="dcOne">
-              <table class="ds-table w-full" style="margin-top:var(--ds-space-2)"><tbody>
-                <tr><th>등급</th><td><b x-text="dcOne.quality_meta.finalGrade"></b> <span class="meta" x-text="(dcOne.quality_meta.reasons || []).map(k => dcMetaKo(k)).join(' · ')"></span></td></tr>
-                <tr><th>품질 메타 확률</th><td x-text="Object.entries(dcOne.probs.meta).filter(kv => kv[1] >= 0.05).map(kv => dcMetaKo(kv[0]) + ' ' + Math.round(kv[1]*100) + '%').join(' · ') || '모두 5% 미만'"></td></tr>
-                <tr><th>인텐트</th><td><span x-text="(dcOne.item_meta.intent || []).join(' · ')"></span> <span class="meta" x-text="'(상위 ' + dcOne.probs.intent.map(x => x[0] + ' ' + Math.round(x[1]*100) + '%').join(' · ') + ')'"></span></td></tr>
-                <tr><th>카테고리</th><td x-text="(dcOne.item_meta.content_category || []).join(' · ') || '해당 없음'"></td></tr>
-                <tr><th>지연 · 토큰 · 비용</th><td class="tnum" x-text="dcOne.trace.latency_ms + 'ms · 입력 ' + dcOne.trace.tokens.in + ' · $' + dcOne.trace.cost_usd + ' · ' + dcOne.trace.model"></td></tr>
-              </tbody></table>
-            </template>
-
-            <h4 style="margin:var(--ds-space-5) 0 var(--ds-space-2)">골든셋 일괄 시험</h4>
-            <div class="flex items-center gap-2">
-              <label class="meta" for="dc-n">건수</label>
-              <input id="dc-n" class="field" type="number" min="1" max="1000" x-model.number="dcN" style="width:6em">
-              <label class="meta"><input type="checkbox" x-model="dcEvalOnly"> 평가용 정답만</label>
-              <button type="button" class="ds-btn ds-btn--solid ds-btn--c-primary ds-btn--s-sm" x-bind:disabled="dcRunning" x-on:click="dcRun()" x-text="dcRunning ? ('채점 중… ' + dcDone + '/' + dcTotal) : '골든셋 채점 실행'"></button>
-            </div>
-            <div class="ds-progress" x-show="dcRunning" x-cloak style="margin-top:var(--ds-space-2)"><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="'width:' + (dcTotal ? Math.round(dcDone*100/dcTotal) : 0) + '%'"></div></div></div>
-            <p class="meta" x-show="dcMsg" x-cloak x-text="dcMsg" style="margin-top:var(--ds-space-2)"></p>
-            <template x-if="dcRep">
-              <table class="ds-table w-full" style="margin-top:var(--ds-space-2)">
-                <thead><tr><th>지표</th><th>값</th><th>표본</th></tr></thead>
-                <tbody>
-                  <template x-for="row in dcRows()" x-bind:key="row[1]">
-                    <tr><td x-text="row[0]"></td><td class="tnum" x-text="dcFmt(row)"></td><td class="tnum meta" x-text="row[3] ? (dcRep[row[3]] ?? '·') : ''"></td></tr>
-                  </template>
-                </tbody>
-              </table>
+              <dl class="ds-deflist">
+                <div class="ds-fieldrow"><dt class="ds-fieldrow__label">등급</dt>
+                  <dd class="ds-fieldrow__value ds-fieldrow__chips">
+                    <span class="ds-grade" x-bind:class="dcOne.quality_meta.finalGrade === 'R' ? 'ds-grade--r' : 'ds-grade--g'"><span class="ds-grade__mark" x-text="dcOne.quality_meta.finalGrade"></span><span x-text="dcOne.quality_meta.finalGrade === 'R' ? '제한' : '정상'"></span></span>
+                    <template x-for="k in dcOne.quality_meta.reasons" x-bind:key="k"><span class="ds-badge ds-badge--reason" x-text="dcMetaKo(k)"></span></template>
+                  </dd></div>
+                <div class="ds-fieldrow"><dt class="ds-fieldrow__label">품질 메타 확률</dt>
+                  <dd class="ds-fieldrow__value tnum" x-text="dcMetaProbs()"></dd></div>
+                <div class="ds-fieldrow"><dt class="ds-fieldrow__label">인텐트</dt>
+                  <dd class="ds-fieldrow__value">
+                    <div class="ds-fieldrow__chips"><template x-for="v in dcOne.item_meta.intent" x-bind:key="v"><span class="ds-badge ds-badge--intent" x-text="v"></span></template></div>
+                    <p class="ds-hint tnum" x-text="'확률 상위 · ' + dcOne.probs.intent.map(x => x[0] + ' ' + dcPct(x[1])).join(' · ')"></p>
+                  </dd></div>
+                <div class="ds-fieldrow"><dt class="ds-fieldrow__label">카테고리</dt>
+                  <dd class="ds-fieldrow__value ds-fieldrow__chips">
+                    <template x-for="v in dcOne.item_meta.content_category" x-bind:key="v"><span class="ds-badge ds-badge--category" x-text="v"></span></template>
+                    <span class="ds-hint" x-show="!dcOne.item_meta.content_category.length">해당 없음</span>
+                  </dd></div>
+                <div class="ds-fieldrow"><dt class="ds-fieldrow__label">지연 · 비용</dt>
+                  <dd class="ds-fieldrow__value tnum" x-text="dcOne.trace.latency_ms + 'ms · 입력 ' + dcOne.trace.tokens.in.toLocaleString() + '토큰 · $' + dcOne.trace.cost_usd + ' · ' + dcOne.trace.model"></dd></div>
+              </dl>
             </template>
           </div>
         </section>
+
+        <section class="panel">
+          <div class="panel-hd"><b>골든셋 일괄 시험</b><span class="meta">정답과 비교해 채점 · 동시 8건 호출</span></div>
+          <div class="panel-bd dc-body">
+            <div class="dc-row">
+              <div>
+                <label class="ds-label" for="dc-n">건수</label>
+                <input id="dc-n" class="ds-field dc-num" type="number" min="1" max="1000" x-model.number="dcN">
+              </div>
+              <label class="ds-toggle">
+                <button type="button" role="switch" class="ds-toggle__track" x-bind:aria-checked="dcEvalOnly ? 'true' : 'false'" x-on:click="dcEvalOnly = !dcEvalOnly"><span class="ds-toggle__thumb"></span></button>
+                <span class="ds-toggle__label">평가용 정답만</span>
+              </label>
+              <button type="button" class="ds-btn ds-btn--solid ds-btn--c-primary ds-btn--s-sm ml-auto" x-bind:disabled="dcRunning" x-on:click="dcRun()" x-text="dcRunning ? '채점 중…' : '골든셋 채점 실행'"></button>
+            </div>
+            <div class="ds-progress" x-show="dcRunning" x-cloak>
+              <div class="ds-progress__head"><span class="ds-progress__label">채점 진행</span><span class="ds-progress__pct" x-text="dcDone + ' / ' + dcTotal"></span></div>
+              <div class="ds-progress__track"><div class="ds-progress__fill" x-bind:style="'width:' + (dcTotal ? Math.round(dcDone * 100 / dcTotal) : 0) + '%'"></div></div>
+            </div>
+            <p class="ds-hint" x-bind:class="dcErr ? 'ds-hint--error' : ''" x-show="dcMsg" x-cloak x-text="dcMsg"></p>
+            <template x-if="dcRep">
+              <div class="dc-body">
+                <div class="ds-stat-grid">
+                  <template x-for="row in dcRows().filter(r => r[4])" x-bind:key="row[1]">
+                    <div class="ds-stat"><div class="ds-stat__value tnum" x-text="dcFmt(row)"></div><div class="ds-stat__label" x-text="row[0]"></div></div>
+                  </template>
+                </div>
+                <table class="ds-table ds-table--compact w-full">
+                  <thead><tr><th>지표</th><th class="tnum">값</th><th class="tnum">표본</th></tr></thead>
+                  <tbody>
+                    <template x-for="row in dcRows()" x-bind:key="row[1]">
+                      <tr><td x-text="row[0]"></td><td class="tnum" x-text="dcFmt(row)"></td><td class="tnum" x-text="row[3] ? (dcRep[row[3]] ?? '·') : ''"></td></tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+            </template>
+          </div>
+        </section>
+
         </div>
       </template>
