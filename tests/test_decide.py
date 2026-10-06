@@ -6,31 +6,36 @@ from prism import abtest, decide as DC, dictionaries as D
 class DecideTest(unittest.TestCase):
     def test_questions_contract(self):
         q = DC.questions()
-        self.assertEqual(len(q), len(D.QUALITY_METAS) + len(D.INTENT_VALUE_DEFS) + 1)
+        self.assertEqual(len(q), len(D.QUALITY_METAS) + len(D.INTENT_VALUE_DEFS) + 1 + len(D.CONTENT_CATEGORY_TIER2))
         for k, v in q.items():
             if v["type"] == "noul":
                 self.assertNotIn("criteria", v)          # noul 은 criteria 키 자체를 빼야 한다(null 도 거부)
-        self.assertLessEqual(len(q["category"]["criteria"]), 255)   # choice 선택지 상한
-        self.assertIn(DC._NONE, q["category"]["criteria"])
+            else:                                        # choice 라벨 = 한 글자 · 문항당 26개 상한(운영 422 재발 방지)
+                self.assertLessEqual(len(v["criteria"]), 26)
+                self.assertTrue(all(len(k2) == 1 and k2 in DC._LABELS for k2 in v["criteria"]))
+        self.assertIn(DC._NONE, q["cat1"]["criteria"])
 
     def test_to_output_and_score(self):
         names = list(D.INTENT_VALUE_DEFS)
-        paths = DC._cat_paths()
-        ans = {k: {"type": "noul", "noul": 0.0} for k in DC.questions() if k != "category"}
+        t1s = list(D.CONTENT_CATEGORY_TIER2)
+        path = lambda i, j: f"{t1s[i]} / {D.CONTENT_CATEGORY_TIER2[t1s[i]][j]}"
+        ans = {k: {"type": "noul", "noul": 0.0} for k in DC.questions() if not k.startswith("cat")}
         ans["q_ad"]["noul"] = 0.8
         ans["i3"]["noul"] = 0.9; ans["i5"]["noul"] = 0.6; ans["i7"]["noul"] = 0.55; ans["i9"]["noul"] = 0.51
-        ans["category"] = {"type": "choice", "choice": "c2", "probabilities": {"c2": 0.6, "c4": 0.35, "none": 0.05}}
+        ans["cat1"] = {"type": "choice", "choice": "A", "probabilities": {"A": 0.6, "C": 0.35, "Z": 0.05}}
+        ans["cat2_0"] = {"type": "choice", "choice": "B", "probabilities": {"B": 0.7, "A": 0.3}}
+        ans["cat2_2"] = {"type": "choice", "choice": "A", "probabilities": {"A": 0.9}}
         fake = lambda body, key: {"answers": ans, "usage": {"input_tokens": 5000, "output_tokens": 0}}
         out = DC.judge({"title": "t", "body": "b"}, 0.5, fake, "k")
         self.assertEqual(out["quality_meta"], {"finalGrade": "R", "reasons": ["ad"], "review": ""})
         self.assertEqual(out["item_meta"]["intent"], [names[3], names[5], names[7]])   # 임계 이상 상위 INTENT_MAX 개
-        self.assertEqual(out["item_meta"]["content_category"], [paths[2], paths[4]])   # 2순위 확률 ≥ CAT_SECOND
+        self.assertEqual(out["item_meta"]["content_category"], [path(0, 1), path(2, 0)])   # 1차 2순위 ≥ CAT_SECOND 면 그 경로도
         self.assertAlmostEqual(out["trace"]["cost_usd"], 5000 * DC.PRICE_IN, 6)
-        none = DC.to_output({"answers": {"category": {"choice": "none", "probabilities": {"none": 0.9}}}})
+        none = DC.to_output({"answers": {"cat1": {"choice": "Z", "probabilities": {"Z": 0.9}}}})
         self.assertEqual(none["item_meta"]["content_category"], [])
         self.assertEqual(none["quality_meta"]["finalGrade"], "G")
         rows = [{"content": {}, "expected": {"finalGrade": "R", "reasons": ["ad"], "intent": [names[3], "x"],
-                                             "content_category": [paths[2]]}}]
+                                             "content_category": [path(0, 1)]}}]
         m = abtest.score(rows, [out])
         self.assertEqual(m["grade_accuracy"], 1.0); self.assertEqual(m["intent_hit"], 1.0)
         for k in DC.REPORT_KEYS:
