@@ -7,6 +7,19 @@
           <ul class="ds-bullets"><li>등록표와 승인 근거는 실제 원천·적용 정책을 확인한 파일만 사용하세요<ul><li>API 존재와 서비스 수신 완료는 구분합니다</li></ul></li></ul>
           <label class="fn"><span class="fn__title">원천 등록표 파일</span><input class="field" type="file" accept="application/json,.json" x-on:change="opsDnmFile($event,'configure')"></label>
           <div class="fn"><span class="fn__title">정책 연결</span><div><button class="copybtn" type="button" x-on:click="opsDnmPrepare()">현재 모델·사전 기준의 정책 연결</button></div></div>
+          <div class="fn"><span class="fn__title">컨플루언스 연동</span>
+            <label class="text-xs"><input type="checkbox" x-model="opsDnmWiki.enabled"> 주기 자동 확인</label>
+            <label class="text-xs">확인 간격(분) <input class="field" type="number" min="5" x-model="opsDnmWiki.interval_min"></label>
+            <label class="text-xs">등록표 문서 ID <input class="field" inputmode="numeric" x-model="opsDnmWiki.registry_page" placeholder="비우면 파일 업로드만 사용"></label>
+            <label class="text-xs">기록 문서 ID('프리즘 자동 기록' 제목 아래 표만 갱신) <input class="field" inputmode="numeric" x-model="opsDnmWiki.record_page"></label>
+            <label class="text-xs">사전·정책 버전 문서 ID(쉼표 구분) <input class="field" x-model="opsDnmWiki.policy_pages"></label>
+            <div><button class="copybtn" type="button" x-on:click="opsDnmWikiSave()">설정 저장</button> <button class="copybtn" type="button" x-on:click="opsDnmWikiSync()">지금 확인</button></div>
+            <template x-if="((opsDnm||{}).wiki||{}).status"><div>
+              <p class="text-xs" x-text="'마지막 확인 · '+new Date(opsDnm.wiki.status.checked_at*1000).toLocaleString()+' · '+(opsDnm.wiki.status.actions.join(' · ')||'변경 없음')"></p>
+              <template x-for="m in opsDnm.wiki.status.mismatch"><p class="text-xs" x-text="'코드와 다른 위키 버전 · '+m"></p></template>
+              <template x-for="m in opsDnm.wiki.status.errors"><p class="text-xs" x-text="'오류 · '+m"></p></template>
+            </div></template>
+          </div>
           <label class="fn"><span class="fn__title">전환 승인 증빙 파일</span><input class="field" type="file" accept="application/json,.json" x-on:change="opsDnmFile($event,'approve')"></label>
           <label class="fn"><span class="fn__title">실제 원천 이벤트 파일</span><input class="field" type="file" accept="application/json,.json" x-on:change="opsDnmFile($event,'event')"></label>
           <p role="status" x-text="opsDnmMsg"></p>
