@@ -23,6 +23,17 @@ class TestPromptPolicy(unittest.TestCase):
         self.assertIn("복합 명사", blob)                     # 분해 금지 지침 존재
         self.assertIn("상한은 없다", blob)
 
+    def test_category_tier1_verbatim_rule(self):
+        """카테고리 Tier1 표기 규칙(2026-10-06 SLINK v24 · 'Religion / Religion' 사전 밖 값으로 빈 카테고리).
+        파트너 실행은 프리즘 정규화를 거치지 않아 프롬프트 규칙이 유일한 방어선 · 예시 이름이 사전과 어긋나면 실패."""
+        from prism import meta_prompts as MP, dictionaries as D
+        rules = MP.CALL_RULES["category"]
+        self.assertIn("글자 그대로", rules)
+        for t1 in ("Religion and Spirituality", "Health and Fitness", "Medical Health"):
+            self.assertIn(t1, D.IAB_TIER1)
+            self.assertIn(t1, rules)
+        self.assertIn("Tier 1 바로 아래", MP.CALL_SELF_CHECK["category"])
+
     def test_intent_count_cap_removed(self):
         # 인텐트도 엔티티와 동일 정책: N개 · 상한 없음 (2026-07-17 · 구 '총 1~3개 권장' 폐기)
         from prism import meta_prompts as MP
