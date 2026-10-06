@@ -4,8 +4,9 @@ Upstage Solar Decide 는 글을 쓰지 않고 타입이 정해진 판정(choice�
 판정 전용 모델이다(TypeSafe Jev 와 같은 /v1/systemone 형식). 그래서 맡길 수 있는 것만 묻는다:
   · 품질 메타 11종 → noul 각각 · 하나라도 임계 이상이면 R (파이프라인 등급 규칙과 같음)
   · 인텐트 68종  → noul 각각 · 임계 이상 상위 INTENT_MAX 개(없으면 최고 1개)
-  · 카테고리     → 1차(21종+해당 없음) choice + 1차별 2차 choice 21개를 같은 호출에 · 고른 1차의 2차 1위를 쓴다
-                  (1차 2순위 확률이 CAT_SECOND 이상이면 그 경로도 함께) · choice 선택지는 한 문항 26개 상한(라벨=A~Z 한 글자)
+  · 카테고리     → 1차(21종+해당 없음) choice 를 위와 같은 호출에 · 고른 1차의 2차 choice 는 두 번째 호출로 묻는다
+                  (1차 2순위 확률이 CAT_SECOND 이상이면 그 경로도 함께)
+라우트 제약(운영 422 로 확인): choice 선택지는 한 문항 26개(라벨=A~Z 한 글자) · 한 요청 질문 MAX_QUESTIONS 개.
 엔티티·리드문·근거 문장은 글을 써야 해서 묻지 않는다(리포트에서도 뺀다).
 
 채점은 abtest.score 단일 소스를 그대로 쓴다 — 산출을 파이프라인 Output 모양으로 되돌려 넘긴다.
@@ -37,12 +38,13 @@ CAT_SECOND = 0.3
 BODY_MAX = 8000                              # ponytail: 본문 앞부분만 보낸다 · 긴 글 손해가 보이면 늘린다
 WORKERS = 8                                  # 독립 측정에서 동시 8건이 처리량 포화점
 TIMEOUT = 30
+MAX_QUESTIONS = 100                          # 한 요청 질문 상한(초과 시 422)
 _LABELS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"         # choice 라벨 = 한 글자(라우트가 한 토큰 라벨 26개까지만 받는다)
 _NONE = "Z"                                  # 1차 카테고리 '해당 없음'(없으면 범위 밖에도 확신 높게 아무거나 고른다)
 
 
 def questions() -> dict:
-    """프리즘 정의문 → 질문 목록. 키는 ASCII(q_·i·cat 접두 + 순번) · 정의문 원천은 dictionaries 하나뿐."""
+    """1차 호출 질문(품질 메타·인텐트·대분류). 키는 ASCII(q_·i·cat 접두 + 순번) · 정의문 원천은 dictionaries 하나뿐."""
     q = {}
     for k, desc in D.QUALITY_METAS.items():
         q["q_" + k] = {"type": "noul", "instructions": "이 콘텐츠가 다음에 해당하는가? " + desc}
@@ -52,12 +54,27 @@ def questions() -> dict:
     crit = {_LABELS[i]: f"{t1}: {D.IAB_TIER1_DESC.get(t1, '')}".rstrip(": ") for i, t1 in enumerate(t1s)}
     crit[_NONE] = "어느 카테고리에도 해당하지 않는다"
     q["cat1"] = {"type": "choice", "instructions": "이 콘텐츠의 주제 대분류는?", "criteria": crit}
-    for i, t1 in enumerate(t1s):
-        t2s = D.CONTENT_CATEGORY_TIER2[t1]
-        q[f"cat2_{i}"] = {"type": "choice", "instructions": f"대분류가 {t1}이라면 소분류는?",
-                          "criteria": {_LABELS[j]: f"{t2}: {(D.TIER2_DEFS.get(t2) or ('',))[0]}".rstrip(": ")
-                                       for j, t2 in enumerate(t2s)}}
     return q
+
+
+def cat2_questions(idxs) -> dict:
+    """2차 호출 질문: 고른 대분류(인덱스)의 소분류 choice."""
+    t1s = list(D.CONTENT_CATEGORY_TIER2)
+    return {f"cat2_{i}": {"type": "choice", "instructions": f"이 콘텐츠의 대분류는 {t1s[i]}이다. 소분류는?",
+                          "criteria": {_LABELS[j]: f"{t2}: {(D.TIER2_DEFS.get(t2) or ('',))[0]}".rstrip(": ")
+                                       for j, t2 in enumerate(D.CONTENT_CATEGORY_TIER2[t1s[i]])}}
+            for i in idxs}
+
+
+def _ranked(q: dict) -> list:
+    return sorted(((v or 0, k) for k, v in (q.get("probabilities") or {q.get("choice"): 1.0}).items() if k), reverse=True)
+
+
+def cat1_picks(answers: dict) -> list:
+    """대분류 인덱스: 1위 + (2위 확률 ≥ CAT_SECOND 면) 2위 · '해당 없음'은 뺀다."""
+    n = len(D.CONTENT_CATEGORY_TIER2)
+    top = [(p, k) for p, k in _ranked(answers.get("cat1") or {}) if k != _NONE and k in _LABELS[:n]]
+    return [_LABELS.index(k) for r, (p, k) in enumerate(top[:2]) if not r or p >= CAT_SECOND]
 
 
 def _state(content: dict) -> dict:
@@ -100,16 +117,10 @@ def to_output(resp: dict, gate: float = NOUL_GATE) -> dict:
     scored = sorted(((noul(f"i{i}"), n) for i, n in enumerate(names)), reverse=True)
     intents = [n for p, n in scored if p >= gate][:INTENT_MAX] or ([scored[0][1]] if scored else [])
     t1s = list(D.CONTENT_CATEGORY_TIER2)
-    ranked = lambda q: sorted(((v or 0, k) for k, v in (q.get("probabilities") or {q.get("choice"): 1.0}).items() if k),
-                              reverse=True)
-    top1 = [(p, k) for p, k in ranked(a.get("cat1") or {}) if k != _NONE and k in _LABELS[:len(t1s)]]
     cats = []
-    for rank, (p, k) in enumerate(top1[:2]):
-        if rank and p < CAT_SECOND:
-            break
-        i = _LABELS.index(k)
+    for i in cat1_picks(a):
         t2s = D.CONTENT_CATEGORY_TIER2[t1s[i]]
-        sub2 = [k2 for _, k2 in ranked(a.get(f"cat2_{i}") or {}) if k2 in _LABELS[:len(t2s)]]
+        sub2 = [k2 for _, k2 in _ranked(a.get(f"cat2_{i}") or {}) if k2 in _LABELS[:len(t2s)]]
         if sub2:
             cats.append(f"{t1s[i]} / {t2s[_LABELS.index(sub2[0])]}")
     return {"quality_meta": {"finalGrade": "R" if reasons else "G", "reasons": reasons, "review": ""},
@@ -121,9 +132,16 @@ def to_output(resp: dict, gate: float = NOUL_GATE) -> dict:
 def judge(content: dict, gate: float = NOUL_GATE, post=None, key: str = "") -> dict:
     """한 건 판정. 반환 Output 모양 + trace(지연·토큰·비용) · 실패는 예외."""
     t0 = time.time()
-    resp = (post or _post)({"model": MODEL, "state": _state(content), "questions": questions()}, key)
-    out = to_output(resp, gate)
+    post, state = post or _post, _state(content)
+    resp = post({"model": MODEL, "state": state, "questions": questions()}, key)
+    a = dict(resp.get("answers") or {})
     tin = int((resp.get("usage") or {}).get("input_tokens") or 0)
+    picks = cat1_picks(a)
+    if picks:                                    # 소분류는 고른 대분류만 두 번째 호출로(한 요청 질문 상한 때문에)
+        r2 = post({"model": MODEL, "state": state, "questions": cat2_questions(picks)}, key)
+        a.update(r2.get("answers") or {})
+        tin += int((r2.get("usage") or {}).get("input_tokens") or 0)
+    out = to_output({**resp, "answers": a}, gate)
     out["trace"] = {"latency_ms": round((time.time() - t0) * 1000), "tokens": {"in": tin, "out": 0},
                     "cost_usd": round(tin * PRICE_IN, 6), "model": resp.get("model") or MODEL}
     return out
