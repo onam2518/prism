@@ -4,7 +4,7 @@ window.PRISM_APP_PARTS = window.PRISM_APP_PARTS || [];
 window.PRISM_APP_PARTS.push(() => ({
 
       dcTitle: '', dcBody: '', dcGate: 0.5, dcTrying: false, dcOne: null, dcOneErr: '',
-      dcN: 100, dcEvalOnly: false, dcRunning: false, dcDone: 0, dcTotal: 0, dcRep: null, dcMsg: '', dcErr: false, _dcT: null,
+      dcN: 30, dcEvalOnly: false, dcRunning: false, dcDone: 0, dcTotal: 0, dcRep: null, dcMsg: '', dcErr: false, _dcT: null,
 
       dcMetaKo(k) { return ((this.dcOne && this.dcOne.meta_ko) || {})[k] || k; },   // 이름 원천 = dictionaries.QUALITY_META_NAMES
       dcPct(v) { return Math.round((v || 0) * 100) + '%'; },

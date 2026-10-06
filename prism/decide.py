@@ -4,9 +4,12 @@ Upstage Solar Decide 는 글을 쓰지 않고 타입이 정해진 판정(choice�
 판정 전용 모델이다(TypeSafe Jev 와 같은 /v1/systemone 형식). 그래서 맡길 수 있는 것만 묻는다:
   · 품질 메타 11종 → noul 각각 · 하나라도 임계 이상이면 R (파이프라인 등급 규칙과 같음)
   · 인텐트 68종  → noul 각각 · 임계 이상 상위 INTENT_MAX 개(없으면 최고 1개)
-  · 카테고리     → 1차(21종+해당 없음) choice 를 위와 같은 호출에 · 고른 1차의 2차 choice 는 두 번째 호출로 묻는다
+  · 카테고리     → 1차(21종+해당 없음) choice + 1차별 2차 choice 21개 · 고른 1차의 2차 1위를 쓴다
                   (1차 2순위 확률이 CAT_SECOND 이상이면 그 경로도 함께)
 라우트 제약(운영 422 로 확인): choice 선택지는 한 문항 26개(라벨=A~Z 한 글자) · 한 요청 질문 MAX_QUESTIONS 개.
+지연(2026-10-06 운영 실측): 요청마다 0.5~22초로 들쭉날쭉 · 80개 한 묶음은 33초(30초 제한 초과) · 묶음이 클수록 느리다
+→ 질문을 작은 묶음(메타+대분류 · 인텐트 CHUNK 개씩 · 소분류 CAT2_CHUNK 개씩)으로 나눠 동시에 보내고,
+시간 초과는 한 번 다시 시도한다. 건당 벽시계 ≈ 가장 느린 묶음.
 엔티티·리드문·근거 문장은 글을 써야 해서 묻지 않는다(리포트에서도 뺀다).
 
 채점은 abtest.score 단일 소스를 그대로 쓴다 — 산출을 파이프라인 Output 모양으로 되돌려 넘긴다.
@@ -36,8 +39,10 @@ NOUL_GATE = 0.5                              # 품질 메타·인텐트 noul 기
 INTENT_MAX = 3                               # 골든 건당 평균 1.9개 · 최대 4개
 CAT_SECOND = 0.3
 BODY_MAX = 8000                              # ponytail: 본문 앞부분만 보낸다 · 긴 글 손해가 보이면 늘린다
-WORKERS = 8                                  # 독립 측정에서 동시 8건이 처리량 포화점
-TIMEOUT = 30
+WORKERS = 3                                  # 건 동시 수 · 건마다 묶음 8개가 동시에 나가므로 실제 동시 요청은 약 24
+INTENT_CHUNK = 17                            # 인텐트 68개 → 4묶음(묶음당 ~7.5K 토큰)
+CAT2_CHUNK = 7                               # 소분류 21문항 → 3묶음(한 묶음 21개는 22초 걸렸다)
+TIMEOUT = 60                                 # 요청 하나 · 초과 시 한 번 재시도
 MAX_QUESTIONS = 100                          # 한 요청 질문 상한(초과 시 422)
 _LABELS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"         # choice 라벨 = 한 글자(라우트가 한 토큰 라벨 26개까지만 받는다)
 _NONE = "Z"                                  # 1차 카테고리 '해당 없음'(없으면 범위 밖에도 확신 높게 아무거나 고른다)
@@ -87,7 +92,7 @@ def _key() -> str:
     return os.environ.get("UPSTAGE_API_KEY") or C.Config.load().api_key or ""
 
 
-def _post(body: dict, key: str) -> dict:
+def _post(body: dict, key: str, retry: int = 1) -> dict:
     req = urllib.request.Request(URL, data=json.dumps(body, ensure_ascii=False).encode(), method="POST",
                                  headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"})
     try:
@@ -95,6 +100,10 @@ def _post(body: dict, key: str) -> dict:
             return json.loads(r.read().decode())
     except urllib.error.HTTPError as e:     # 4xx 본문에 원인(베타 권한·형식 오류)이 있다 → 화면에 그대로
         raise RuntimeError(f"HTTP {e.code} · {e.read().decode(errors='replace')[:300]}") from None
+    except (TimeoutError, urllib.error.URLError) as e:   # 응답 지연이 들쭉날쭉해 가끔 늦는다 → 한 번 더
+        if retry > 0:
+            return _post(body, key, retry - 1)
+        raise RuntimeError(f"응답 시간 초과({TIMEOUT}초 · 재시도 후) · {e}") from None
 
 
 def _mock_post(body: dict, key: str) -> dict:
@@ -129,21 +138,27 @@ def to_output(resp: dict, gate: float = NOUL_GATE) -> dict:
                       "intent": [[n, round(p, 3)] for p, n in scored[:5]]}}
 
 
+def _groups() -> list:
+    """동시에 보낼 질문 묶음: 메타+대분류 · 인텐트 INTENT_CHUNK 개씩 · 소분류 CAT2_CHUNK 개씩(각각 MAX_QUESTIONS 이하)."""
+    q = questions()
+    split = lambda d, n: [dict(list(d.items())[j:j + n]) for j in range(0, len(d), n)]
+    return ([{k: v for k, v in q.items() if not k.startswith("i")}]
+            + split({k: v for k, v in q.items() if k.startswith("i")}, INTENT_CHUNK)
+            + split(cat2_questions(range(len(D.CONTENT_CATEGORY_TIER2))), CAT2_CHUNK))
+
+
 def judge(content: dict, gate: float = NOUL_GATE, post=None, key: str = "") -> dict:
     """한 건 판정. 반환 Output 모양 + trace(지연·토큰·비용) · 실패는 예외."""
     t0 = time.time()
     post, state = post or _post, _state(content)
-    resp = post({"model": MODEL, "state": state, "questions": questions()}, key)
-    a = dict(resp.get("answers") or {})
-    tin = int((resp.get("usage") or {}).get("input_tokens") or 0)
-    picks = cat1_picks(a)
-    if picks:                                    # 소분류는 고른 대분류만 두 번째 호출로(한 요청 질문 상한 때문에)
-        r2 = post({"model": MODEL, "state": state, "questions": cat2_questions(picks)}, key)
-        a.update(r2.get("answers") or {})
-        tin += int((r2.get("usage") or {}).get("input_tokens") or 0)
-    out = to_output({**resp, "answers": a}, gate)
+    with ThreadPoolExecutor(len(groups := _groups())) as ex:
+        resps = list(ex.map(lambda g: post({"model": MODEL, "state": state, "questions": g}, key), groups))
+    a = {k: v for r in resps for k, v in (r.get("answers") or {}).items()}
+    tin = sum(int((r.get("usage") or {}).get("input_tokens") or 0) for r in resps)
+    out = to_output({"answers": a}, gate)
     out["trace"] = {"latency_ms": round((time.time() - t0) * 1000), "tokens": {"in": tin, "out": 0},
-                    "cost_usd": round(tin * PRICE_IN, 6), "model": resp.get("model") or MODEL}
+                    "cost_usd": round(tin * PRICE_IN, 6), "model": resps[0].get("model") or MODEL,
+                    "requests": len(groups)}
     return out
 
 

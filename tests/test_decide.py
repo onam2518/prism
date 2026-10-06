@@ -36,8 +36,10 @@ class DecideTest(unittest.TestCase):
         self.assertEqual(out["quality_meta"], {"finalGrade": "R", "reasons": ["ad"], "review": ""})
         self.assertEqual(out["item_meta"]["intent"], [names[3], names[5], names[7]])   # 임계 이상 상위 INTENT_MAX 개
         self.assertEqual(out["item_meta"]["content_category"], [path(0, 1), path(2, 0)])   # 1차 2순위 ≥ CAT_SECOND 면 그 경로도
-        self.assertAlmostEqual(out["trace"]["cost_usd"], 5000 * DC.PRICE_IN, 6)   # 두 호출 토큰 합
-        self.assertEqual(calls[1], ["cat2_0", "cat2_2"])                           # 2차는 고른 대분류만
+        self.assertAlmostEqual(out["trace"]["cost_usd"], 2500 * len(calls) * DC.PRICE_IN, 6)   # 묶음 토큰 합
+        self.assertTrue(all(len(c) <= DC.MAX_QUESTIONS for c in calls))            # 묶음마다 질문 상한 이하
+        allq = set(DC.questions()) | set(DC.cat2_questions(range(len(D.CONTENT_CATEGORY_TIER2))))
+        self.assertEqual(sorted(k for c in calls for k in c), sorted(allq))       # 빠짐·중복 없이 한 번씩
         none = DC.to_output({"answers": {"cat1": {"choice": "Z", "probabilities": {"Z": 0.9}}}})
         self.assertEqual(none["item_meta"]["content_category"], [])
         self.assertEqual(none["quality_meta"]["finalGrade"], "G")
