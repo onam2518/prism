@@ -3221,7 +3221,7 @@ def _p_autoreview_run(h, body):
 def _p_lab_decide_run(h, body):
     data = json.loads(body or b"{}")
     return DC.start(team=h._req_team(), n=data.get("n") or 100, scope=data.get("scope") or "all",
-                    gate=float(data.get("gate") or DC.NOUL_GATE))
+                    gate=float(data.get("gate") or DC.GATE), defs=data.get("defs", True) is not False)
 
 
 @_post_route("/lab-decide-try", gate="super")        # 솔라 디사이드 한 건 시험(직접 입력)
