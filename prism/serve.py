@@ -82,6 +82,8 @@ from . import reviewassist as RA     # 내부 검수 보조(트랙 A) 도구 · 
 RA._SV = sys.modules[__name__]      # 동일 주입
 from . import autoreview as AR       # AI 초안 판정(실험실 · 운영자 전용) · /autoreview-run
 AR._SV = sys.modules[__name__]      # 동일 주입
+from . import decide as DC           # 솔라 디사이드 판정 시험(실험실 · 운영자 전용) · /lab-decide-*
+DC._SV = sys.modules[__name__]
 from . import mcpserver as MCPS       # 외부 MCP(트랙 B): 전송은 mcprpc · 도구는 위 prismtools
 IG._SV = sys.modules[__name__]      # 인입·잡 주입(동일)
 BD._SV = sys.modules[__name__]      # 게시판 주입(동일)
@@ -2183,6 +2185,11 @@ def _g_autoreview_status(h, q):                       # 게이트 상세는 _aut
     return AR.status(q.get("id", [""])[0])
 
 
+@_get_route("/lab-decide-status", admin=True)        # 솔라 디사이드 골든셋 시험 진척·결과 폴링
+def _g_lab_decide_status(h, q):
+    return DC.status(q.get("id", [""])[0])
+
+
 @_get_route("/autoreview-drafts", admin=True)        # AI 초안 판정 상시 목록(저장된 초안 · 실행 무관 · 서브탭 진입/재접속)
 def _g_autoreview_drafts(h, q):
     if _autoreview_denied(h):
@@ -3210,6 +3217,18 @@ def _p_autoreview_run(h, body):
     if _autoreview_denied(h):
         return None
     return AR.start(team=h._req_team(), reviewer=(h._bearer_uid() or h._bearer_email() or ""))
+@_post_route("/lab-decide-run", gate="super")        # 솔라 디사이드 골든셋 시험 시작(백그라운드 잡)
+def _p_lab_decide_run(h, body):
+    data = json.loads(body or b"{}")
+    return DC.start(team=h._req_team(), n=data.get("n") or 100, scope=data.get("scope") or "all",
+                    gate=float(data.get("gate") or DC.NOUL_GATE))
+
+
+@_post_route("/lab-decide-try", gate="super")        # 솔라 디사이드 한 건 시험(직접 입력)
+def _p_lab_decide_try(h, body):
+    return DC.try_one(json.loads(body or b"{}"))
+
+
 # GET /autoreview-status 는 GET 라우트 구역(_GET_ORDER 스냅샷 앞)에 등록돼 있다.
 
 
