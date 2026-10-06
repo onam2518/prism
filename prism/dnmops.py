@@ -11,6 +11,12 @@ def action(server, data, team, who, mock=False):
             if llm is None:
                 return {'ok': False, 'error': '모델 연결 실패: ' + route}
             return {'ok': True, 'policy': prepare_policy(llm)}
+        if command == 'wiki_config':
+            from . import dnmwiki
+            return {'ok': True, 'config': dnmwiki.save_config(server.get_store(), data, team)}
+        if command == 'wiki_sync':
+            from . import dnmwiki
+            return {'ok': True, 'status': dnmwiki.sync(server.get_store(), server.llm_for_model('', mock)[0])}
         if command == 'configure':
             return {'ok': True, 'control': runtime.configure(data.get('registry'), data.get('policy'), data.get('expected_revision'))}
         if command == 'approve':

@@ -136,8 +136,17 @@ window.PRISM_APP_PARTS.push(() => ({
     try {this.finalQueue=await this.opsRequest('/final-queue?offset='+this.finalOffset+'&limit=50&reason='+encodeURIComponent(this.finalReason)+'&order='+this.finalOrder+'&reviewer='+encodeURIComponent(this.reviewer||''));}
     catch(e){this._err(e.message);}finally{this.finalBusy=false;}
   },
-  opsDnm:null, opsDnmMsg:'',
-  async opsDnmLoad() {try{this.opsDnm=await this.opsRequest('/dnm');}catch(e){this.opsDnmMsg=e.message;}},
+  opsDnm:null, opsDnmMsg:'', opsDnmWiki:{},
+  async opsDnmLoad() {try{this.opsDnm=await this.opsRequest('/dnm');const c=(this.opsDnm.wiki||{}).config||{};this.opsDnmWiki=Object.assign({},c,{policy_pages:(c.policy_pages||[]).join(', ')});}catch(e){this.opsDnmMsg=e.message;}},
+  async opsDnmWikiSave() {
+    try {await this.opsRequest('/dnm',Object.assign({action:'wiki_config'},this.opsDnmWiki,{interval_min:Number(this.opsDnmWiki.interval_min)||30}));await this.opsDnmLoad();this.opsDnmMsg='위키 연동 설정 저장 완료';}
+    catch(e){this.opsDnmMsg=e.message;}
+  },
+  async opsDnmWikiSync() {
+    this.opsDnmMsg='위키 확인 중';
+    try {const r=await this.opsRequest('/dnm',{action:'wiki_sync'});await this.opsDnmLoad();const s=r.status;this.opsDnmMsg='위키 확인 완료 · '+(s.actions.join(' · ')||'변경 없음')+(s.errors.length?' · 오류 '+s.errors.length+'건':'');}
+    catch(e){this.opsDnmMsg=e.message;}
+  },
   async opsDnmFile(event, action) {
     const file=event.target.files[0];if(!file)return;
     try {

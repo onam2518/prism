@@ -1688,8 +1688,10 @@ def _g_dnm(h, q):
         if q.get("history", [""])[0] == "1":
             result["history"] = (runtime._get(runtime._key(key)) or {}).get("bundles", {})
         return result
+    from . import dnmwiki
     return {"ok": True, "control": runtime._get("dnm_control") or {"revision": 0},
-            "status": "configured" if runtime._get("dnm_control") else "pending_configuration"}
+            "status": "configured" if runtime._get("dnm_control") else "pending_configuration",
+            "wiki": {"config": dnmwiki.config(get_store()), "status": get_store().get_report(dnmwiki.STATUS)}}
 
 
 @_get_route("/topics")
@@ -3738,6 +3740,8 @@ def main():
     start_learning_scheduler()                         # 매일 04:00 학습 일배치(합의 반영+골든+회귀평가)
     start_topic_scheduler()                            # 토픽 자동 리프레시 + 성과 스냅샷(1시간)
     AO.start_retention_scheduler()                     # 보존 기한 정리 · PRISM_RETENTION_DAYS 설정 시에만
+    from . import dnmwiki as _DW
+    _DW.start_scheduler(sys.modules[__name__])         # DNM 위키 연동 · 관리 화면에서 켠 경우에만 주기 확인
     try:                                               # 배포로 끊긴 오토파일럿을 끊긴 라운드부터 재개
         from . import evalops as _EV
         _EV.autopilot_resume_all()
