@@ -121,6 +121,11 @@ CALL_RULES = {
   (복수 카테고리 매핑의 정량 기준 · 260715 회의 확정). 확신이 서지 않으면 대표 1개만 부여한다.
 - 아래 사전에 정의된 항목(21개 Tier 1 + Custom Tier 2) 중에서만 선택한다.
   Tier 1 / Tier 2 까지만 표기. 자유 생성·Tier 3 표기 금지.
+- 표기는 사전 문자열을 글자 그대로 옮긴다(줄임·번역·바꿔 쓰기 금지).
+  · tier1 은 사전의 21개 Tier 1 이름 중 하나를 그대로 쓴다.
+    예: "Religion" ✗ → "Religion and Spirituality" ✓ · "Health" ✗ → "Health and Fitness" 또는 "Medical Health" ✓
+  · tier2 는 고른 tier1 바로 아래 목록에 있는 값만 쓴다. 다른 Tier 1 의 이름이나 Tier 2 를 가져오지 않는다.
+    예: "Health and Fitness / Medical Health" ✗ (Medical Health 는 별도 Tier 1) → tier1 "Medical Health" ✓
 - 우선순위: 콘텐츠 맥락 > 개별 엔티티 고유 도메인.
   제목·본문의 전체 맥락을 종합해 콘텐츠 전체의 도메인을 결정한다.
   요약·엔티티·인텐트 결과를 필수 입력이나 실행 조건으로 요구하지 않는다.
@@ -146,7 +151,9 @@ CALL_SELF_CHECK = {
     "summary": "1. 정확히 1문장, 평서형 종결인가\n2. 과장·추측·평가가 없는가\n3. CRITICAL: 출력이 JSON 한 줄뿐인가",
     "entities": "1. 정제 규칙 1→2→3→4를 순서대로 적용했는가\n2. 인용 출처가 섞이지 않았는가\n3. 모든 항목이 핵심(대표성)인가 · 복합 명사를 분해하지 않았는가\n4. CRITICAL: JSON 한 줄뿐인가",
     "intent": "1. 모든 값이 목록 내 표기와 정확히 일치하는가 (CRITICAL)\n2. 대표 분류값이 첫 번째인가\n3. 근거 약한 매핑이 없는가",
-    "category": "1. 모든 값이 사전 내 경로와 정확히 일치하는가 (CRITICAL)\n2. 대표 도메인이 첫 번째인가\n3. 콘텐츠 맥락을 엔티티 고유 도메인보다 우선했는가",
+    "category": ("1. 모든 값이 사전 내 경로와 정확히 일치하는가 (CRITICAL)\n"
+                 "2. tier1 이 21개 Tier 1 이름과 글자 그대로 같고, tier2 가 그 Tier 1 바로 아래 목록에 있는가 (CRITICAL)\n"
+                 "3. 대표 도메인이 첫 번째인가\n4. 콘텐츠 맥락을 엔티티 고유 도메인보다 우선했는가"),
 }
 
 # ── 골드 예시(계약 원문 1312 예시 1~4 + 경계 보강 · 분류값은 사전 최신 표기) ──
@@ -539,6 +546,7 @@ MERGED_SCHEMA = ('{"summary": string, "entities": [{"name": string, "type": "PS"
 MERGED_SELF_CHECK = ("1. summary 가 정확히 1문장 평서형이고 과장·추측이 없는가\n"
                      "2. entities 가 정제 규칙 1→2→3→4를 거쳐 핵심만 남았는가(개수 상한 없음 · 대표성 높은 순)\n"
                      "3. intent·content_category 의 모든 값이 사전 내 표기와 정확히 일치하는가 (CRITICAL)\n"
+                     "   · content_category 의 tier1 은 21개 Tier 1 이름 그대로, tier2 는 그 Tier 1 아래 값만\n"
                      "4. 각 배열의 대표 값이 첫 번째인가\n5. CRITICAL: 출력이 JSON 한 줄뿐인가")
 
 
