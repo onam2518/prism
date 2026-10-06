@@ -1683,6 +1683,7 @@ button.tbchip:disabled{cursor:default;opacity:.8}
   .dc-body{display:flex;flex-direction:column;gap:var(--ds-space-4)}
   .dc-row{display:flex;align-items:flex-end;gap:var(--ds-space-4);flex-wrap:wrap}
   .dc-num{width:8em}
+  .dc-top{align-items:start}
   .ar-prog{display:flex;align-items:center;gap:20px;flex-wrap:wrap;background:var(--ds-surface-on);
     border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-md);padding:13px 16px}
   .ar-stat{display:flex;flex-direction:column;gap:2px;min-width:64px}

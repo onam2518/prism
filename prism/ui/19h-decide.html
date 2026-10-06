@@ -8,15 +8,19 @@
           <div class="panel-hd"><b>솔라 디사이드 판정 시험</b><span class="meta">Upstage solar-decide · 판정만 하고 글은 쓰지 않는 모델</span><span class="ds-badge ds-badge--neutral ml-auto">운영자 전용</span></div>
           <div class="panel-bd dc-body">
             <ul class="ds-bullets">
-              <li>품질 메타 11종·인텐트 68종은 <b>예/아니오 확률</b>, 카테고리는 <b>대분류 → 소분류</b>로 묻습니다<ul><li>응답이 느려 질문을 작은 묶음 8개로 나눠 동시에 보냅니다 · 실측 한 건 약 30초 · 30건 약 9분 · 100건 약 30분</li><li>품질 메타가 하나라도 기준 확률 이상이면 R · 엔티티·리드문·근거 문장은 이 모델이 만들 수 없어 채점하지 않습니다</li></ul></li>
-              <li>확신도는 그대로 믿지 마세요 · 골든셋 결과로 기준 확률을 맞춘 뒤에만 자동 처리 규칙을 정할 수 있습니다</li>
+              <li><b>앞단 판정기</b>로 시험합니다 · 메타를 다 만들게 하지 않고 <b>하나 고르기 질문 7개 안팎</b>으로 확률 분포를 받습니다<ul><li>요청 ① 본문 전체 → 품질 등급(메타 11종 + 문제 없음) · 요청 ② 앞부분 1,500자 → 인텐트 4문항 + 대분류 · 요청 ③ 고른 대분류의 소분류</li><li>이 모델은 질문마다 본문을 다시 과금해서 질문 수를 줄이는 게 비용의 핵심입니다 · 엔티티·리드문·근거 문장은 만들 수 없어 채점하지 않습니다</li></ul></li>
+              <li>평균 정확도보다 <b>처리율·정확도 표</b>를 보세요 · "확신도가 이 값 이상인 건만 자동 처리하면 몇 %를 몇 % 정확도로 처리하나"입니다<ul><li>같은 표본으로 기준을 고르고 재므로 실제보다 좋게 나옵니다 · 운영 적용 전엔 골든셋을 둘로 나눠 다시 확인합니다</li></ul></li>
             </ul>
             <div class="dc-row">
               <div>
                 <label class="ds-label" for="dc-gate">기준 확률</label>
                 <input id="dc-gate" class="ds-field dc-num" type="number" min="0.05" max="0.99" step="0.05" x-model.number="dcGate">
               </div>
-              <p class="ds-hint">품질 메타·인텐트를 '해당'으로 볼 확률 선 · 한 건 시험과 골든셋 시험에 함께 씁니다</p>
+              <label class="ds-toggle">
+                <button type="button" role="switch" class="ds-toggle__track" x-bind:aria-checked="dcDefs ? 'true' : 'false'" x-on:click="dcDefs = !dcDefs"><span class="ds-toggle__thumb"></span></button>
+                <span class="ds-toggle__label">정의문 포함</span>
+              </label>
+              <p class="ds-hint">기준 확률 = 문제 있음 확률이 이 값 이상이면 R · 정의문을 끄면 선택지를 이름만으로 묻습니다(토큰 절반 이하) · 두 설정 모두 한 건·골든셋 시험에 함께 씁니다</p>
             </div>
           </div>
         </section>
@@ -43,7 +47,7 @@
                     <span class="ds-grade" x-bind:class="dcOne.quality_meta.finalGrade === 'R' ? 'ds-grade--r' : 'ds-grade--g'"><span class="ds-grade__mark" x-text="dcOne.quality_meta.finalGrade"></span><span x-text="dcOne.quality_meta.finalGrade === 'R' ? '제한' : '정상'"></span></span>
                     <template x-for="k in dcOne.quality_meta.reasons" x-bind:key="k"><span class="ds-badge ds-badge--reason" x-text="dcMetaKo(k)"></span></template>
                   </dd></div>
-                <div class="ds-fieldrow"><dt class="ds-fieldrow__label">품질 메타 확률</dt>
+                <div class="ds-fieldrow"><dt class="ds-fieldrow__label">품질 문제 확률</dt>
                   <dd class="ds-fieldrow__value tnum" x-text="dcMetaProbs()"></dd></div>
                 <div class="ds-fieldrow"><dt class="ds-fieldrow__label">인텐트</dt>
                   <dd class="ds-fieldrow__value">
@@ -55,15 +59,17 @@
                     <template x-for="v in dcOne.item_meta.content_category" x-bind:key="v"><span class="ds-badge ds-badge--category" x-text="v"></span></template>
                     <span class="ds-hint" x-show="!dcOne.item_meta.content_category.length">해당 없음</span>
                   </dd></div>
+                <div class="ds-fieldrow"><dt class="ds-fieldrow__label">확신도</dt>
+                  <dd class="ds-fieldrow__value tnum" x-text="'등급 ' + dcPct(dcOne.conf.grade) + ' · 인텐트 ' + dcPct(dcOne.conf.intent) + ' · 대분류 ' + dcPct(dcOne.conf.cat) + '  (대분류 상위 ' + dcOne.probs.cat1.map(x => x[0] + ' ' + dcPct(x[1])).join(' · ') + ')'"></dd></div>
                 <div class="ds-fieldrow"><dt class="ds-fieldrow__label">지연 · 비용</dt>
-                  <dd class="ds-fieldrow__value tnum" x-text="dcOne.trace.latency_ms + 'ms · 요청 ' + dcOne.trace.requests + '회 · 입력 ' + dcOne.trace.tokens.in.toLocaleString() + '토큰 · $' + dcOne.trace.cost_usd + ' · ' + dcOne.trace.model"></dd></div>
+                  <dd class="ds-fieldrow__value tnum" x-text="dcOne.trace.latency_ms + 'ms · 요청 ' + dcOne.trace.requests + '회 · 질문 ' + dcOne.trace.questions + '개 · 입력 ' + dcOne.trace.tokens.in.toLocaleString() + '토큰 · $' + dcOne.trace.cost_usd + ' · ' + dcOne.trace.model"></dd></div>
               </dl>
             </template>
           </div>
         </section>
 
         <section class="panel">
-          <div class="panel-hd"><b>골든셋 일괄 시험</b><span class="meta">정답과 비교해 채점 · 동시 3건 처리</span></div>
+          <div class="panel-hd"><b>골든셋 일괄 시험</b><span class="meta">정답과 비교해 채점 · 동시 4건 처리</span></div>
           <div class="panel-bd dc-body">
             <div class="dc-row">
               <div>
@@ -83,6 +89,34 @@
             <p class="ds-hint" x-bind:class="dcErr ? 'ds-hint--error' : ''" x-show="dcMsg" x-cloak x-text="dcMsg"></p>
             <template x-if="dcRep">
               <div class="dc-body">
+                <div class="flex items-center gap-3 flex-wrap">
+                  <div class="ds-segmented" role="group" aria-label="판정 축">
+                    <template x-for="ax in [['grade','등급'],['intent','인텐트'],['cat','카테고리']]" x-bind:key="ax[0]">
+                      <button type="button" class="ds-segmented__item" x-bind:aria-pressed="dcAxis === ax[0] ? 'true' : 'false'" x-on:click="dcAxis = ax[0]" x-text="ax[1]"></button>
+                    </template>
+                  </div>
+                  <p class="ds-hint" x-text="dcSelHint()"></p>
+                </div>
+                <div class="grid grid-cols-2 gap-4 dc-top" x-show="dcSel()">
+                  <div>
+                  <p class="ds-label">처리율 · 정확도</p>
+                  <table class="ds-table ds-table--compact w-full">
+                    <thead><tr><th class="tnum">확신도 기준</th><th class="tnum">처리율</th><th class="tnum">건수</th><th class="tnum">정확도</th></tr></thead>
+                    <tbody><template x-for="r in (dcSel() || {}).rows || []" x-bind:key="r.t">
+                      <tr><td class="tnum" x-text="r.t + ' 이상'"></td><td class="tnum" x-text="dcPct(r.coverage)"></td><td class="tnum" x-text="r.n"></td><td class="tnum" x-text="r.acc == null ? '·' : dcPct(r.acc)"></td></tr>
+                    </template></tbody>
+                  </table>
+                  </div>
+                  <div>
+                  <p class="ds-label" x-text="'확률 보정 · 보정 오차(ECE) ' + ((dcSel() || {}).ece ?? '·')"></p>
+                  <table class="ds-table ds-table--compact w-full">
+                    <thead><tr><th class="tnum">확신도 구간</th><th class="tnum">건수</th><th class="tnum">평균 확신</th><th class="tnum">실제 정확도</th></tr></thead>
+                    <tbody><template x-for="b in (dcSel() || {}).bins || []" x-bind:key="b.lo">
+                      <tr><td class="tnum" x-text="b.lo.toFixed(1) + '~' + b.hi.toFixed(1)"></td><td class="tnum" x-text="b.n"></td><td class="tnum" x-text="dcPct(b.conf)"></td><td class="tnum" x-text="dcPct(b.acc)"></td></tr>
+                    </template></tbody>
+                  </table>
+                  </div>
+                </div>
                 <div class="ds-stat-grid">
                   <template x-for="row in dcRows().filter(r => r[4])" x-bind:key="row[1]">
                     <div class="ds-stat"><div class="ds-stat__value tnum" x-text="dcFmt(row)"></div><div class="ds-stat__label" x-text="row[0]"></div></div>
