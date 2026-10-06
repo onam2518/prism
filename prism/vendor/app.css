@@ -108,7 +108,7 @@
   /* 선택 컨트롤 정책: 칩(srcfilter__chip)=다중 토글 필터 · selctl=단일 지정 선택 · selctl--a/--b=A/B 비교 슬롯 */
   .selctl{display:inline-flex;align-items:center;gap:6px;padding:4px 8px 4px 5px;border:1px solid var(--ds-hairline);
     border-radius:var(--ds-radius-control);background:var(--ds-surface-white)}
-  .selctl__tag{display:inline-flex;align-items:center;justify-content:center;height:24px;min-width:26px;padding:0 8px;
+  .selctl__tag{white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;height:24px;min-width:26px;padding:0 8px;
     border-radius:var(--ds-radius-sm);font-size:12px;font-weight:800;color:#fff;background:var(--ds-muted,#8b8f98)}
   .selctl--a .selctl__tag{background:var(--ds-primary)}
   .selctl--b .selctl__tag{background:var(--ds-warning)}
@@ -189,6 +189,7 @@
     font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"D2Coding",monospace;font-size:12.5px;line-height:1.65;
     color:var(--ds-ink);padding:14px 16px;min-height:200px;tab-size:2;white-space:pre;overflow:auto}
   .codeblock textarea:focus{outline:none;box-shadow:none}
+  label.ds-btn:focus-within{box-shadow:var(--ds-focus-ring)}                 /* sr-only 파일 입력을 감싼 버튼의 키보드 포커스 표시 */
   .codeblock:focus-within{border-color:var(--ds-primary);box-shadow:0 0 0 3px var(--ds-primary-tint)}
   .tnum{font-variant-numeric:tabular-nums}
   :where(button,a,[role=tab],select,summary):focus-visible{outline:2px solid var(--ds-primary);outline-offset:2px;border-radius:var(--ds-radius-sm)}
