@@ -5,7 +5,7 @@ window.PRISM_APP_PARTS.push(() => ({
 
       erMode: 'one', erCfg: null, erRules: { keyword: '', sentence: '' }, erKwModel: '', erStModel: '', erSaving: false, erCfgMsg: '', erCfgErr: false,
       erHash: '', erTitle: '', erBody: '', erEnts: '', erSum1: '', erInt: '', erCat: '', erTrying: false, erOne: null, erOneErr: '',
-      erN: 30, erRunning: false, erDone: 0, erTotal: 0, erItems: [], erSum: null, erMsg: '', erErr: false, _erT: null, erVotes: null,
+      erN: 30, erRunning: false, erDone: 0, erTotal: 0, erPhase: '', erItems: [], erSum: null, erMsg: '', erErr: false, _erT: null, erVotes: null,
       erPicks: [['refined', '재가공'], ['base', '지금 방식'], ['both', '둘 다 좋음'], ['neither', '둘 다 별로']],
 
       erPickKo(p) { return (this.erPicks.find((x) => x[0] === p) || [p, p])[1]; },
@@ -52,7 +52,7 @@ window.PRISM_APP_PARTS.push(() => ({
         this.erTrying = false;
       },
       async erRun() {
-        clearTimeout(this._erT); this.erItems = []; this.erSum = null; this.erMsg = ''; this.erErr = false; this.erDone = 0;
+        clearTimeout(this._erT); this.erItems = []; this.erSum = null; this.erMsg = ''; this.erErr = false; this.erDone = 0; this.erPhase = '';
         try {
           const r = await (await this._afetch('/lab-entrefine-run', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ n: this.erN }) })).json();
           if (!r || !r.ok) { this.erErr = true; this.erMsg = (r && r.error) || '실행 실패'; return; }
@@ -65,13 +65,15 @@ window.PRISM_APP_PARTS.push(() => ({
           try { r = await (await this._afetch('/lab-entrefine-status?id=' + id, { headers: this._authHeaders() })).json(); } catch (e) {}
           if (!r || !r.ok) { this.erRunning = false; this.erErr = true; this.erMsg = (r && r.error) || '진척 조회 실패'; return; }
           this.erDone = r.done; this.erTotal = r.total;
+          const stages = Object.values(r.active || {});
+          this.erPhase = stages.length ? (stages.includes('keyword') ? '핵심 키워드' : '핵심 문장') + ' 호출 중 · ' + (r.elapsed_s || 0) + '초 경과' : '다음 콘텐츠 준비 중 · ' + (r.elapsed_s || 0) + '초 경과';
           const voted = Object.fromEntries(this.erItems.filter((x) => x._voted).map((x) => [x.hash, x._voted]));
           this.erItems = r.items.map((x) => Object.assign(x, voted[x.hash] ? { _voted: voted[x.hash] } : {}));
           this.erSum = r.summary;
           if (r.running) { this._erT = setTimeout(tick, 1500); return; }
-          this.erRunning = false; this.erErr = !!(r.summary && r.summary.fails);
-          this.erMsg = r.total + '건 완료 · ' + r.elapsed_s + '초 · 키워드 ' + ((r.models || {}).keyword || '') + ' · 문장 ' + ((r.models || {}).sentence || '');
-          this.erErr = !!(r.summary && (r.summary.fails || r.summary.sent_fails));
+          this.erRunning = false; this.erPhase = '';
+          this.erErr = !!(r.error || (r.summary && (r.summary.fails || r.summary.sent_fails)));
+          this.erMsg = (r.error ? '일괄 처리 중단 · ' + r.error : r.total + '건 완료') + ' · ' + r.elapsed_s + '초 · 키워드 ' + ((r.models || {}).keyword || '') + ' · 문장 ' + ((r.models || {}).sentence || '');
         };
         tick();
       },
