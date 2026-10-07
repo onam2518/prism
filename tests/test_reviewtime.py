@@ -58,5 +58,24 @@ class ReviewTimeTest(unittest.TestCase):
         self.assertEqual(st.event_bonus().get("검수자", {}).get("total"), 0)   # 보너스 합계에 영향 없음
 
 
+    def test_supabase_log_event_avoids_once_index(self):
+        """운영 고유 제약(reviewer_id, kind, day)이 측정 기록을 하루 1건으로 막지 않게 day=epoch 초 ·
+        충돌하면 1초 뒤로 한 번 더(2026-10-07 배포 직후 발견)."""
+        from prism.supastore import SupabaseStore
+        st = SupabaseStore.__new__(SupabaseStore)
+        sent, fail = [], {"n": 1}
+        def fake_req(method, table, body=None, **kw):
+            sent.append(body[0]["day"])
+            if fail["n"]:
+                fail["n"] -= 1
+                raise RuntimeError("409 duplicate key")
+            return []
+        st._req = fake_req
+        st.log_event("u1", "review_time", "{}", team="t")
+        self.assertEqual(len(sent), 2)
+        self.assertEqual(sent[1], sent[0] + 1)
+        self.assertGreater(sent[0], 10 ** 9)                         # 날짜(YYYYMMDD)가 아니라 epoch 초
+
+
 if __name__ == "__main__":
     unittest.main()
