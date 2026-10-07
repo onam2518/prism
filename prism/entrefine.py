@@ -271,10 +271,16 @@ def sentence(item_meta: dict, keywords: list, llm, mock: bool = False, system: s
             "latency_ms": round((time.time() - t0) * 1000), "tokens": tokens}
 
 
+def _model_id(model: str) -> str:
+    """픽커 값(제공자|모델) → 모델 id · 평가 화면이 보내기 전에 떼는 것과 같은 규칙(app-04 · split('|').pop())."""
+    return str(model or "").split("|")[-1].strip()
+
+
 def _llm(model: str):
     mock = bool(getattr(getattr(_SV, "Handler", None), "server_mock", False))
     if mock:
         return None, True, ""
+    model = _model_id(model)
     llm, route = _SV.llm_for_model(model, False)
     return llm, False, ("" if llm is not None else f"모델을 부를 수 없습니다({route or model or '기본 모델'})")
 
@@ -287,7 +293,7 @@ def _engines(team=None):
         llm, mock, err = _llm(cfg[c]["model"])
         if err:
             return None, f"{'핵심 키워드' if c == 'keyword' else '핵심 문장'} · {err}"
-        out[c] = (llm, mock, _system(c, cfg), cfg[c]["model"] or "(기본)")
+        out[c] = (llm, mock, _system(c, cfg), _model_id(cfg[c]["model"]) or "(기본)")
     return out, ""
 
 
