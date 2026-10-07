@@ -891,6 +891,21 @@ class Store:
             c.commit()
             return True
 
+    def log_event(self, reviewer, kind, meta="", team=None) -> None:
+        """append-only 이벤트 한 줄(중복 검사 없음 · 보너스 0) · 검수 소요 시간 등 측정 기록용."""
+        c = self._conn()
+        c.execute("INSERT INTO events(reviewer,kind,day,bonus,meta,ts) VALUES(?,?,?,?,?,?)",
+                  (reviewer or "(익명)", kind, int(time.strftime("%Y%m%d")), 0, meta or "", time.time()))
+        c.commit()
+
+    def events_since(self, kinds, since: float, team=None) -> list:
+        """kind 목록의 since(epoch) 이후 이벤트 [{reviewer, kind, meta(문자열), ts(epoch)}]."""
+        c = self._conn()
+        qs = ",".join("?" for _ in kinds)
+        return [{"reviewer": rv, "kind": k, "meta": m or "", "ts": ts} for rv, k, m, ts in c.execute(
+            f"SELECT reviewer,kind,meta,ts FROM events WHERE kind IN ({qs}) AND ts>=? ORDER BY ts",
+            (*kinds, float(since)))]
+
     def event_bonus(self, team=None) -> dict:
         """reviewer → {total, week}(미션 등 이벤트 보너스 합)."""
         c = self._conn()

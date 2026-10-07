@@ -24,6 +24,28 @@
           <template x-for="entry in Object.entries((opsList||{}).seconds_by_type||{})" x-bind:key="entry[0]"><p class="tnum" x-text="entry[0].split('|')[0]+' · '+opsTypeLabel(entry[0].split('|')[1])+' · '+(entry[1]/60).toFixed(1)+'분'"></p></template></div>
         </section></section>
       </template>
+      <!-- 검수 소요 시간(2026-10-07): 상세 진입 → 처음 판정까지 · 실측과 과거 추정(판정 간격) 분리 · 로직 prism/reviewtime.py -->
+      <template x-if="mod === 'admin'">
+        <section x-show="adminTab === 'crew' && crewTab === 'dash'" x-cloak class="panel w-full" x-init="rtsLoad()">
+          <header class="panel-hd"><b>검수 소요 시간</b><span class="meta">콘텐츠 상세를 연 뒤 처음 판정하기까지 · 골드 문항 제외</span>
+            <div class="ds-segmented ml-auto" role="group" aria-label="기간">
+              <template x-for="d in [7, 14, 30]" x-bind:key="d"><button type="button" class="ds-segmented__item" x-bind:aria-pressed="rtsDays === d ? 'true' : 'false'" x-on:click="rtsDays = d; rtsLoad()" x-text="d + '일'"></button></template>
+            </div></header>
+          <div class="panel-bd">
+            <ul class="ds-bullets"><li>작업 시간은 탭이 가려졌거나 <span x-text="(rtsData && rtsData.idle_s) || 120"></span>초 넘게 입력이 없던 구간을 뺀 시간입니다<ul><li>과거 추정은 측정 시작 전 판정 기록의 연속 판정 간격(1초~10분)으로 낸 값이라 실측과 따로 봅니다</li></ul></li></ul>
+            <p class="ds-hint" x-show="rtsMsg" x-cloak x-text="rtsMsg"></p>
+            <table class="ds-table ds-table--compact w-full" x-show="rtsData && rtsData.people.length" x-cloak>
+              <thead><tr><th>검수자</th><th class="tnum">처음 판정</th><th class="tnum">작업 시간 중간값</th><th class="tnum">상위 10%</th><th class="tnum">머문 시간 중간값</th><th class="tnum">교정까지</th><th class="tnum">판정 없이 닫음</th><th class="tnum">다시 보기</th><th class="tnum">과거 추정</th></tr></thead>
+              <tbody><template x-for="p in (rtsData || {}).people || []" x-bind:key="p.reviewer">
+                <tr><td x-text="p.name"></td><td class="tnum" x-text="p.n"></td><td class="tnum" x-text="rtsSec(p.active_med_s)"></td><td class="tnum" x-text="rtsSec(p.active_p90_s)"></td>
+                  <td class="tnum" x-text="rtsSec(p.wall_med_s)"></td><td class="tnum" x-text="rtsSec(p.note_med_s)"></td><td class="tnum" x-text="p.abandoned"></td><td class="tnum" x-text="p.revisit"></td>
+                  <td class="tnum" x-text="p.est_n ? (rtsSec(p.est_med_s) + ' · ' + p.est_n + '건') : '·'"></td></tr>
+              </template></tbody>
+            </table>
+            <p class="ds-hint" x-show="rtsData && !rtsData.people.length" x-cloak>이 기간에 기록이 없습니다 · 검수자가 상세를 열고 판정하면 쌓입니다</p>
+          </div>
+        </section>
+      </template>
       <!-- ── 현황 ───────────────────────────────────────────────── -->
       <template x-if="mod === 'admin'">
         <div x-show="adminTab === 'crew' && crewTab === 'dash'" x-cloak class="w-full space-y-4">

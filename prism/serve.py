@@ -83,6 +83,7 @@ RA._SV = sys.modules[__name__]      # 동일 주입
 from . import autoreview as AR       # AI 초안 판정(실험실 · 운영자 전용) · /autoreview-run
 AR._SV = sys.modules[__name__]      # 동일 주입
 from . import decide as DC           # 솔라 디사이드 판정 시험(실험실 · 운영자 전용) · /lab-decide-*
+from . import reviewtime as RT       # 검수 소요 시간 측정 · /review-time · /review-time-stats
 DC._SV = sys.modules[__name__]
 from . import mcpserver as MCPS       # 외부 MCP(트랙 B): 전송은 mcprpc · 도구는 위 prismtools
 IG._SV = sys.modules[__name__]      # 인입·잡 주입(동일)
@@ -2197,6 +2198,24 @@ def _g_autoreview_status(h, q):                       # 게이트 상세는 _aut
     return AR.status(q.get("id", [""])[0])
 
 
+@_get_route("/review-time-stats", admin=True)        # 검수 소요 시간 요약(검수자별·일자별 · 실측과 과거 추정 분리) · ?days=N
+def _g_review_time_stats(h, q):
+    st = get_store()
+    if not (st and hasattr(st, "events_since")):
+        return {"ok": False, "error": "지원하지 않는 저장소"}
+    try:
+        days = max(1, min(365, int((q.get("days") or ["14"])[0])))
+    except ValueError:
+        days = 14
+    team = h._req_team()
+    rows = RT.parse(st.events_since(("review_time", "review_time_est"), time.time() - days * 86400, team))
+    try:
+        names = {m["id"]: m["name"] for m in (st.team_members(team) if (team and hasattr(st, "team_members")) else [])}
+    except Exception:
+        names = {}
+    return {**RT.stats(rows, names), "days_window": days}
+
+
 @_get_route("/lab-decide-status", admin=True)        # 솔라 디사이드 골든셋 시험 진척·결과 폴링
 def _g_lab_decide_status(h, q):
     return DC.status(q.get("id", [""])[0])
@@ -2306,6 +2325,24 @@ def _p_feedback(h, body):
                                 ensure_ascii=False), _JSON)
         return None
     return apply_feedback(data)
+
+
+@_post_route("/review-time", gate="team")            # 검수 소요 시간 한 줄(상세를 떠날 때 브라우저가 보냄 · reviewtime.clean 이 형식 고정)
+def _p_review_time(h, body):
+    data = json.loads(body or b"{}")
+    if not h._inject_reviewer(data):
+        h._send(401, json.dumps({"error": "인증 필요"}, ensure_ascii=False), _JSON)
+        return None
+    try:
+        meta = RT.clean(data)
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+    st = get_store()
+    if not (st and hasattr(st, "log_event")):
+        return {"ok": False, "error": "지원하지 않는 저장소"}
+    st.log_event((data.get("reviewer") or "").strip(), "review_time", json.dumps(meta, ensure_ascii=False),
+                 team=data.get("_team") or h._req_team())
+    return {"ok": True}
 
 
 @_post_route("/ops-hold", gate="admin")              # 운영자 수동 노출제한 토글(라벨 아님 · 학습 미포함)

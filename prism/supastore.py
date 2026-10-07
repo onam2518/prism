@@ -901,6 +901,23 @@ class SupabaseStore:
             self._req("POST", "events", body=[row], prefer="return=minimal")
             return True
 
+    def log_event(self, reviewer, kind, meta="", team=None) -> None:
+        """append-only 이벤트 한 줄(중복 검사 없음 · 보너스 0) · 검수 소요 시간 등 측정 기록용."""
+        row = {"reviewer_id": reviewer or None, "kind": kind, "day": int(time.strftime("%Y%m%d")),
+               "bonus": 0, "meta": meta or ""}
+        if team:
+            row["team_id"] = team
+        self._req("POST", "events", body=[row], prefer="return=minimal")
+
+    def events_since(self, kinds, since: float, team=None) -> list:
+        """kind 목록의 since(epoch) 이후 이벤트 [{reviewer, kind, meta(문자열), ts(epoch)}]."""
+        tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
+        ks = ",".join(urllib.parse.quote(k) for k in kinds)
+        rows = self._get("events", f"select=reviewer_id,kind,meta,created_at&kind=in.({ks})"
+                                   f"&created_at=gte.{urllib.parse.quote(_iso(since))}{tq}&order=created_at&limit=50000")
+        return [{"reviewer": r.get("reviewer_id") or "", "kind": r.get("kind"), "meta": r.get("meta") or "",
+                 "ts": _iso_epoch(r.get("created_at"))} for r in rows]
+
     def event_bonus(self, team=None) -> dict:
         """검수자별 보너스 합계 {uid: {total, week}} · 서버측 집계 RPC 우선(감사 S4).
         events 는 append-only 라 행 수가 단조 증가한다 — 5,000행 = 6왕복/5,000행."""

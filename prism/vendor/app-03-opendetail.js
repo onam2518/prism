@@ -14,6 +14,7 @@ window.PRISM_APP_PARTS.push(() => ({
         }
         this.editVerdict = false; this.pendingBad = false; this.detailBack = this.drillOpen; this.detailOpen = true; this.drillOpen = false; this.histItems = []; if (this.histOpen) this.loadHistory();
         this.srcCheckMsg = ''; this.srcCheckBusy = false;   // 원문 상태 확인 결과는 콘텐츠별(이전 항목 잔상 제거)
+        this._rtStart(this.detail);              // 검수 소요 시간 측정 시작(app-22-reviewtime)
         this.loadEntLookup();                    // 엔티티 → 개체 사전 정보(타입·속성) 표시
         this.loadEntLabels();                    // 엔티티 관련성 라벨(내 표·집계)
         this.opsOpen(c);
@@ -399,6 +400,7 @@ window.PRISM_APP_PARTS.push(() => ({
         // 이미 합의가 같은 값일 때 내 첫 클릭이 취소('')로 전송되는 오동작이 난다.
         const cur = this.myVerdict(c.fb);
         const v = (cur === verdict) ? '' : verdict;        // 같은 버튼 재클릭 = 취소
+        if (cur === '' && v !== '') this._rtMark(c, 'verdict', v);   // 처음 판정한 순간(소요 시간 측정)
         c.fb = this._fbRecount(Object.assign({}, c.fb, { mine: v, ts: (v ? Date.now() / 1000 : 0) }), cur, v);   // 수정 일시 기록
         this._syncFbByHash(c.hash, c.fb);
         await this._postFb({ hash: c.hash, service: c.service, title: c.title, model: c.model || '', verdict: v, stage: (c.fb.stage || 'analyze'), note: (c.fb.note || '') });
@@ -421,6 +423,7 @@ window.PRISM_APP_PARTS.push(() => ({
         c.fb = Object.assign({}, c.fb, { verdict: c.fb.verdict || 'bad', stage: stage, ts: Date.now() / 1000 });
         // 서버에는 '내 표'를 보낸다 · fb.verdict 는 팀 합의라 'split' 등 표가 아닌 값이 저장될 수 있다
         const myV = (c.fb.mine !== undefined ? (c.fb.mine || '') : '') || 'bad';
+        this._rtMark(c, 'note');                 // 교정 메모 저장 = 수정 완료 시각(소요 시간 측정)
         await this._postFb({ hash: c.hash, service: c.service, title: c.title, model: c.model || '', verdict: myV, stage: stage, elements: els, note: tagged });
         if (!hadNote && (c.fb.note || '').trim()) { c.fb._noteRewarded = true; this.celebratePoints(25, '교정 반영'); }  // 교정 = +25 PT(서버 산정과 일치)
       },
