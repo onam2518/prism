@@ -84,6 +84,8 @@ from . import autoreview as AR       # AI 초안 판정(실험실 · 운영자 �
 AR._SV = sys.modules[__name__]      # 동일 주입
 from . import decide as DC           # 솔라 디사이드 판정 시험(실험실 · 운영자 전용) · /lab-decide-*
 from . import reviewtime as RT       # 검수 소요 시간 측정 · /review-time · /review-time-stats
+from . import entrefine as ER        # 엔티티 재처리 · 서비스(구독) 키워드 3개 시험(실험실) · /lab-entrefine-*
+ER._SV = sys.modules[__name__]
 DC._SV = sys.modules[__name__]
 from . import mcpserver as MCPS       # 외부 MCP(트랙 B): 전송은 mcprpc · 도구는 위 prismtools
 IG._SV = sys.modules[__name__]      # 인입·잡 주입(동일)
@@ -2216,6 +2218,16 @@ def _g_review_time_stats(h, q):
     return {**RT.stats(rows, names), "days_window": days}
 
 
+@_get_route("/lab-entrefine-status", admin=True)     # 엔티티 재처리 일괄 시험 진척·결과
+def _g_lab_entrefine_status(h, q):
+    return ER.status(q.get("id", [""])[0])
+
+
+@_get_route("/lab-entrefine-votes", admin=True)      # 키워드 비교 투표 집계(재처리 vs 확신도 상위 3)
+def _g_lab_entrefine_votes(h, q):
+    return ER.votes(h._req_team())
+
+
 @_get_route("/lab-decide-status", admin=True)        # 솔라 디사이드 골든셋 시험 진척·결과 폴링
 def _g_lab_decide_status(h, q):
     return DC.status(q.get("id", [""])[0])
@@ -3271,6 +3283,26 @@ def _p_lab_decide_run(h, body):
     data = json.loads(body or b"{}")
     return DC.start(team=h._req_team(), n=data.get("n") or 100, scope=data.get("scope") or "all",
                     gate=float(data.get("gate") or DC.GATE), defs=data.get("defs", True) is not False)
+
+
+@_post_route("/lab-entrefine-try", gate="super")     # 엔티티 재처리 한 건(정답셋 해시 또는 직접 입력)
+def _p_lab_entrefine_try(h, body):
+    return ER.try_one(json.loads(body or b"{}"), team=h._req_team())
+
+
+@_post_route("/lab-entrefine-run", gate="super")     # 엔티티 재처리 정답셋 일괄 시험(백그라운드 잡)
+def _p_lab_entrefine_run(h, body):
+    data = json.loads(body or b"{}")
+    return ER.start(team=h._req_team(), n=data.get("n") or 30, model=str(data.get("model") or ""))
+
+
+@_post_route("/lab-entrefine-vote", gate="team")     # 키워드 비교 투표 → events(kind=entkw_vote) · 키워드 정답 라벨
+def _p_lab_entrefine_vote(h, body):
+    data = json.loads(body or b"{}")
+    if not h._inject_reviewer(data):
+        h._send(401, json.dumps({"error": "인증 필요"}, ensure_ascii=False), _JSON)
+        return None
+    return ER.vote(data, (data.get("reviewer") or "").strip(), team=data.get("_team") or h._req_team())
 
 
 @_post_route("/lab-decide-try", gate="super")        # 솔라 디사이드 한 건 시험(직접 입력)
