@@ -100,5 +100,16 @@ class EntRefineTest(unittest.TestCase):
         self.assertFalse(out["sentence"]["from_keywords"])                            # 키워드 실패 → 메타만으로
 
 
+    def test_picker_value_to_model_id(self):
+        """픽커 값 'timely|claude-opus-5' 를 그대로 넘기면 라우터가 bad_request(2026-10-07 운영) → 모델 id 만."""
+        seen = []
+        ER._SV = types.SimpleNamespace(Handler=types.SimpleNamespace(server_mock=False),
+                                       llm_for_model=lambda m, mock: (seen.append(m) or object(), "timely"))
+        self.addCleanup(lambda: setattr(ER, "_SV", None))
+        ER._llm("timely|claude-opus-5"); ER._llm("solar-pro3"); ER._llm("")
+        self.assertEqual(seen, ["claude-opus-5", "solar-pro3", ""])
+        self.assertEqual(ER._model_id("bizrouter|openai/gpt-5.4"), "openai/gpt-5.4")
+
+
 if __name__ == "__main__":
     unittest.main()
