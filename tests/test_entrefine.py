@@ -58,5 +58,35 @@ class EntRefineTest(unittest.TestCase):
         self.assertEqual(ER.votes()["tally"]["refined"], 1)
 
 
+    def test_config_and_sentence(self):
+        store = {}
+        ER._SV = types.SimpleNamespace(_report_get=lambda k, t=None, d=None: store.get(k, d),
+                                       _report_save=lambda k, v, t=None: store.__setitem__(k, v))
+        self.addCleanup(lambda: setattr(ER, "_SV", None))
+        c = ER.get_config()
+        self.assertFalse(c["keyword"]["custom"]); self.assertEqual(c["sentence"]["rules"], ER.SENT_RULES)
+        r = ER.save_config({"keyword": {"model": "m1", "rules": "새 규칙"}, "sentence": {"model": "", "rules": ER.SENT_RULES}})
+        self.assertTrue(r["keyword"]["custom"]); self.assertEqual(r["keyword"]["model"], "m1")
+        self.assertFalse(r["sentence"]["custom"])                                  # 기본과 같으면 기본으로
+        self.assertTrue(ER._system("keyword", r).endswith(ER.KW_SCHEMA))            # 출력 형식은 항상 뒤에 고정
+        self.assertTrue(ER._system("keyword", r).startswith("새 규칙"))
+        self.assertFalse(ER.save_config({"keyword": {"rules": "x" * 9000}})["ok"])
+        self.assertEqual(ER.validate_sentence({"sentence": '  "한국은행이 기준금리를 0.25%p 내렸다"  '}), "한국은행이 기준금리를 0.25%p 내렸다")
+        for bad in ({"sentence": "짧음"}, {"sentence": "가" * 200}, []):
+            with self.assertRaises(ValueError):
+                ER.validate_sentence(bad)
+
+    def test_process_keeps_other_call_on_failure(self):
+        class Boom:
+            def complete_json(self, *a, **k):
+                raise RuntimeError("down")
+        ER._SV = types.SimpleNamespace(get_store=lambda: None)
+        self.addCleanup(lambda: setattr(ER, "_SV", None))
+        eng = {"keyword": (Boom(), False, "s", "m"), "sentence": (None, True, "s", "m")}
+        out = ER.process({"title": "가나다라마바사 제목", "body": "가 나 다"}, {"entities": ["가", "나", "다"], "summary": "요약"}, eng)
+        self.assertIn("down", out["error"]); self.assertEqual(len(out["base"]), 3)  # 키워드 실패 · 지금 방식은 남김
+        self.assertTrue(out["sentence"]["text"]); self.assertEqual(out["sentence"]["base"], "요약")
+
+
 if __name__ == "__main__":
     unittest.main()

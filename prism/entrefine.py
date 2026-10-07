@@ -1,4 +1,8 @@
-"""엔티티 재처리 · 서비스 키워드 3개 선정 시험 (실험실 · 운영자 전용 · 2026-10-07).
+"""핵심 키워드 / 문장 재가공 시험 (실험실 · 운영자 전용 · 2026-10-07).
+
+1차 추출 뒤 두 호출을 따로 탄다: ① 핵심 키워드(엔티티 재처리 · 구독 키워드 3개) ② 핵심 문장(구독 카드·알림용 1문장).
+호출마다 모델·프롬프트(규칙부)를 실험실 › 모델·프롬프트 화면에서 고쳐 저장한다(reports kind=CONFIG_KIND · 팀 단위).
+출력 형식(JSON 스키마)은 코드가 항상 프롬프트 뒤에 붙인다 · 규칙을 고쳐도 결과 해석이 깨지지 않게.
 
 왜: 엔티티를 서비스(키워드)로 쓰려면 '본문에 있는 이름인가'를 넘어 '이 콘텐츠를 대표하나'를 골라야 한다.
 운영 정답셋 실측(875건): 검수 전 초안과 정답 엔티티가 완전히 같은 건 87% · 초안 엔티티 97%가 정답에 남음 ·
@@ -32,7 +36,7 @@ WORKERS = 4
 TYPES = ("PS", "OG", "LC", "AF", "EV", "TM")
 PICKS = ("refined", "base", "both", "neither")
 
-SYSTEM = """너는 콘텐츠에서 이미 뽑은 엔티티를 서비스 키워드 용도로 다시 정리하는 편집자다.
+KW_RULES = """너는 콘텐츠에서 이미 뽑은 엔티티를 서비스 키워드 용도로 다시 정리하는 편집자다.
 입력: 제목 · 본문 · 리드문 · 1차 엔티티 목록(이름 · 확신도 · 사전 정식명이 있으면 함께).
 
 # 할 일
@@ -50,11 +54,72 @@ SYSTEM = """너는 콘텐츠에서 이미 뽑은 엔티티를 서비스 키워�
 - 빼는 것: 기자·작성자·출처 매체명, 서비스명(다음·티스토리·카페 등), 너무 일반적인 말(정부·시장·관계자·사진·영상),
   본문에 한 번 스치듯 나온 이름.
 - 세 키워드는 서로 다른 대상이어야 한다. 같은 대상의 표기 변형이나 상하위(예: 삼성전자와 삼성)는 하나만 남긴다.
-- 주제 키워드는 원문에 없는 말을 만들거나 바꿔 쓰지 않는다. 너무 넓은 말(경제·사회·이슈)은 쓰지 않는다.
+- 주제 키워드는 원문에 없는 말을 만들거나 바꿔 쓰지 않는다. 너무 넓은 말(경제·사회·이슈)은 쓰지 않는다."""
 
-# 출력 (JSON 한 개만)
+KW_SCHEMA = """# 출력 (JSON 한 개만 · 이 형식은 고정)
 {"entities": [{"name": string, "canonical": string, "type": string, "relevance": number, "keep": boolean}],
  "keywords": [{"text": string, "kind": "entity" | "concept"}]}"""
+
+SENT_RULES = """너는 콘텐츠를 구독자에게 알릴 핵심 문장 1개를 쓰는 편집자다.
+입력: 제목 · 본문 · 지금 리드문 · 엔티티 목록.
+
+# 기준
+- 이 글을 열어 보면 무엇을 알 수 있는지 한 문장으로 쓴다. 구독 카드·알림에 그대로 붙는 문장이다.
+- 원문에 있는 사실만 쓴다. 과장·추측·평가(최고·충격·반드시)는 넣지 않는다.
+- 핵심 대상(인물·기관·작품 등)을 문장 안에 이름으로 넣는다. 대명사로 시작하지 않는다.
+- 40~80자 · 평서문 한 문장 · 따옴표·이모지·해시태그를 쓰지 않는다.
+- 지금 리드문이 이미 기준에 맞으면 크게 바꾸지 않는다."""
+
+SENT_SCHEMA = """# 출력 (JSON 한 개만 · 이 형식은 고정)
+{"sentence": string}"""
+
+SENT_MIN, SENT_MAX = 10, 120                 # 검증 범위(규칙의 40~80자보다 넓게 · 벗어나면 실패로 표시)
+PROMPT_MAX = 8000
+CALLS = ("keyword", "sentence")
+DEFAULT_RULES = {"keyword": KW_RULES, "sentence": SENT_RULES}
+SCHEMAS = {"keyword": KW_SCHEMA, "sentence": SENT_SCHEMA}
+CONFIG_KIND = "lab_core_config"
+
+
+def get_config(team=None) -> dict:
+    """{keyword:{model, rules, custom}, sentence:{...}, schemas} · 저장값이 없으면 기본 규칙."""
+    saved = (_SV._report_get(CONFIG_KIND, team, {}) if _SV else {}) or {}
+    out = {}
+    for c in CALLS:
+        v = saved.get(c) or {}
+        rules = str(v.get("rules") or "").strip()
+        out[c] = {"model": str(v.get("model") or ""), "rules": rules or DEFAULT_RULES[c], "custom": bool(rules)}
+    return {**out, "schemas": SCHEMAS, "defaults": DEFAULT_RULES}
+
+
+def save_config(body: dict, team=None) -> dict:
+    """호출별 모델·규칙 저장 · 규칙이 비었거나 기본과 같으면 기본으로 되돌림."""
+    cur = (_SV._report_get(CONFIG_KIND, team, {}) or {}) if _SV else {}
+    for c in CALLS:
+        v = (body or {}).get(c)
+        if not isinstance(v, dict):
+            continue
+        rules = str(v.get("rules") or "").strip()
+        if len(rules) > PROMPT_MAX:
+            return {"ok": False, "error": f"프롬프트가 너무 깁니다({PROMPT_MAX}자 이하)"}
+        if rules == DEFAULT_RULES[c].strip():
+            rules = ""
+        cur[c] = {"model": str(v.get("model") or "")[:120], "rules": rules}
+    _SV._report_save(CONFIG_KIND, cur, team)
+    return {"ok": True, **get_config(team)}
+
+
+def _system(call: str, cfg: dict) -> str:
+    return (cfg.get(call) or {}).get("rules", DEFAULT_RULES[call]).strip() + "\n\n" + SCHEMAS[call]
+
+
+def validate_sentence(obj) -> str:
+    if not isinstance(obj, dict):
+        raise ValueError("JSON 객체가 아닙니다")
+    t = " ".join(str(obj.get("sentence") or "").split()).strip().strip('"“”')
+    if not (SENT_MIN <= len(t) <= SENT_MAX):
+        raise ValueError(f"핵심 문장 길이가 범위를 벗어났습니다({len(t)}자)")
+    return t
 
 
 def baseline(item_meta: dict, content: dict) -> list:
@@ -136,24 +201,40 @@ def _canon(names: list) -> dict:
     return out
 
 
-def refine(content: dict, item_meta: dict, llm, mock: bool = False) -> dict:
-    """한 건 재처리 · 반환 {base, refined:{entities,keywords,dropped,renamed}, latency_ms, tokens}."""
+def _call(llm, system: str, user: str, tag: str):
+    obj, res = llm.complete_json(system, user, tag=tag)
+    if isinstance(obj, dict) and obj.get("_fail"):
+        raise ValueError("모델 호출 실패 · " + str(obj.get("_fail_kind") or ""))
+    return obj, {"in": getattr(res, "in_tok", 0), "out": getattr(res, "out_tok", 0)}
+
+
+def refine(content: dict, item_meta: dict, llm, mock: bool = False, system: str = "") -> dict:
+    """① 핵심 키워드 · 반환 {base, refined:{entities,keywords,dropped,renamed}, latency_ms, tokens}."""
     names = MC.entity_names((item_meta or {}).get("entities"))
     if not names:
         raise ValueError("1차 엔티티가 없습니다")
     canon = _canon(names)
     t0 = time.time()
-    tokens = {}
     if mock:
-        obj = _mock(names, canon)
+        obj, tokens = _mock(names, canon), {}
     else:
-        obj, res = llm.complete_json(SYSTEM, _payload(content, item_meta, canon), tag="entrefine")
-        if isinstance(obj, dict) and obj.get("_fail"):
-            raise ValueError("모델 호출 실패 · " + str(obj.get("_fail_kind") or ""))
-        tokens = {"in": getattr(res, "in_tok", 0), "out": getattr(res, "out_tok", 0)}
+        obj, tokens = _call(llm, system or _system("keyword", {}), _payload(content, item_meta, canon), "core_keyword")
     text = " ".join(str(x or "") for x in (content.get("title"), (item_meta or {}).get("summary"), content.get("body")))
     return {"base": baseline(item_meta, content), "refined": validate(obj, names, canon, text),
             "latency_ms": round((time.time() - t0) * 1000), "tokens": tokens}
+
+
+def sentence(content: dict, item_meta: dict, llm, mock: bool = False, system: str = "") -> dict:
+    """② 핵심 문장 · 반환 {text, base(지금 리드문), latency_ms, tokens}."""
+    t0 = time.time()
+    base = str((item_meta or {}).get("summary") or "")
+    if mock:
+        obj, tokens = {"sentence": (content.get("title") or "제목 없음") + "에 대한 핵심 내용을 정리했다"}, {}
+    else:
+        user = json.dumps({"제목": content.get("title") or "", "본문": str(content.get("body") or "")[:BODY_MAX],
+                           "지금리드문": base, "엔티티": MC.entity_names((item_meta or {}).get("entities"))}, ensure_ascii=False)
+        obj, tokens = _call(llm, system or _system("sentence", {}), user, "core_sentence")
+    return {"text": validate_sentence(obj), "base": base, "latency_ms": round((time.time() - t0) * 1000), "tokens": tokens}
 
 
 def _llm(model: str):
@@ -161,14 +242,51 @@ def _llm(model: str):
     if mock:
         return None, True, ""
     llm, route = _SV.llm_for_model(model, False)
-    return llm, False, ("" if llm is not None else f"모델을 부를 수 없습니다({route or model})")
+    return llm, False, ("" if llm is not None else f"모델을 부를 수 없습니다({route or model or '기본 모델'})")
+
+
+def _engines(team=None):
+    """설정에서 호출별 (llm, mock, system, model) · 모델을 못 부르면 오류 문구."""
+    cfg = get_config(team)
+    out = {}
+    for c in CALLS:
+        llm, mock, err = _llm(cfg[c]["model"])
+        if err:
+            return None, f"{'핵심 키워드' if c == 'keyword' else '핵심 문장'} · {err}"
+        out[c] = (llm, mock, _system(c, cfg), cfg[c]["model"] or "(기본)")
+    return out, ""
+
+
+def process(content: dict, item_meta: dict, eng: dict) -> dict:
+    """두 호출을 동시에 · 한쪽이 실패해도 다른 쪽 결과는 남긴다(kw_error · sentence.error)."""
+    def kw():
+        llm, mock, system, _ = eng["keyword"]
+        return refine(content, item_meta, llm, mock, system)
+
+    def st():
+        llm, mock, system, _ = eng["sentence"]
+        return sentence(content, item_meta, llm, mock, system)
+
+    with ThreadPoolExecutor(2) as ex:
+        fk, fs = ex.submit(kw), ex.submit(st)
+    out = {}
+    try:
+        out.update(fk.result())
+    except Exception as e:
+        out["error"] = str(e)
+        out["base"] = baseline(item_meta, content)
+    try:
+        out["sentence"] = fs.result()
+    except Exception as e:
+        out["sentence"] = {"error": str(e), "base": str((item_meta or {}).get("summary") or "")}
+    return out
 
 
 def _content_of(h: str, team=None):
-    """해시 → (content, item_meta) · 정답셋 우선(검수된 엔티티) · 없으면 콘텐츠 원본."""
+    """해시 → (content, item_meta) · 정답셋(검수된 엔티티·리드문)."""
     st = _SV.get_store()
+    from .store import golden_hash
     for r in (st.get_golden(team) if hasattr(st, "get_golden") else []) or []:
-        from .store import golden_hash
         if golden_hash(r) == h:
             exp = r.get("expected") or {}
             return r.get("content") or {}, {"entities": exp.get("entities"), "summary": exp.get("summary")}
@@ -176,7 +294,7 @@ def _content_of(h: str, team=None):
 
 
 def try_one(body: dict, team=None) -> dict:
-    llm, mock, err = _llm(str(body.get("model") or ""))
+    eng, err = _engines(team)
     if err:
         return {"ok": False, "error": err}
     h = str(body.get("hash") or "").strip()
@@ -186,11 +304,10 @@ def try_one(body: dict, team=None) -> dict:
             return {"ok": False, "error": "정답셋에서 이 해시를 찾지 못했습니다"}
     else:
         content = {"title": body.get("title") or "", "body": body.get("body") or ""}
-        im = {"entities": [x.strip() for x in str(body.get("entities") or "").split(",") if x.strip()], "summary": ""}
-    try:
-        return {"ok": True, "hash": h, "title": content.get("title") or "", **refine(content, im, llm, mock)}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+        im = {"entities": [x.strip() for x in str(body.get("entities") or "").split(",") if x.strip()],
+              "summary": str(body.get("summary") or "")}
+    return {"ok": True, "hash": h, "title": content.get("title") or "",
+            "models": {c: eng[c][3] for c in CALLS}, **process(content, im, eng)}
 
 
 # ── 정답셋 일괄 시험(백그라운드 잡 · decide 와 같은 패턴) ──────────────────────
@@ -199,9 +316,9 @@ _RUNS: dict = {}
 _SEQ = 0
 
 
-def start(team=None, n: int = 30, model: str = "") -> dict:
+def start(team=None, n: int = 30) -> dict:
     global _SEQ
-    llm, mock, err = _llm(model)
+    eng, err = _engines(team)
     if err:
         return {"ok": False, "error": err}
     st = _SV.get_store()
@@ -217,23 +334,20 @@ def start(team=None, n: int = 30, model: str = "") -> dict:
     with _LOCK:
         _SEQ += 1
         rid = _SEQ
-        _RUNS[rid] = {"running": True, "total": len(rows), "done": 0, "items": [], "error": "", "model": model or "(기본)",
-                      "started": time.time()}
+        _RUNS[rid] = {"running": True, "total": len(rows), "done": 0, "items": [], "error": "",
+                      "models": {c: eng[c][3] for c in CALLS}, "started": time.time()}
         for k in [k for k, v in _RUNS.items() if not v["running"] and k < rid - 10]:
             _RUNS.pop(k, None)
-    threading.Thread(target=_run, args=(rid, rows, llm, mock), daemon=True).start()
+    threading.Thread(target=_run, args=(rid, rows, eng), daemon=True).start()
     return {"ok": True, "id": rid, "total": len(rows)}
 
 
-def _run(rid, rows, llm, mock):
+def _run(rid, rows, eng):
     run = _RUNS[rid]
 
     def one(row):
         h, content, im = row
-        try:
-            item = {"hash": h, "title": content.get("title") or "", **refine(content, im, llm, mock)}
-        except Exception as e:
-            item = {"hash": h, "title": content.get("title") or "", "error": str(e)}
+        item = {"hash": h, "title": content.get("title") or "", **process(content, im, eng)}
         with _LOCK:
             run["items"].append(item)
             run["done"] += 1
@@ -253,8 +367,12 @@ def _run(rid, rows, llm, mock):
 def summary(items: list) -> dict:
     """일괄 결과 요약: 지금 방식과 키워드가 겹치는 정도 · 빠진 엔티티 비율 · 정식명 바뀐 건."""
     ok = [i for i in items if not i.get("error")]
+    sents = [i["sentence"] for i in items if isinstance(i.get("sentence"), dict) and i["sentence"].get("text")]
+    sent = {"sent_n": len(sents), "sent_fails": sum(1 for i in items if (i.get("sentence") or {}).get("error")),
+            "sent_len_avg": round(sum(len(x["text"]) for x in sents) / len(sents)) if sents else None,
+            "sent_same": sum(1 for x in sents if x["text"].strip() == (x.get("base") or "").strip())}
     if not ok:
-        return {"n": 0}
+        return {"n": 0, "fails": len(items), **sent}
     ov = [len({b["name"] for b in i["base"]} & {k["text"] for k in i["refined"]["keywords"]}) for i in ok]
     ents = sum(len(i["refined"]["entities"]) for i in ok)
     return {"n": len(ok), "fails": len(items) - len(ok),
@@ -262,6 +380,7 @@ def summary(items: list) -> dict:
             "dropped_share": round(sum(len(i["refined"]["dropped"]) for i in ok) / max(1, ents), 3),
             "renamed": sum(len(i["refined"]["renamed"]) for i in ok),
             "short": sum(1 for i in ok if len(i["refined"]["keywords"]) < 3),
+            **sent,
             "concept_share": round(sum(1 for i in ok for k in i["refined"]["keywords"] if k["kind"] == "concept")
                                    / max(1, sum(len(i["refined"]["keywords"]) for i in ok)), 3)}
 
@@ -286,7 +405,7 @@ def vote(body: dict, reviewer: str, team=None) -> dict:
     h = str(body.get("hash") or "").strip()
     if pick not in PICKS or not h:
         return {"ok": False, "error": "선택 값이 올바르지 않습니다"}
-    meta = {"hash": h, "pick": pick, "model": str(body.get("model") or "")[:80],
+    meta = {"hash": h, "pick": pick, "model": str(body.get("model") or "")[:80], "call": "keyword",
             "base": [str(x)[:80] for x in (body.get("base") or [])][:3],
             "refined": [str(x)[:80] for x in (body.get("refined") or [])][:3]}
     st = _SV.get_store()
