@@ -16,10 +16,11 @@
           </div>
         </section>
 
-        <!-- ── STEP 1 · 모델·프롬프트 ── -->
+        <!-- ── STEP 1 · 모델·프롬프트 (콘텐츠 관리와 같은 stepline 머리줄) ── -->
+        <div class="stepline"><span class="stepline__no">STEP 1</span><b>모델·프롬프트</b><span class="meta">호출별 모델과 프롬프트를 정하고 저장합니다</span></div>
         <template x-for="c in [['keyword', '핵심 키워드 호출', 'erKwModel'], ['sentence', '핵심 문장 호출', 'erStModel']]" x-bind:key="c[0]">
           <section class="panel">
-            <div class="panel-hd"><b x-text="'STEP 1 · ' + c[1]"></b><span class="ds-badge ml-auto" x-bind:class="(erCfg && erCfg[c[0]] && erCfg[c[0]].custom) ? 'ds-badge--warning' : 'ds-badge--neutral'" x-text="(erCfg && erCfg[c[0]] && erCfg[c[0]].custom) ? '수정한 프롬프트' : '기본 프롬프트'"></span></div>
+            <div class="panel-hd"><b x-text="c[1]"></b><span class="ds-badge ml-auto" x-bind:class="(erCfg && erCfg[c[0]] && erCfg[c[0]].custom) ? 'ds-badge--warning' : 'ds-badge--neutral'" x-text="(erCfg && erCfg[c[0]] && erCfg[c[0]].custom) ? '수정한 프롬프트' : '기본 프롬프트'"></span></div>
             <div class="panel-bd dc-body">
               <div>
                 <label class="ds-label" x-bind:for="'er-rules-' + c[0]">프롬프트 · 규칙</label>
@@ -37,7 +38,7 @@
           </section>
         </template>
         <section class="panel">
-          <div class="panel-hd"><b>STEP 1 · 호출별 모델 · 저장</b><span class="meta">비우면 시스템 기본 모델</span></div>
+          <div class="panel-hd"><b>호출별 모델 · 저장</b><span class="meta">비우면 시스템 기본 모델</span></div>
           <div class="panel-bd dc-body">
             <div class="dc-row">
               <div><label class="ds-label">핵심 키워드 모델</label><x-modelpick key="erk" value="erKwModel" set="erKwModel=$v" options="availableModels" width="260px" tip="핵심 키워드 호출에 쓰는 모델"></x-modelpick></div>
@@ -48,18 +49,15 @@
           </div>
         </section>
 
-        <!-- ── STEP 2 · 실행 ── -->
-        <section class="panel">
-          <div class="panel-hd"><b>STEP 2 · 실행</b><span class="meta">STEP 1 에 저장한 모델·프롬프트로 돌립니다</span></div>
-          <div class="panel-bd dc-body">
-            <div class="ds-segmented" role="group" aria-label="실행 방식">
-              <button type="button" class="ds-segmented__item" x-bind:aria-pressed="erMode === 'one' ? 'true' : 'false'" x-on:click="erMode = 'one'">단건</button>
-              <button type="button" class="ds-segmented__item" x-bind:aria-pressed="erMode === 'batch' ? 'true' : 'false'" x-on:click="erMode = 'batch'">다건 · 정답셋 일괄</button>
-            </div>
-          </div>
-        </section>
+        <!-- ── STEP 2 · 실행 · 단건/다건 선택은 머리줄 칩(콘텐츠 관리 수동/자동 추가와 같은 방식) ── -->
+        <div class="stepline"><span class="stepline__no">STEP 2</span><b>실행</b><span class="meta">STEP 1 에 저장한 모델·프롬프트로 돌립니다</span>
+          <span class="panel-hd__controls control-row ml-auto">
+            <button type="button" class="srcfilter__chip" x-bind:class="erMode === 'one' ? 'sel' : ''" x-on:click="erMode = 'one'">단건</button>
+            <button type="button" class="srcfilter__chip" x-bind:class="erMode === 'batch' ? 'sel' : ''" x-on:click="erMode = 'batch'">다건 · 정답셋 일괄</button>
+          </span>
+        </div>
         <section class="panel" x-show="erMode === 'one'">
-          <div class="panel-hd"><b>STEP 2 · 단건</b><span class="meta">정답셋 해시를 넣거나 메타를 직접 입력</span></div>
+          <div class="panel-hd"><b>단건</b><span class="meta">정답셋 해시를 넣거나 메타를 직접 입력</span></div>
           <div class="panel-bd dc-body">
             <div><label class="ds-label" for="er-hash">정답셋 콘텐츠 해시</label><input id="er-hash" class="ds-field" x-model="erHash" placeholder="비우면 아래 직접 입력을 씁니다"></div>
             <div x-show="!erHash" x-cloak class="dc-body">
@@ -104,7 +102,7 @@
         </section>
 
         <section class="panel" x-show="erMode === 'batch'" x-cloak>
-          <div class="panel-hd"><b>STEP 2 · 다건 · 정답셋 일괄</b><span class="meta">엔티티가 3개 이상인 정답에서 · 두 호출 동시 · 콘텐츠 4건씩</span></div>
+          <div class="panel-hd"><b>다건 · 정답셋 일괄</b><span class="meta">엔티티가 3개 이상인 정답에서 · 두 호출 동시 · 콘텐츠 4건씩</span></div>
           <div class="panel-bd dc-body">
             <div class="dc-row">
               <div><label class="ds-label" for="er-n">건수</label><input id="er-n" class="ds-field dc-num" type="number" min="1" max="300" x-model.number="erN"></div>
