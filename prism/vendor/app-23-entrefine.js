@@ -3,9 +3,10 @@
 window.PRISM_APP_PARTS = window.PRISM_APP_PARTS || [];
 window.PRISM_APP_PARTS.push(() => ({
 
-      erMode: 'one', erCfg: null, erRules: { keyword: '', sentence: '' }, erKwModel: '', erStModel: '', erSaving: false, erCfgMsg: '', erCfgErr: false,
+      erMode: 'one', erCfg: null, erRules: { keyword: '', sentence: '' }, erDrafts: { keyword: {}, sentence: {} }, erKwModel: '', erStModel: '', erSaving: false, erCfgMsg: '', erCfgErr: false,
       erHash: '', erTitle: '', erBody: '', erEnts: '', erSum1: '', erInt: '', erCat: '', erTrying: false, erOne: null, erOneErr: '',
       erN: 30, erRunning: false, erDone: 0, erTotal: 0, erPhase: '', erItems: [], erSum: null, erMsg: '', erErr: false, _erT: null, erVotes: null,
+      erPage: 1, erPageSize: 10,
       erPicks: [['refined', '재가공'], ['base', '지금 방식'], ['both', '둘 다 좋음'], ['neither', '둘 다 별로']],
 
       erPickKo(p) { return (this.erPicks.find((x) => x[0] === p) || [p, p])[1]; },
@@ -20,15 +21,41 @@ window.PRISM_APP_PARTS.push(() => ({
       _erApplyCfg(r) {
         this.erCfg = r; this.erRules = { keyword: r.keyword.rules, sentence: r.sentence.rules };
         this.erKwModel = r.keyword.model || ''; this.erStModel = r.sentence.model || '';
+        this.erDrafts = { keyword: { ...r.keyword.rules_by_model }, sentence: { ...r.sentence.rules_by_model } };
+      },
+      _erModelKey(model) { return (model || '').split('|').pop().trim() || (this.erCfg && this.erCfg.default_model) || ''; },
+      _erRememberRules(call) {
+        const model = call === 'keyword' ? this.erKwModel : this.erStModel;
+        this.erDrafts[call][this._erModelKey(model)] = this.erRules[call];
+      },
+      erSelectModel(call, model) {
+        if (!this.erCfg || this.erSaving) return;
+        this._erRememberRules(call);
+        if (call === 'keyword') this.erKwModel = model; else this.erStModel = model;
+        this.erRules[call] = this.erDrafts[call][this._erModelKey(model)] || this.erCfg.defaults[call];
+      },
+      erPageCount() { return Math.max(1, Math.ceil(this.erItems.length / this.erPageSize)); },
+      erPageItems() { return this.erItems.slice((this.erPage - 1) * this.erPageSize, this.erPage * this.erPageSize); },
+      erPageLine() {
+        const start = (this.erPage - 1) * this.erPageSize;
+        return this.erItems.length + '건 중 ' + (start + 1) + '~' + Math.min(start + this.erPageSize, this.erItems.length) + '건';
       },
       async erLoadCfg() {
-        try { const r = await (await this._afetch('/lab-core-config', { headers: this._authHeaders() })).json(); if (r && r.ok) this._erApplyCfg(r); } catch (e) {}
+        this.erCfgMsg = ''; this.erCfgErr = false;
+        try {
+          const r = await (await this._afetch('/lab-core-config', { headers: this._authHeaders() })).json();
+          if (!r || !r.ok) throw new Error((r && r.error) || '설정을 불러오지 못했습니다');
+          this._erApplyCfg(r);
+        } catch (e) { this.erCfgErr = true; this.erCfgMsg = e.message || '설정을 불러오지 못했습니다'; }
       },
       async erSaveCfg() {
+        if (!this.erCfg || this.erSaving) return;
+        this._erRememberRules('keyword'); this._erRememberRules('sentence');
         this.erSaving = true; this.erCfgMsg = ''; this.erCfgErr = false;
         try {
           const r = await (await this._afetch('/lab-core-config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({
-            keyword: { model: this.erKwModel, rules: this.erRules.keyword }, sentence: { model: this.erStModel, rules: this.erRules.sentence } }) })).json();
+            keyword: { model: this.erKwModel, rules: this.erRules.keyword, rules_by_model: this.erDrafts.keyword },
+            sentence: { model: this.erStModel, rules: this.erRules.sentence, rules_by_model: this.erDrafts.sentence } }) })).json();
           if (r && r.ok) { this._erApplyCfg(r); this.erCfgMsg = '저장했습니다 · 다음 실행부터 적용됩니다'; } else { this.erCfgErr = true; this.erCfgMsg = (r && r.error) || '저장 실패'; }
         } catch (e) { this.erCfgErr = true; this.erCfgMsg = '저장 실패'; }
         this.erSaving = false;
@@ -52,12 +79,14 @@ window.PRISM_APP_PARTS.push(() => ({
         this.erTrying = false;
       },
       async erRun() {
-        clearTimeout(this._erT); this.erItems = []; this.erSum = null; this.erMsg = ''; this.erErr = false; this.erDone = 0; this.erPhase = '';
+        if (this.erRunning) return;
+        clearTimeout(this._erT); this.erItems = []; this.erPage = 1; this.erSum = null; this.erMsg = ''; this.erErr = false; this.erDone = 0; this.erPhase = '';
+        this.erRunning = true;
         try {
           const r = await (await this._afetch('/lab-entrefine-run', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ n: this.erN }) })).json();
-          if (!r || !r.ok) { this.erErr = true; this.erMsg = (r && r.error) || '실행 실패'; return; }
+          if (!r || !r.ok) { this.erRunning = false; this.erErr = true; this.erMsg = (r && r.error) || '실행 실패'; return; }
           this.erRunning = true; this.erTotal = r.total; this._erPoll(r.id);
-        } catch (e) { this.erErr = true; this.erMsg = '실행 실패'; }
+        } catch (e) { this.erRunning = false; this.erErr = true; this.erMsg = '실행 실패'; }
       },
       _erPoll(id) {
         const tick = async () => {
