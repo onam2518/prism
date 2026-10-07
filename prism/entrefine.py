@@ -23,6 +23,7 @@
 """
 from __future__ import annotations
 
+import copy
 import json
 import threading
 import time
@@ -276,12 +277,35 @@ def _model_id(model: str) -> str:
     return str(model or "").split("|")[-1].strip()
 
 
+FAST_EFFORT = "minimal"                      # 메타 다듬기는 깊은 추론이 필요 없다
+FAST_TIMEOUT = 120                           # 60초 기본은 추론 모델 한 호출에도 모자라 끊고 재시도했다
+_FAST: dict = {}
+
+
+def _fast(llm):
+    """이 탭 전용 사본: Solar 추론 강도 minimal + 제한 시간 여유 · 공유 캐시(llm_for_model)는 건드리지 않는다.
+    운영 실측(2026-10-07 · solar-pro4-260806 · 같은 콘텐츠): 기본 61~71초·출력 3.5~4.3K 토큰(대부분 추론) →
+    minimal 4.8~6.8초·출력 274 토큰 · 키워드 품질 같음. 기본 제한 60초를 넘겨 끊고 재시도하던 것도 사라진다.
+    # ponytail: Solar 만 적용 · 다른 제공자는 reasoning_effort 거절 시 자동 회피가 없어 기본 유지(필요하면 모델별로 확인 후 추가)"""
+    if not str(getattr(llm, "model", "") or "").startswith("solar"):
+        return llm
+    hit = _FAST.get(llm.model)
+    if hit is None:
+        from .llm import LLMClient
+        cfg = copy.deepcopy(llm.cfg)
+        cfg.timeout = max(int(getattr(cfg, "timeout", 0) or 0), FAST_TIMEOUT)
+        hit = _FAST[llm.model] = LLMClient(config=cfg, model=llm.model, reasoning_effort=FAST_EFFORT)
+    return hit
+
+
 def _llm(model: str):
     mock = bool(getattr(getattr(_SV, "Handler", None), "server_mock", False))
     if mock:
         return None, True, ""
     model = _model_id(model)
     llm, route = _SV.llm_for_model(model, False)
+    if llm is not None:
+        llm = _fast(llm)
     return llm, False, ("" if llm is not None else f"모델을 부를 수 없습니다({route or model or '기본 모델'})")
 
 

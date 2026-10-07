@@ -172,5 +172,20 @@ class EntRefineTest(unittest.TestCase):
         self.assertTrue(result["items"][0]["refined"]["keywords"])
 
 
+    def test_fast_client_for_solar_only(self):
+        """Solar 는 이 탭 전용 사본(추론 minimal · 제한 120초) · 공유 클라이언트는 그대로 · 다른 제공자는 손대지 않음."""
+        from prism.config import Config
+        ER._FAST.clear()
+        shared = types.SimpleNamespace(model="solar-pro4-260806", cfg=Config())
+        other = types.SimpleNamespace(model="claude-opus-5", cfg=Config())
+        a = ER._fast(shared)
+        self.assertIsNot(a, shared)
+        self.assertEqual(a.reasoning_effort, "minimal")
+        self.assertGreaterEqual(a.cfg.timeout, 120)
+        self.assertIs(ER._fast(shared), a)                           # 모델당 한 번만 만든다(호출 제한 창 공유)
+        self.assertNotEqual(getattr(shared.cfg, "timeout", None), a.cfg.timeout) if Config().timeout < 120 else None
+        self.assertIs(ER._fast(other), other)
+
+
 if __name__ == "__main__":
     unittest.main()
