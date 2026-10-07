@@ -2220,7 +2220,7 @@ def _g_review_time_stats(h, q):
 
 @_get_route("/lab-entrefine-status", admin=True)     # 엔티티 재처리 일괄 시험 진척·결과
 def _g_lab_entrefine_status(h, q):
-    return ER.status(q.get("id", [""])[0])
+    return ER.status(q.get("id", [""])[0], team=h._req_team())
 
 
 @_get_route("/lab-core-config", admin=True)          # 핵심 키워드 / 문장 호출별 모델·프롬프트(규칙부) · 출력 형식은 고정

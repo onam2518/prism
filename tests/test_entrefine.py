@@ -1,5 +1,8 @@
 import json
 import os
+import random
+import shutil
+import subprocess
 import tempfile
 import threading
 import time
@@ -24,7 +27,7 @@ class EntRefineTest(unittest.TestCase):
                "keywords": [{"text": "이창용", "kind": "single"},
                             {"text": "한국은행 기준금리 인하", "kind": "combo"},                              # 엔티티 포함 · 어절 모두 메타에 있음
                             {"text": "한국은행 금리 동결", "kind": "combo"},                                  # '동결'이 메타에 없음 → 버림
-                            {"text": "기준금리 인하", "kind": "combo"},                                       # 엔티티 없음 → 버림
+                            {"text": "기준금리 인하", "kind": "combo"},                                       # 메타에 근거가 있는 주제어
                             {"text": "한국은행 기준금리 인하했다", "kind": "combo"},                          # '인하했다' 어절이 메타에 없음 → 버림
                             {"text": "한국은행", "kind": "single"}]}
         v = ER.validate(obj, names, canon, meta)
@@ -32,8 +35,9 @@ class EntRefineTest(unittest.TestCase):
         self.assertEqual(v["entities"][0]["canonical"], "한국은행")
         self.assertEqual(v["entities"][0]["relevance"], 100)
         self.assertEqual((v["entities"][2]["type"], v["entities"][2]["relevance"]), ("", 0))
-        self.assertEqual(v["keywords"], [{"text": "한국은행 기준금리 인하", "kind": "combo"},            # 조합형 우선
-                                         {"text": "이창용", "kind": "single"}, {"text": "한국은행", "kind": "single"}])
+        self.assertEqual(v["keywords"], [{"text": "이창용", "kind": "single"},
+                                         {"text": "한국은행 기준금리 인하", "kind": "combo"},
+                                         {"text": "기준금리 인하", "kind": "single"}])
         self.assertEqual(v["dropped"], ["기자 홍길동"])
         self.assertEqual(v["renamed"], [["삼성", "삼성그룹"]])
         self.assertEqual(ER.validate({"keywords": ["본문에만 있는 말"]}, names, canon, meta)["keywords"], [])
@@ -45,6 +49,71 @@ class EntRefineTest(unittest.TestCase):
         payload = json.loads(ER._payload(im, {}))
         self.assertEqual(set(payload), {"리드문", "엔티티", "인텐트", "카테고리"})                   # 제목·본문 없음
         self.assertNotIn("본문", ER._meta_text(im))
+
+    def test_topic_phrase_and_selection_order(self):
+        meta = "한국은행은 기준금리 인하를 결정했다. 이창용 총재가 발표했다."
+        obj = {"entities": [{"name": "한국은행", "keep": True}], "keywords": [
+            {"text": "기준금리 인하", "kind": "single"},
+            {"text": "기준금리 인하 이유", "kind": "single"},
+            {"text": "한국은행", "kind": "single"},
+            {"text": "한국은행", "kind": "single"},
+            {"text": "한국은행 기준금리 인하", "kind": "combo"},
+            {"text": "이창용", "kind": "single"}]}
+        out = ER.validate(obj, ["한국은행"], {}, meta)
+        self.assertEqual(out["keywords"], [obj["keywords"][i] for i in (0, 2, 4)])
+        self.assertEqual(ER.validate({"keywords": [{"text": "금리 인하 수혜주", "kind": "single"}]},
+                                     [], {}, meta)["keywords"], [])
+        topic = {"text": "기준금리 인하", "kind": "single"}
+        self.assertEqual(ER.validate({"keywords": [topic]}, [], {},
+                                     "한국은행이 기준금리를 0.25%포인트 인하했다.")["keywords"], [topic])
+        self.assertEqual(ER.validate({"keywords": [{"text": "한국은행 기준금리 인하 결정", "kind": "single"}]},
+                                     [], {}, meta)["keywords"], [])
+
+    def test_canonical_name_in_combo(self):
+        obj = {"entities": [{"name": "한은", "canonical": "한국은행", "keep": True}],
+               "keywords": [{"text": "한국은행 기준금리 인하", "kind": "combo"}]}
+        self.assertEqual(ER.validate(obj, ["한은"], {"한은": "한국은행"}, "한은 기준금리 인하")["keywords"],
+                         obj["keywords"])
+        self.assertEqual(ER.validate(obj, ["한은"], {}, "한은 기준금리 인하")["keywords"], [])
+
+    def test_two_calls_pass_only_validated_keywords_and_meta(self):
+        calls = []
+        class Capture:
+            def complete_json(self, system, user, tag):
+                calls.append((tag, system, json.loads(user)))
+                if tag == "core_keyword":
+                    return {"entities": [{"name": "한국은행", "keep": True}], "keywords": [
+                        {"text": "기준금리 인하", "kind": "single"},
+                        {"text": "수혜주 추천", "kind": "single"},
+                        {"text": "한국은행", "kind": "single"}]}, None
+                return {"sentence": "한국은행이 기준금리 인하를 결정했다."}, None
+        llm = Capture()
+        eng = {c: (llm, False, ER._system(c, {}), "test") for c in ER.CALLS}
+        im = {"summary": "한국은행이 기준금리 인하를 결정했다.", "entities": ["한국은행"],
+              "intent": ["속보·단신"], "content_category": []}
+        with patch.object(ER, "_canon", return_value={}):
+            out = ER.process({"title": "원문 전용 제목", "body": "원문 전용 본문"}, im, eng)
+        self.assertEqual([c[0] for c in calls], ["core_keyword", "core_sentence"])
+        self.assertEqual(calls[1][2]["핵심키워드"], [
+            {"키워드": "기준금리 인하", "유형": "단일형"}, {"키워드": "한국은행", "유형": "단일형"}])
+        for _, _, payload in calls:
+            self.assertNotIn("원문 전용", json.dumps(payload, ensure_ascii=False))
+            self.assertEqual(payload["리드문"], im["summary"])
+        self.assertTrue(out["sentence"]["from_keywords"])
+
+    def test_empty_keywords_still_use_only_two_calls(self):
+        calls = []
+        class Capture:
+            def complete_json(self, system, user, tag):
+                calls.append((tag, json.loads(user)))
+                return ({"entities": [], "keywords": []} if tag == "core_keyword" else
+                        {"sentence": "한국은행이 기준금리를 발표했다."}), None
+        eng = {c: (Capture(), False, ER._system(c, {}), "test") for c in ER.CALLS}
+        with patch.object(ER, "_canon", return_value={}):
+            out = ER.process({}, {"entities": ["한국은행"], "summary": "한국은행이 기준금리를 발표했다."}, eng)
+        self.assertEqual([c[0] for c in calls], ["core_keyword", "core_sentence"])
+        self.assertEqual(calls[1][1]["핵심키워드"], [])
+        self.assertFalse(out["sentence"]["from_keywords"])
 
     def test_baseline_and_summary(self):
         im = {"entities": ["가", "나", "다", "라"], "summary": ""}
@@ -89,6 +158,60 @@ class EntRefineTest(unittest.TestCase):
         for bad in ({"sentence": "짧음"}, {"sentence": "가" * 200}, []):
             with self.assertRaises(ValueError):
                 ER.validate_sentence(bad)
+
+    def test_model_rules_migration_isolation_and_atomic_validation(self):
+        store = {ER.CONFIG_KIND: {"keyword": {"model": "solar-pro3", "rules": "기존 규칙"}}}
+        ER._SV = types.SimpleNamespace(_report_get=lambda k, t=None, d=None: store.get(k, d),
+                                       _report_save=lambda k, v, t=None: store.__setitem__(k, v))
+        self.addCleanup(lambda: setattr(ER, "_SV", None))
+        with patch.object(ER.Config, "load", return_value=types.SimpleNamespace(model="solar-pro4")):
+            self.assertEqual(ER.get_config()["keyword"]["rules"], "기존 규칙")
+            r = ER.save_config({"keyword": {"model": "solar-pro4", "rules": "새 모델 규칙"}})
+            self.assertEqual(r["keyword"]["rules_by_model"], {"solar-pro3": "기존 규칙", "solar-pro4": "새 모델 규칙"})
+            self.assertIn(ER.SOLAR_EXAMPLES["keyword"], r["keyword"]["system"])
+            r = ER.save_config({"keyword": {"model": "", "rules": ER.KW_RULES}})
+            self.assertFalse(r["keyword"]["custom"])
+            self.assertEqual(r["keyword"]["rules_by_model"]["solar-pro3"], "기존 규칙")
+            self.assertEqual(r["keyword"]["effective_model"], "solar-pro4")
+            before = json.dumps(store, sort_keys=True)
+            self.assertFalse(ER.save_config({"keyword": {"model": "solar-pro3", "rules": "수정"},
+                                            "sentence": {"rules": "x" * 8001}})["ok"])
+            self.assertEqual(json.dumps(store, sort_keys=True), before)
+            self.assertFalse(ER.save_config({"keyword": {"rules_by_model": ["bad"]}})["ok"])
+            self.assertEqual(json.dumps(store, sort_keys=True), before)
+        # 기본 모델이 바뀌어도 이전 모델의 규칙이 따라가지 않는다.
+        with patch.object(ER.Config, "load", return_value=types.SimpleNamespace(model="solar-pro2")):
+            self.assertFalse(ER.get_config()["keyword"]["custom"])
+            self.assertEqual(ER.get_config()["keyword"]["effective_model"], "solar-pro2")
+        self.assertNotIn(ER.SOLAR_EXAMPLES["keyword"], ER._system("keyword", {}, "gpt-test"))
+
+    def test_sampling_balances_categories_and_varies_items(self):
+        rows = [(f"{category}-{i}", {}, {"content_category": [category + " / Topic"], "intent": []})
+                for category, size in (("Finance", 50), ("Sports", 10), ("Arts", 1)) for i in range(size)]
+        one = ER._sample_rows(rows, 6, random.Random(7))
+        two = ER._sample_rows(rows, 6, random.Random(19))
+        self.assertEqual(len({r[0] for r in one}), 6)
+        self.assertEqual({r[0].split("-")[0] for r in one}, {"Finance", "Sports", "Arts"})
+        self.assertNotEqual([r[0] for r in one], [r[0] for r in two])
+        self.assertEqual(len(ER._sample_rows(rows, 300, random.Random(7))), len(rows))
+        self.assertEqual(len(rows), 61)
+        fallback = [(str(i), {}, {"intent": [intent]}) for i, intent in enumerate(["news"] * 10 + ["review"])]
+        self.assertEqual({r[2]["intent"][0] for r in ER._sample_rows(fallback, 2, random.Random(7))}, {"news", "review"})
+
+    def test_status_team_scope_and_frozen_elapsed(self):
+        run = {"running": False, "team": "a", "started": 1, "elapsed_s": 2.5,
+               "items": [], "active": {}, "done": 0, "total": 0}
+        with patch.dict(ER._RUNS, {999: run}, clear=True):
+            self.assertFalse(ER.status(999, "b")["ok"])
+            self.assertFalse(ER.status(999)["ok"])
+            with patch.object(ER.time, "time", return_value=100):
+                self.assertEqual(ER.status(999, "a")["elapsed_s"], 2.5)
+            self.assertNotIn("team", ER.status(999, "a"))
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js 없음")
+    def test_client_model_drafts_pagination_and_duplicate_start(self):
+        subprocess.run(["node", os.path.join(os.path.dirname(__file__), "test_entrefine_client.js")],
+                       check=True, capture_output=True, text=True, timeout=10)
 
     def test_process_keeps_other_call_on_failure(self):
         class Boom:
@@ -185,6 +308,9 @@ class EntRefineTest(unittest.TestCase):
         self.assertIs(ER._fast(shared), a)                           # 모델당 한 번만 만든다(호출 제한 창 공유)
         self.assertNotEqual(getattr(shared.cfg, "timeout", None), a.cfg.timeout) if Config().timeout < 120 else None
         self.assertIs(ER._fast(other), other)
+        replacement = types.SimpleNamespace(model=shared.model, cfg=Config(), api_key="fixture-only")
+        self.assertIsNot(ER._fast(replacement), a)
+        self.assertEqual(ER._fast(replacement).api_key, "fixture-only")
 
 
 if __name__ == "__main__":
