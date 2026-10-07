@@ -1,6 +1,8 @@
 """핵심 키워드 / 문장 재가공 시험 (실험실 · 운영자 전용 · 2026-10-07).
 
-1차 추출 뒤 두 호출을 따로 탄다: ① 핵심 키워드(엔티티 재처리 · 구독 키워드 3개) ② 핵심 문장(구독 카드·알림용 1문장).
+1차 추출 뒤 두 호출을 순서대로 탄다: ① 핵심 키워드(구독 키워드 3개) → ② 핵심 문장(핵심 키워드 + 메타로 재구축).
+**입력은 발행된 메타(리드문·엔티티·인텐트·카테고리)뿐이다** · 제목·본문은 넣지 않고, 근거 확인도 메타 안에서 한다(사용자 2026-10-07).
+키워드 유형: 조합형(사건을 함축하는 복합 명사구 · 우선) / 단일형(엔티티 또는 단일 용어).
 호출마다 모델·프롬프트(규칙부)를 실험실 › 모델·프롬프트 화면에서 고쳐 저장한다(reports kind=CONFIG_KIND · 팀 단위).
 출력 형식(JSON 스키마)은 코드가 항상 프롬프트 뒤에 붙인다 · 규칙을 고쳐도 결과 해석이 깨지지 않게.
 
@@ -31,44 +33,45 @@ from . import meta_contract as MC
 
 _SV = None                                   # serve 주입(learnops 관례)
 
-BODY_MAX = 4000
 WORKERS = 4
 TYPES = ("PS", "OG", "LC", "AF", "EV", "TM")
 PICKS = ("refined", "base", "both", "neither")
 
-KW_RULES = """너는 콘텐츠에서 이미 뽑은 엔티티를 서비스 키워드 용도로 다시 정리하는 편집자다.
-입력: 제목 · 본문 · 리드문 · 1차 엔티티 목록(이름 · 확신도 · 사전 정식명이 있으면 함께).
+KW_RULES = """너는 콘텐츠의 발행된 메타만 보고 구독 서비스용 핵심 키워드를 만드는 편집자다.
+입력: 리드문 · 엔티티 목록(발행 순서 · 사전 정식명이 있으면 함께) · 인텐트 · 카테고리. 원문 제목·본문은 주어지지 않는다.
 
 # 할 일
-1. 1차 엔티티를 하나씩 판정한다.
-   - keep: 이 콘텐츠의 서비스 키워드 후보로 쓸 수 있으면 true
+1. 엔티티를 하나씩 판정한다.
+   - keep: 핵심 키워드 재료로 쓸 수 있으면 true
    - canonical: 사전 정식명이 주어졌으면 그 표기, 없으면 원래 이름 그대로 (새 이름을 만들지 않는다)
    - type: PS(인물) · OG(기관·조직·브랜드) · LC(지역·장소) · AF(작품·제품) · EV(사건·행사) · TM(용어·개념) 중 하나
    - relevance: 0~100 · 이 콘텐츠의 핵심 주제를 대표하는 정도
-2. keywords: 독자가 구독할 만한 키워드 정확히 3개(구독 버튼을 달았을 때 이 키워드로 새 글을 받고 싶을 말).
-   - 엔티티 키워드: keep 이 true 인 엔티티의 canonical
-   - 주제 키워드: 엔티티로는 콘텐츠의 주제가 안 잡힐 때만, 제목·리드문·본문에 그대로 나오는 2~20자 명사구(예: 금리 인하, 전기차 보조금)
+2. keywords: 구독할 만한 핵심 키워드 정확히 3개. 유형은 둘이다.
+   - 조합형(combo): 이 콘텐츠의 사건을 핵심적으로 함축하는 복합 명사구 · 엔티티 1개 이상 + 리드문에 나오는 말로 만든다
+     (예: 한국은행 기준금리 인하 · 강호필 내란 혐의 소환 · 스마일게이트 미래시 사전예약)
+   - 단일형(single): 엔티티 하나(canonical) 또는 리드문에 그대로 나오는 단일 용어
+   - **조합형을 먼저** 둔다. 사건이 뚜렷하면 조합형 1~2개 + 단일형으로 채우고, 사건이 없는 글(맛집·후기 등)은 단일형만 써도 된다.
 
 # 키워드 기준
-- 독자가 이 키워드로 비슷한 콘텐츠를 찾고 싶어 할 만큼 구체적인 대상을 고른다. 고유명사가 일반명사보다 먼저다.
-- 빼는 것: 기자·작성자·출처 매체명, 서비스명(다음·티스토리·카페 등), 너무 일반적인 말(정부·시장·관계자·사진·영상),
-  본문에 한 번 스치듯 나온 이름.
-- 세 키워드는 서로 다른 대상이어야 한다. 같은 대상의 표기 변형이나 상하위(예: 삼성전자와 삼성)는 하나만 남긴다.
-- 주제 키워드는 원문에 없는 말을 만들거나 바꿔 쓰지 않는다. 너무 넓은 말(경제·사회·이슈)은 쓰지 않는다."""
+- 조합형은 2~5어절 · 30자 이하 명사구 · 동사로 끝내지 않는다(인하했다 ✗ → 인하 ✓) · 조사를 붙이지 않는다.
+- 조합형의 모든 어절은 엔티티·리드문·인텐트·카테고리에 나오는 말이어야 한다. 메타에 없는 말을 지어내지 않는다.
+- 단일형은 구독할 만큼 구체적인 대상을 고른다. 고유명사가 일반명사보다 먼저다.
+- 빼는 것: 기자·작성자·출처 매체명, 서비스명(다음·티스토리·카페 등), 너무 넓은 말(정부·시장·관계자·경제·사회·이슈).
+- 세 키워드는 서로 겹치지 않게 한다. 조합형에 이미 든 엔티티를 단일형으로 다시 쓰는 것은 그 엔티티가 따로 구독할 가치가 클 때만."""
 
 KW_SCHEMA = """# 출력 (JSON 한 개만 · 이 형식은 고정)
 {"entities": [{"name": string, "canonical": string, "type": string, "relevance": number, "keep": boolean}],
- "keywords": [{"text": string, "kind": "entity" | "concept"}]}"""
+ "keywords": [{"text": string, "kind": "combo" | "single"}]}"""
 
-SENT_RULES = """너는 콘텐츠를 구독자에게 알릴 핵심 문장 1개를 쓰는 편집자다.
-입력: 제목 · 본문 · 지금 리드문 · 엔티티 목록.
+SENT_RULES = """너는 핵심 키워드와 발행된 메타만으로 구독자에게 알릴 핵심 문장 1개를 다시 쓰는 편집자다.
+입력: 핵심 키워드(조합형·단일형) · 리드문 · 엔티티 · 인텐트 · 카테고리. 원문 제목·본문은 주어지지 않는다.
 
 # 기준
-- 이 글을 열어 보면 무엇을 알 수 있는지 한 문장으로 쓴다. 구독 카드·알림에 그대로 붙는 문장이다.
-- 원문에 있는 사실만 쓴다. 과장·추측·평가(최고·충격·반드시)는 넣지 않는다.
-- 핵심 대상(인물·기관·작품 등)을 문장 안에 이름으로 넣는다. 대명사로 시작하지 않는다.
-- 40~80자 · 평서문 한 문장 · 따옴표·이모지·해시태그를 쓰지 않는다.
-- 지금 리드문이 이미 기준에 맞으면 크게 바꾸지 않는다."""
+- 조합형 핵심 키워드가 있으면 그 사건을 문장의 중심에 둔다. 없으면 단일형 키워드와 리드문으로 쓴다.
+- 입력 메타에 있는 사실만 쓴다. 메타에 없는 수치·날짜·인용을 만들지 않는다. 과장·추측·평가(최고·충격·반드시)는 넣지 않는다.
+- 핵심 대상(인물·기관·작품 등)을 이름으로 넣는다. 대명사로 시작하지 않는다.
+- 인텐트에 맞는 말투를 쓴다(속보·사건은 사실 전달 · 후기·리뷰는 경험 요약 · 실용 정보는 무엇을 알 수 있는지).
+- 40~80자 · 평서문 한 문장 · 따옴표·이모지·해시태그를 쓰지 않는다."""
 
 SENT_SCHEMA = """# 출력 (JSON 한 개만 · 이 형식은 고정)
 {"sentence": string}"""
@@ -128,16 +131,28 @@ def baseline(item_meta: dict, content: dict) -> list:
     return sorted(sc, key=lambda s: -s["conf"])[:3] if sc else []
 
 
-def _payload(content: dict, item_meta: dict, canon: dict) -> str:
-    sc = EC.scored_entities(item_meta or {}, {"title": content.get("title"), "body": content.get("body")})
-    ents = [{"이름": s["name"], "확신도": s["conf"], **({"사전정식명": canon[s["name"]]} if canon.get(s["name"]) else {})}
-            for s in sc]
-    return json.dumps({"제목": content.get("title") or "", "본문": str(content.get("body") or "")[:BODY_MAX],
-                       "리드문": (item_meta or {}).get("summary") or "", "1차엔티티": ents}, ensure_ascii=False)
+def _metas(item_meta: dict) -> dict:
+    """발행 메타 묶음(입력·근거 확인 공용) · 제목·본문은 넣지 않는다."""
+    im = item_meta or {}
+    return {"리드문": str(im.get("summary") or ""), "엔티티": MC.entity_names(im.get("entities")),
+            "인텐트": [str(x) for x in (im.get("intent") or []) if x],
+            "카테고리": MC.category_paths(im.get("content_category")) or []}
+
+
+def _meta_text(item_meta: dict) -> str:
+    m = _metas(item_meta)
+    return " ".join([m["리드문"], *m["엔티티"], *m["인텐트"], *m["카테고리"]])
+
+
+def _payload(item_meta: dict, canon: dict) -> str:
+    m = _metas(item_meta)
+    ents = [{"이름": n, **({"사전정식명": canon[n]} if canon.get(n) else {})} for n in m["엔티티"]]
+    return json.dumps({"리드문": m["리드문"], "엔티티": ents, "인텐트": m["인텐트"], "카테고리": m["카테고리"]}, ensure_ascii=False)
 
 
 def validate(obj, names: list, canon: dict, text: str = "") -> dict:
-    """모델 출력 검증: 1차 목록 밖 이름·사전에 없는 정식명 변경은 버린다 · 주제 키워드는 원문(text)에 있어야 한다.
+    """모델 출력 검증: 1차 목록 밖 이름·사전에 없는 정식명 변경은 버린다 · 키워드는 메타(text) 근거가 있어야 한다.
+    조합형 = 2~5어절·엔티티 포함·모든 어절이 메타에 있음 · 단일형 = 엔티티 정식명 또는 메타에 그대로 있는 용어 · 조합형 먼저.
     반환 {entities, keywords:[{text, kind}], dropped, renamed}."""
     if not isinstance(obj, dict):
         raise ValueError("JSON 객체가 아닙니다")
@@ -162,18 +177,32 @@ def validate(obj, names: list, canon: dict, text: str = "") -> dict:
     for r in ents:
         lookup[r["name"]] = r["canonical"]
         lookup[r["canonical"]] = r["canonical"]
-    kws, seen, src = [], set(), EC._norm(text)
+    src = EC._norm(text)
+    ent_norms = {EC._norm(x) for x in lookup}
+    combos, singles, seen = [], [], set()
     for k in obj.get("keywords") or []:
-        t = str((k.get("text") if isinstance(k, dict) else k) or "").strip()
-        if t in lookup:
-            c, kind = lookup[t], "entity"
-        elif 2 <= len(t) <= 20 and EC._norm(t) and EC._norm(t) in src:
-            c, kind = t, "concept"                                # 원문에 그대로 나오는 주제어만
+        t = " ".join(str((k.get("text") if isinstance(k, dict) else k) or "").split())
+        kind = (k.get("kind") if isinstance(k, dict) else "") or ""
+        words = t.split(" ")
+        if t in lookup and kind != "combo":
+            c, kind = lookup[t], "single"
+        elif kind == "combo" or len(words) >= 2:
+            # 조합형: 2~5어절 · 30자 이하 · 엔티티 1개 이상 포함 · 모든 어절이 메타에 있음(지어낸 말 차단)
+            if not (2 <= len(words) <= 5 and len(t) <= 30):
+                continue
+            if not any(e and e in EC._norm(t) for e in ent_norms):
+                continue
+            if not all(EC._norm(w) in src for w in words):
+                continue
+            c, kind = t, "combo"
+        elif 2 <= len(t) <= 20 and EC._norm(t) in src:
+            c, kind = t, "single"                                   # 메타에 그대로 나오는 단일 용어
         else:
             continue
         if c not in seen:
             seen.add(c)
-            kws.append({"text": c, "kind": kind})
+            (combos if kind == "combo" else singles).append({"text": c, "kind": kind})
+    kws = combos + singles                                          # 조합형 우선
     return {"entities": ents, "keywords": kws[:3],
             "dropped": [r["name"] for r in ents if not r["keep"]],
             "renamed": [[r["name"], r["canonical"]] for r in ents if r["canonical"] != r["name"]]}
@@ -183,7 +212,10 @@ def _mock(names: list, canon: dict) -> dict:
     """--mock 서버용(화면 확인): 확신도 순서를 거꾸로 써서 지금 방식과 다르게 보이게 한다."""
     ents = [{"name": n, "canonical": canon.get(n) or n, "type": "TM", "relevance": 90 - i * 10, "keep": i < len(names) - 1}
             for i, n in enumerate(reversed(names))]
-    return {"entities": ents, "keywords": [{"text": e["canonical"], "kind": "entity"} for e in ents if e["keep"]][:3]}
+    kws = [{"text": e["canonical"], "kind": "single"} for e in ents if e["keep"]][:3]
+    if len(names) >= 2:
+        kws = [{"text": names[0] + " " + names[1], "kind": "combo"}] + kws[:2]
+    return {"entities": ents, "keywords": kws}
 
 
 def _canon(names: list) -> dict:
@@ -218,23 +250,25 @@ def refine(content: dict, item_meta: dict, llm, mock: bool = False, system: str 
     if mock:
         obj, tokens = _mock(names, canon), {}
     else:
-        obj, tokens = _call(llm, system or _system("keyword", {}), _payload(content, item_meta, canon), "core_keyword")
-    text = " ".join(str(x or "") for x in (content.get("title"), (item_meta or {}).get("summary"), content.get("body")))
-    return {"base": baseline(item_meta, content), "refined": validate(obj, names, canon, text),
+        obj, tokens = _call(llm, system or _system("keyword", {}), _payload(item_meta, canon), "core_keyword")
+    # 비교 기준(base)의 확신도는 원문으로 계산하지만, 재가공 입력·근거 확인은 발행 메타만 쓴다
+    return {"base": baseline(item_meta, content), "refined": validate(obj, names, canon, _meta_text(item_meta)),
             "latency_ms": round((time.time() - t0) * 1000), "tokens": tokens}
 
 
-def sentence(content: dict, item_meta: dict, llm, mock: bool = False, system: str = "") -> dict:
-    """② 핵심 문장 · 반환 {text, base(지금 리드문), latency_ms, tokens}."""
+def sentence(item_meta: dict, keywords: list, llm, mock: bool = False, system: str = "") -> dict:
+    """② 핵심 문장 · 핵심 키워드 + 발행 메타로 재구축(제목·본문 없음) · 반환 {text, base(지금 리드문), from_keywords, …}."""
     t0 = time.time()
-    base = str((item_meta or {}).get("summary") or "")
+    m = _metas(item_meta)
+    kws = [{"키워드": k["text"], "유형": "조합형" if k["kind"] == "combo" else "단일형"} for k in (keywords or [])]
     if mock:
-        obj, tokens = {"sentence": (content.get("title") or "제목 없음") + "에 대한 핵심 내용을 정리했다"}, {}
+        lead = (keywords or [{"text": (m["엔티티"] or ["콘텐츠"])[0]}])[0]["text"]
+        obj, tokens = {"sentence": lead + "에 관한 소식을 정리한 글입니다"}, {}
     else:
-        user = json.dumps({"제목": content.get("title") or "", "본문": str(content.get("body") or "")[:BODY_MAX],
-                           "지금리드문": base, "엔티티": MC.entity_names((item_meta or {}).get("entities"))}, ensure_ascii=False)
+        user = json.dumps({"핵심키워드": kws, **m}, ensure_ascii=False)
         obj, tokens = _call(llm, system or _system("sentence", {}), user, "core_sentence")
-    return {"text": validate_sentence(obj), "base": base, "latency_ms": round((time.time() - t0) * 1000), "tokens": tokens}
+    return {"text": validate_sentence(obj), "base": m["리드문"], "from_keywords": bool(kws),
+            "latency_ms": round((time.time() - t0) * 1000), "tokens": tokens}
 
 
 def _llm(model: str):
@@ -258,25 +292,17 @@ def _engines(team=None):
 
 
 def process(content: dict, item_meta: dict, eng: dict) -> dict:
-    """두 호출을 동시에 · 한쪽이 실패해도 다른 쪽 결과는 남긴다(kw_error · sentence.error)."""
-    def kw():
-        llm, mock, system, _ = eng["keyword"]
-        return refine(content, item_meta, llm, mock, system)
-
-    def st():
-        llm, mock, system, _ = eng["sentence"]
-        return sentence(content, item_meta, llm, mock, system)
-
-    with ThreadPoolExecutor(2) as ex:
-        fk, fs = ex.submit(kw), ex.submit(st)
+    """① 핵심 키워드 → ② 핵심 문장(키워드를 받아 재구축) 순서 · 키워드가 실패해도 문장은 메타만으로 쓴다(from_keywords=False)."""
     out = {}
     try:
-        out.update(fk.result())
+        llm, mock, system, _ = eng["keyword"]
+        out.update(refine(content, item_meta, llm, mock, system))
     except Exception as e:
         out["error"] = str(e)
         out["base"] = baseline(item_meta, content)
     try:
-        out["sentence"] = fs.result()
+        llm, mock, system, _ = eng["sentence"]
+        out["sentence"] = sentence(item_meta, (out.get("refined") or {}).get("keywords") or [], llm, mock, system)
     except Exception as e:
         out["sentence"] = {"error": str(e), "base": str((item_meta or {}).get("summary") or "")}
     return out
@@ -289,7 +315,7 @@ def _content_of(h: str, team=None):
     for r in (st.get_golden(team) if hasattr(st, "get_golden") else []) or []:
         if golden_hash(r) == h:
             exp = r.get("expected") or {}
-            return r.get("content") or {}, {"entities": exp.get("entities"), "summary": exp.get("summary")}
+            return r.get("content") or {}, {"entities": exp.get("entities"), "summary": exp.get("summary"), "intent": exp.get("intent"), "content_category": exp.get("content_category")}
     return None, None
 
 
@@ -304,8 +330,9 @@ def try_one(body: dict, team=None) -> dict:
             return {"ok": False, "error": "정답셋에서 이 해시를 찾지 못했습니다"}
     else:
         content = {"title": body.get("title") or "", "body": body.get("body") or ""}
-        im = {"entities": [x.strip() for x in str(body.get("entities") or "").split(",") if x.strip()],
-              "summary": str(body.get("summary") or "")}
+        split = lambda k: [x.strip() for x in str(body.get(k) or "").split(",") if x.strip()]
+        im = {"entities": split("entities"), "summary": str(body.get("summary") or ""),
+              "intent": split("intent"), "content_category": split("category")}
     return {"ok": True, "hash": h, "title": content.get("title") or "",
             "models": {c: eng[c][3] for c in CALLS}, **process(content, im, eng)}
 
@@ -327,7 +354,7 @@ def start(team=None, n: int = 30) -> dict:
     for r in (st.get_golden(team) if hasattr(st, "get_golden") else []) or []:
         exp = r.get("expected") or {}
         if len(MC.entity_names(exp.get("entities"))) >= 3:
-            rows.append((golden_hash(r), r.get("content") or {}, {"entities": exp.get("entities"), "summary": exp.get("summary")}))
+            rows.append((golden_hash(r), r.get("content") or {}, {"entities": exp.get("entities"), "summary": exp.get("summary"), "intent": exp.get("intent"), "content_category": exp.get("content_category")}))
     rows = rows[:max(1, min(int(n or 30), 300))]
     if not rows:
         return {"ok": False, "error": "엔티티가 3개 이상인 정답이 없습니다"}
@@ -368,7 +395,7 @@ def summary(items: list) -> dict:
     """일괄 결과 요약: 지금 방식과 키워드가 겹치는 정도 · 빠진 엔티티 비율 · 정식명 바뀐 건."""
     ok = [i for i in items if not i.get("error")]
     sents = [i["sentence"] for i in items if isinstance(i.get("sentence"), dict) and i["sentence"].get("text")]
-    sent = {"sent_n": len(sents), "sent_fails": sum(1 for i in items if (i.get("sentence") or {}).get("error")),
+    sent = {"sent_n": len(sents), "sent_kw": sum(1 for x in sents if x.get("from_keywords")), "sent_fails": sum(1 for i in items if (i.get("sentence") or {}).get("error")),
             "sent_len_avg": round(sum(len(x["text"]) for x in sents) / len(sents)) if sents else None,
             "sent_same": sum(1 for x in sents if x["text"].strip() == (x.get("base") or "").strip())}
     if not ok:
@@ -381,7 +408,7 @@ def summary(items: list) -> dict:
             "renamed": sum(len(i["refined"]["renamed"]) for i in ok),
             "short": sum(1 for i in ok if len(i["refined"]["keywords"]) < 3),
             **sent,
-            "concept_share": round(sum(1 for i in ok for k in i["refined"]["keywords"] if k["kind"] == "concept")
+            "combo_share": round(sum(1 for i in ok for k in i["refined"]["keywords"] if k["kind"] == "combo")
                                    / max(1, sum(len(i["refined"]["keywords"]) for i in ok)), 3)}
 
 

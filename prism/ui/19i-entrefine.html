@@ -1,6 +1,6 @@
       <!-- 실험실 › 핵심 키워드 / 문장(운영자 전용) · labTab==='entref' · 06-quality-lab 탭 바에 의존
            1차 추출 뒤 두 재가공 호출: ① 핵심 키워드(엔티티 재처리 · 구독 키워드 3개) ② 핵심 문장(구독 카드·알림용 1문장)
-           하위 탭: 실행·결과 | 모델·프롬프트(호출별 모델·규칙 저장 · 출력 형식은 코드 고정) · 로직 prism/entrefine.py -->
+           STEP 1 모델·프롬프트(호출별 모델·규칙 저장 · 출력 형식은 코드 고정) → STEP 2 실행(단건 | 다건 선택) · 로직 prism/entrefine.py -->
       <template x-if="mod === 'lab'">
         <div x-show="labTab === 'entref'" x-cloak class="w-full dc-body">
 
@@ -8,21 +8,18 @@
           <div class="panel-hd"><b>핵심 키워드 / 문장</b><span class="meta">1차 추출 결과를 구독 서비스용으로 한 번 더 다듬는 두 호출</span><span class="ds-badge ds-badge--neutral ml-auto">운영자 전용</span></div>
           <div class="panel-bd dc-body">
             <ul class="ds-bullets">
-              <li><b>핵심 키워드</b>: 1차 엔티티를 다시 보고 구독할 만한 키워드 3개를 고릅니다 · 엔티티 키워드(사전 정식명으로 맞춤)와 원문에 그대로 나오는 주제 키워드<ul><li>지금 방식은 확신도 상위 3개인데, 정답과 비교하면 모델 순서와 판별력이 같습니다(AUC 0.64)</li></ul></li>
-              <li><b>핵심 문장</b>: 구독 카드·알림에 붙일 한 문장을 씁니다 · 지금 리드문과 나란히 봅니다</li>
+              <li>입력은 <b>발행된 메타(리드문·엔티티·인텐트·카테고리)뿐</b>입니다 · 제목·본문은 쓰지 않고, 키워드 근거 확인도 메타 안에서 합니다</li>
+              <li><b>핵심 키워드</b> 3개 · <b>조합형</b>(사건을 함축하는 복합 명사구 · 우선) / <b>단일형</b>(엔티티 또는 단일 용어)<ul><li>조합형은 엔티티를 하나 이상 품고, 모든 어절이 메타에 있어야 통과합니다 · 비교 기준인 지금 방식은 확신도 상위 3개(정답 대비 판별력이 모델 순서와 같음 · AUC 0.64)</li></ul></li>
+              <li><b>핵심 문장</b>: 핵심 키워드가 나온 뒤 그 키워드와 메타로 다시 씁니다 · 키워드가 실패하면 메타만으로 쓰고 표시합니다</li>
             </ul>
-            <div class="ds-segmented" role="group" aria-label="화면">
-              <button type="button" class="ds-segmented__item" x-bind:aria-pressed="erView === 'run' ? 'true' : 'false'" x-on:click="erView = 'run'">실행·결과</button>
-              <button type="button" class="ds-segmented__item" x-bind:aria-pressed="erView === 'cfg' ? 'true' : 'false'" x-on:click="erView = 'cfg'; erLoadCfg()">모델·프롬프트</button>
-            </div>
             <p class="ds-hint" x-text="erCfgLine()"></p>
           </div>
         </section>
 
-        <!-- ── 모델·프롬프트 ── -->
+        <!-- ── STEP 1 · 모델·프롬프트 ── -->
         <template x-for="c in [['keyword', '핵심 키워드 호출', 'erKwModel'], ['sentence', '핵심 문장 호출', 'erStModel']]" x-bind:key="c[0]">
-          <section class="panel" x-show="erView === 'cfg'" x-cloak>
-            <div class="panel-hd"><b x-text="c[1]"></b><span class="ds-badge ml-auto" x-bind:class="(erCfg && erCfg[c[0]] && erCfg[c[0]].custom) ? 'ds-badge--warning' : 'ds-badge--neutral'" x-text="(erCfg && erCfg[c[0]] && erCfg[c[0]].custom) ? '수정한 프롬프트' : '기본 프롬프트'"></span></div>
+          <section class="panel">
+            <div class="panel-hd"><b x-text="'STEP 1 · ' + c[1]"></b><span class="ds-badge ml-auto" x-bind:class="(erCfg && erCfg[c[0]] && erCfg[c[0]].custom) ? 'ds-badge--warning' : 'ds-badge--neutral'" x-text="(erCfg && erCfg[c[0]] && erCfg[c[0]].custom) ? '수정한 프롬프트' : '기본 프롬프트'"></span></div>
             <div class="panel-bd dc-body">
               <div>
                 <label class="ds-label" x-bind:for="'er-rules-' + c[0]">프롬프트 · 규칙</label>
@@ -39,8 +36,8 @@
             </div>
           </section>
         </template>
-        <section class="panel" x-show="erView === 'cfg'" x-cloak>
-          <div class="panel-hd"><b>호출별 모델</b><span class="meta">비우면 시스템 기본 모델</span></div>
+        <section class="panel">
+          <div class="panel-hd"><b>STEP 1 · 호출별 모델 · 저장</b><span class="meta">비우면 시스템 기본 모델</span></div>
           <div class="panel-bd dc-body">
             <div class="dc-row">
               <div><label class="ds-label">핵심 키워드 모델</label><x-modelpick key="erk" value="erKwModel" set="erKwModel=$v" options="availableModels" width="260px" tip="핵심 키워드 호출에 쓰는 모델"></x-modelpick></div>
@@ -51,16 +48,28 @@
           </div>
         </section>
 
-        <!-- ── 실행·결과 ── -->
-        <section class="panel" x-show="erView === 'run'">
-          <div class="panel-hd"><b>한 건 시험</b><span class="meta">정답셋 해시를 넣거나 제목·본문·엔티티를 직접 입력</span></div>
+        <!-- ── STEP 2 · 실행 ── -->
+        <section class="panel">
+          <div class="panel-hd"><b>STEP 2 · 실행</b><span class="meta">STEP 1 에 저장한 모델·프롬프트로 돌립니다</span></div>
+          <div class="panel-bd dc-body">
+            <div class="ds-segmented" role="group" aria-label="실행 방식">
+              <button type="button" class="ds-segmented__item" x-bind:aria-pressed="erMode === 'one' ? 'true' : 'false'" x-on:click="erMode = 'one'">단건</button>
+              <button type="button" class="ds-segmented__item" x-bind:aria-pressed="erMode === 'batch' ? 'true' : 'false'" x-on:click="erMode = 'batch'">다건 · 정답셋 일괄</button>
+            </div>
+          </div>
+        </section>
+        <section class="panel" x-show="erMode === 'one'">
+          <div class="panel-hd"><b>STEP 2 · 단건</b><span class="meta">정답셋 해시를 넣거나 메타를 직접 입력</span></div>
           <div class="panel-bd dc-body">
             <div><label class="ds-label" for="er-hash">정답셋 콘텐츠 해시</label><input id="er-hash" class="ds-field" x-model="erHash" placeholder="비우면 아래 직접 입력을 씁니다"></div>
             <div x-show="!erHash" x-cloak class="dc-body">
-              <div><label class="ds-label" for="er-title">제목</label><input id="er-title" class="ds-field" x-model="erTitle"></div>
-              <div><label class="ds-label" for="er-body">본문</label><textarea id="er-body" class="ds-field" rows="4" x-model="erBody"></textarea></div>
-              <div><label class="ds-label" for="er-ents">1차 엔티티(쉼표로 구분 · 모델이 낸 순서대로)</label><input id="er-ents" class="ds-field" x-model="erEnts" placeholder="예: 한국은행, 기준금리, 이창용"></div>
-              <div><label class="ds-label" for="er-sum">지금 리드문(선택)</label><input id="er-sum" class="ds-field" x-model="erSum1"></div>
+              <div><label class="ds-label" for="er-sum">리드문</label><input id="er-sum" class="ds-field" x-model="erSum1"></div>
+              <div><label class="ds-label" for="er-ents">엔티티(쉼표로 구분 · 발행 순서대로)</label><input id="er-ents" class="ds-field" x-model="erEnts" placeholder="예: 한국은행, 기준금리, 이창용"></div>
+              <div class="dc-row">
+                <div><label class="ds-label" for="er-int">인텐트(쉼표)</label><input id="er-int" class="ds-field" x-model="erInt" placeholder="예: 속보·단신"></div>
+                <div><label class="ds-label" for="er-cat">카테고리(쉼표)</label><input id="er-cat" class="ds-field" x-model="erCat" placeholder="예: Business and Finance / Economy"></div>
+              </div>
+              <div><label class="ds-label" for="er-title">제목·본문(지금 방식 확신도 계산용 · 재가공 입력에는 쓰지 않음)</label><input id="er-title" class="ds-field" x-model="erTitle" placeholder="제목"><textarea id="er-body" class="ds-field" rows="3" x-model="erBody" placeholder="본문" style="margin-top:var(--ds-space-2)"></textarea></div>
             </div>
             <div class="flex items-center gap-3">
               <button type="button" class="ds-btn ds-btn--solid ds-btn--c-primary ds-btn--s-sm" x-bind:disabled="erTrying" x-on:click="erTry()" x-text="erTrying ? '재가공 중…' : '재가공해 보기'"></button>
@@ -71,15 +80,15 @@
                 <dl class="ds-deflist">
                   <div class="ds-fieldrow"><dt class="ds-fieldrow__label">키워드 · 지금 방식</dt><dd class="ds-fieldrow__value ds-fieldrow__chips"><template x-for="b in (erOne.base || [])" x-bind:key="b.name"><span class="ds-badge ds-badge--entity" x-text="b.name + ' ' + Math.round(b.conf * 100)"></span></template></dd></div>
                   <div class="ds-fieldrow"><dt class="ds-fieldrow__label">키워드 · 재가공</dt><dd class="ds-fieldrow__value">
-                    <div class="ds-fieldrow__chips" x-show="erOne.refined"><template x-for="k in ((erOne.refined || {}).keywords || [])" x-bind:key="k.text"><span class="ds-badge" x-bind:class="k.kind === 'concept' ? 'ds-badge--intent' : 'ds-badge--entity'" x-text="k.text + (k.kind === 'concept' ? ' · 주제' : '')"></span></template></div>
+                    <div class="ds-fieldrow__chips" x-show="erOne.refined"><template x-for="k in ((erOne.refined || {}).keywords || [])" x-bind:key="k.text"><span class="ds-badge" x-bind:class="k.kind === 'combo' ? 'ds-badge--category' : 'ds-badge--entity'" x-text="k.text + (k.kind === 'combo' ? ' · 조합형' : ' · 단일형')"></span></template></div>
                     <p class="ds-hint ds-hint--error" x-show="erOne.error" x-text="erOne.error"></p></dd></div>
                   <div class="ds-fieldrow"><dt class="ds-fieldrow__label">문장 · 지금 리드문</dt><dd class="ds-fieldrow__value" x-text="(erOne.sentence || {}).base || '·'"></dd></div>
                   <div class="ds-fieldrow"><dt class="ds-fieldrow__label">문장 · 재가공</dt><dd class="ds-fieldrow__value">
-                    <span x-text="(erOne.sentence || {}).text || ''"></span><p class="ds-hint ds-hint--error" x-show="(erOne.sentence || {}).error" x-text="(erOne.sentence || {}).error"></p></dd></div>
+                    <span x-text="(erOne.sentence || {}).text || ''"></span> <span class="ds-hint" x-show="erOne.sentence && erOne.sentence.text && !erOne.sentence.from_keywords">(키워드 없이 메타만으로)</span><p class="ds-hint ds-hint--error" x-show="(erOne.sentence || {}).error" x-text="(erOne.sentence || {}).error"></p></dd></div>
                   <div class="ds-fieldrow"><dt class="ds-fieldrow__label">모델 · 지연</dt><dd class="ds-fieldrow__value tnum" x-text="erOneMeta()"></dd></div>
                 </dl>
                 <table class="ds-table ds-table--compact w-full" x-show="erOne.refined">
-                  <thead><tr><th>1차 엔티티</th><th>정식명</th><th>유형</th><th class="tnum">관련도</th><th>키워드 후보</th></tr></thead>
+                  <thead><tr><th>엔티티</th><th>정식명</th><th>유형</th><th class="tnum">관련도</th><th>키워드 후보</th></tr></thead>
                   <tbody><template x-for="e in ((erOne.refined || {}).entities || [])" x-bind:key="e.name">
                     <tr><td x-text="e.name"></td><td x-text="e.canonical === e.name ? '·' : e.canonical"></td><td x-text="e.type || '·'"></td><td class="tnum" x-text="e.relevance"></td><td x-text="e.keep ? '예' : '제외'"></td></tr>
                   </template></tbody>
@@ -94,8 +103,8 @@
           </div>
         </section>
 
-        <section class="panel" x-show="erView === 'run'">
-          <div class="panel-hd"><b>정답셋 일괄 시험</b><span class="meta">엔티티가 3개 이상인 정답에서 · 두 호출 동시 · 콘텐츠 4건씩</span></div>
+        <section class="panel" x-show="erMode === 'batch'" x-cloak>
+          <div class="panel-hd"><b>STEP 2 · 다건 · 정답셋 일괄</b><span class="meta">엔티티가 3개 이상인 정답에서 · 두 호출 동시 · 콘텐츠 4건씩</span></div>
           <div class="panel-bd dc-body">
             <div class="dc-row">
               <div><label class="ds-label" for="er-n">건수</label><input id="er-n" class="ds-field dc-num" type="number" min="1" max="300" x-model.number="erN"></div>
@@ -111,7 +120,7 @@
             <div class="ds-stat-grid">
               <div class="ds-stat"><div class="ds-stat__value tnum" x-text="(erSum.overlap_avg ?? '·') + ' / 3'"></div><div class="ds-stat__label">지금 방식과 겹친 키워드</div></div>
               <div class="ds-stat"><div class="ds-stat__value tnum" x-text="erSum.dropped_share != null ? Math.round(erSum.dropped_share * 100) + '%' : '·'"></div><div class="ds-stat__label">후보에서 뺀 엔티티</div></div>
-              <div class="ds-stat"><div class="ds-stat__value tnum" x-text="erSum.concept_share != null ? Math.round(erSum.concept_share * 100) + '%' : '·'"></div><div class="ds-stat__label">주제 키워드 비율</div></div>
+              <div class="ds-stat"><div class="ds-stat__value tnum" x-text="erSum.combo_share != null ? Math.round(erSum.combo_share * 100) + '%' : '·'"></div><div class="ds-stat__label">조합형 키워드 비율</div></div>
               <div class="ds-stat"><div class="ds-stat__value tnum" x-text="erSum.sent_len_avg != null ? erSum.sent_len_avg + '자' : '·'"></div><div class="ds-stat__label">핵심 문장 평균 길이</div></div>
               <div class="ds-stat"><div class="ds-stat__value tnum" x-text="(erSum.fails || 0) + ' · ' + (erSum.sent_fails || 0)"></div><div class="ds-stat__label">실패(키워드 · 문장)</div></div>
             </div>
@@ -122,7 +131,7 @@
                 <tr>
                   <td x-text="it.title || it.hash"></td>
                   <td><div class="ds-fieldrow__chips"><template x-for="b in (it.base || [])" x-bind:key="b.name"><span class="ds-badge ds-badge--entity" x-text="b.name"></span></template></div></td>
-                  <td><div class="ds-fieldrow__chips" x-show="!it.error"><template x-for="k in ((it.refined || {}).keywords || [])" x-bind:key="k.text"><span class="ds-badge" x-bind:class="k.kind === 'concept' ? 'ds-badge--intent' : 'ds-badge--entity'" x-text="k.text"></span></template></div><span class="ds-hint ds-hint--error" x-show="it.error" x-text="it.error"></span></td>
+                  <td><div class="ds-fieldrow__chips" x-show="!it.error"><template x-for="k in ((it.refined || {}).keywords || [])" x-bind:key="k.text"><span class="ds-badge" x-bind:class="k.kind === 'combo' ? 'ds-badge--category' : 'ds-badge--entity'" x-text="k.text"></span></template></div><span class="ds-hint ds-hint--error" x-show="it.error" x-text="it.error"></span></td>
                   <td><p class="ds-hint" x-text="(it.sentence || {}).base || '·'"></p><p x-text="(it.sentence || {}).text || ''"></p><p class="ds-hint ds-hint--error" x-show="(it.sentence || {}).error" x-text="(it.sentence || {}).error"></p></td>
                   <td><div class="flex gap-2 flex-wrap" x-show="!it.error && !it._voted"><template x-for="p in erPicks" x-bind:key="p[0]"><button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-on:click="erVote(it, p[0])" x-text="p[1]"></button></template></div><span class="ds-hint" x-show="it._voted" x-text="'기록 · ' + erPickKo(it._voted)"></span></td>
                 </tr>
