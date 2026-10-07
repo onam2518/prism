@@ -29,7 +29,7 @@
         <section x-show="adminTab === 'crew' && crewTab === 'dash'" x-cloak class="panel w-full" x-init="rtsLoad()">
           <header class="panel-hd"><b>검수 소요 시간</b><span class="meta">콘텐츠 상세를 연 뒤 처음 판정하기까지 · 골드 문항 제외</span>
             <div class="ds-segmented ml-auto" role="group" aria-label="기간">
-              <template x-for="d in [7, 14, 30]" x-bind:key="d"><button type="button" class="ds-segmented__item" x-bind:aria-pressed="rtsDays === d ? 'true' : 'false'" x-on:click="rtsDays = d; rtsLoad()" x-text="d + '일'"></button></template>
+              <template x-for="d in [7, 14, 30, 90]" x-bind:key="d"><button type="button" class="ds-segmented__item" x-bind:aria-pressed="rtsDays === d ? 'true' : 'false'" x-on:click="rtsDays = d; rtsLoad()" x-text="d + '일'"></button></template>
             </div></header>
           <div class="panel-bd">
             <ul class="ds-bullets"><li>작업 시간은 탭이 가려졌거나 <span x-text="(rtsData && rtsData.idle_s) || 120"></span>초 넘게 입력이 없던 구간을 뺀 시간입니다<ul><li>과거 추정은 측정 시작 전 판정 기록의 연속 판정 간격(1초~10분)으로 낸 값이라 실측과 따로 봅니다</li></ul></li></ul>
