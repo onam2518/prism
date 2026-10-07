@@ -152,6 +152,25 @@ class EntRefineTest(unittest.TestCase):
         finally:
             release.set()
 
+    def test_batch_reprocesses_item_in_mock_mode(self):
+        row = {"content": {"title": "가 나", "body": "가 나 다"},
+               "expected": {"entities": ["가", "나", "다"], "summary": "가 나 다 소식"}}
+        ER._SV = types.SimpleNamespace(get_store=lambda: types.SimpleNamespace(get_golden=lambda team: [row]))
+        self.addCleanup(lambda: setattr(ER, "_SV", None))
+        engines = {c: (None, True, "", "mock") for c in ER.CALLS}
+        with patch.object(ER, "_engines", return_value=(engines, "")):
+            started = ER.start(n=1)
+            self.assertTrue(started["ok"])
+            for _ in range(100):
+                result = ER.status(started["id"])
+                if not result["running"]:
+                    break
+                time.sleep(0.01)
+        self.assertFalse(result["running"])
+        self.assertEqual((result["done"], result["total"]), (1, 1))
+        self.assertEqual((result["summary"]["n"], result["summary"]["sent_n"]), (1, 1))
+        self.assertTrue(result["items"][0]["refined"]["keywords"])
+
 
 if __name__ == "__main__":
     unittest.main()
