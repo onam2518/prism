@@ -1,10 +1,10 @@
 /* Prism 앱 조각 23 · 실험실 › 핵심 키워드 / 문장(prism/entrefine.py · /lab-entrefine-* · /lab-core-config).
-   하위 탭: 실행·결과(한 건 · 정답셋 일괄 · 키워드 비교 투표) | 모델·프롬프트(호출별 모델·규칙 저장 · 출력 형식 고정). */
+   STEP 1 모델·프롬프트(호출별 모델·규칙 저장 · 출력 형식 고정) → STEP 2 실행(단건 | 다건 · 키워드 비교 투표). */
 window.PRISM_APP_PARTS = window.PRISM_APP_PARTS || [];
 window.PRISM_APP_PARTS.push(() => ({
 
-      erView: 'run', erCfg: null, erRules: { keyword: '', sentence: '' }, erKwModel: '', erStModel: '', erSaving: false, erCfgMsg: '', erCfgErr: false,
-      erHash: '', erTitle: '', erBody: '', erEnts: '', erSum1: '', erTrying: false, erOne: null, erOneErr: '',
+      erMode: 'one', erCfg: null, erRules: { keyword: '', sentence: '' }, erKwModel: '', erStModel: '', erSaving: false, erCfgMsg: '', erCfgErr: false,
+      erHash: '', erTitle: '', erBody: '', erEnts: '', erSum1: '', erInt: '', erCat: '', erTrying: false, erOne: null, erOneErr: '',
       erN: 30, erRunning: false, erDone: 0, erTotal: 0, erItems: [], erSum: null, erMsg: '', erErr: false, _erT: null, erVotes: null,
       erPicks: [['refined', '재가공'], ['base', '지금 방식'], ['both', '둘 다 좋음'], ['neither', '둘 다 별로']],
 
@@ -46,7 +46,7 @@ window.PRISM_APP_PARTS.push(() => ({
         this.erTrying = true; this.erOne = null; this.erOneErr = '';
         try {
           const r = await (await this._afetch('/lab-entrefine-try', { method: 'POST', headers: this._authHeaders(),
-            body: JSON.stringify({ hash: this.erHash, title: this.erTitle, body: this.erBody, entities: this.erEnts, summary: this.erSum1 }) })).json();
+            body: JSON.stringify({ hash: this.erHash, title: this.erTitle, body: this.erBody, entities: this.erEnts, summary: this.erSum1, intent: this.erInt, category: this.erCat }) })).json();
           if (r && r.ok) this.erOne = r; else this.erOneErr = (r && r.error) || '재가공 실패';
         } catch (e) { this.erOneErr = '재가공 실패'; }
         this.erTrying = false;

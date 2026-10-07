@@ -11,39 +11,50 @@ class EntRefineTest(unittest.TestCase):
     def test_validate_guards(self):
         names = ["한국은행", "이창용", "기자 홍길동", "삼성"]
         canon = {"삼성": "삼성그룹"}
-        text = "한국은행 기준금리 인하 결정 이창용 총재"
+        meta = "한국은행이 기준금리 인하를 결정했다 이창용 한국은행 이창용 기자 홍길동 삼성 속보·단신 Business and Finance / Economy"
         obj = {"entities": [
                    {"name": "한국은행", "canonical": "한은", "type": "OG", "relevance": 150, "keep": True},   # 근거 없는 개명 → 원래 이름
                    {"name": "이창용", "canonical": "이창용", "type": "PS", "relevance": 80, "keep": True},
                    {"name": "기자 홍길동", "type": "XX", "relevance": "x", "keep": False},
                    {"name": "삼성", "canonical": "삼성그룹", "type": "OG", "relevance": 10, "keep": True},   # 사전 정식명은 허용
                    {"name": "없는이름", "relevance": 99, "keep": True}],                                     # 1차 목록 밖 → 버림
-               "keywords": [{"text": "한국은행", "kind": "entity"}, {"text": "기준금리 인하", "kind": "concept"},
-                            {"text": "금리 동결", "kind": "concept"},                                          # 원문에 없음 → 버림
-                            "한국은행", "이창용", "삼성그룹"]}
-        v = ER.validate(obj, names, canon, text)
+               "keywords": [{"text": "이창용", "kind": "single"},
+                            {"text": "한국은행 기준금리 인하", "kind": "combo"},                              # 엔티티 포함 · 어절 모두 메타에 있음
+                            {"text": "한국은행 금리 동결", "kind": "combo"},                                  # '동결'이 메타에 없음 → 버림
+                            {"text": "기준금리 인하", "kind": "combo"},                                       # 엔티티 없음 → 버림
+                            {"text": "한국은행 기준금리 인하했다", "kind": "combo"},                          # '인하했다' 어절이 메타에 없음 → 버림
+                            {"text": "한국은행", "kind": "single"}]}
+        v = ER.validate(obj, names, canon, meta)
         self.assertEqual([e["name"] for e in v["entities"]], ["한국은행", "이창용", "기자 홍길동", "삼성"])
         self.assertEqual(v["entities"][0]["canonical"], "한국은행")
         self.assertEqual(v["entities"][0]["relevance"], 100)
         self.assertEqual((v["entities"][2]["type"], v["entities"][2]["relevance"]), ("", 0))
-        self.assertEqual(v["keywords"], [{"text": "한국은행", "kind": "entity"}, {"text": "기준금리 인하", "kind": "concept"},
-                                         {"text": "이창용", "kind": "entity"}])                               # 중복 제거 · 3개 상한
+        self.assertEqual(v["keywords"], [{"text": "한국은행 기준금리 인하", "kind": "combo"},            # 조합형 우선
+                                         {"text": "이창용", "kind": "single"}, {"text": "한국은행", "kind": "single"}])
         self.assertEqual(v["dropped"], ["기자 홍길동"])
         self.assertEqual(v["renamed"], [["삼성", "삼성그룹"]])
+        self.assertEqual(ER.validate({"keywords": ["본문에만 있는 말"]}, names, canon, meta)["keywords"], [])
         with self.assertRaises(ValueError):
             ER.validate([], names, canon)
+
+    def test_metas_only_input(self):
+        im = {"summary": "리드문", "entities": ["가"], "intent": ["속보·단신"], "content_category": [{"tier1": "Sports", "tier2": "Golf"}]}
+        payload = json.loads(ER._payload(im, {}))
+        self.assertEqual(set(payload), {"리드문", "엔티티", "인텐트", "카테고리"})                   # 제목·본문 없음
+        self.assertNotIn("본문", ER._meta_text(im))
 
     def test_baseline_and_summary(self):
         im = {"entities": ["가", "나", "다", "라"], "summary": ""}
         b = ER.baseline(im, {"title": "라 소식", "body": "가 나 다 라 라"})
         self.assertEqual(b[0]["name"], "라")                                      # 제목에 있는 엔티티가 확신도 1위
         items = [{"base": [{"name": "가"}, {"name": "나"}, {"name": "다"}],
-                  "refined": {"keywords": [{"text": "가", "kind": "entity"}, {"text": "새 주제", "kind": "concept"}],
+                  "refined": {"keywords": [{"text": "가", "kind": "single"}, {"text": "가 나 사건", "kind": "combo"}],
                               "entities": [{"name": "가"}, {"name": "나"}], "dropped": ["나"], "renamed": []}},
                  {"error": "x"}]
         s = ER.summary(items)
-        self.assertEqual((s["n"], s["fails"], s["overlap_avg"], s["dropped_share"], s["short"], s["concept_share"]),
+        self.assertEqual((s["n"], s["fails"], s["overlap_avg"], s["dropped_share"], s["short"], s["combo_share"]),
                          (1, 1, 1.0, 0.5, 1, 0.5))
+        self.assertEqual(s["combo_share"], 0.5)
 
     def test_mock_refine_and_vote(self):
         from prism.store import Store
@@ -51,7 +62,7 @@ class EntRefineTest(unittest.TestCase):
         ER._SV = types.SimpleNamespace(get_store=lambda: st)
         self.addCleanup(lambda: setattr(ER, "_SV", None))
         out = ER.refine({"title": "가 나", "body": "가 나 다"}, {"entities": ["가", "나", "다"]}, None, mock=True)
-        self.assertEqual(len(out["refined"]["keywords"]), 2)
+        self.assertEqual(out["refined"]["keywords"][0]["kind"], "combo")              # mock 도 조합형 우선
         self.assertEqual(len(out["base"]), 3)
         self.assertFalse(ER.vote({"hash": "h", "pick": "bogus"}, "qa")["ok"])
         self.assertTrue(ER.vote({"hash": "h", "pick": "refined", "base": ["가"], "refined": ["다"]}, "qa")["ok"])
@@ -86,6 +97,7 @@ class EntRefineTest(unittest.TestCase):
         out = ER.process({"title": "가나다라마바사 제목", "body": "가 나 다"}, {"entities": ["가", "나", "다"], "summary": "요약"}, eng)
         self.assertIn("down", out["error"]); self.assertEqual(len(out["base"]), 3)  # 키워드 실패 · 지금 방식은 남김
         self.assertTrue(out["sentence"]["text"]); self.assertEqual(out["sentence"]["base"], "요약")
+        self.assertFalse(out["sentence"]["from_keywords"])                            # 키워드 실패 → 메타만으로
 
 
 if __name__ == "__main__":
