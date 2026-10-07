@@ -902,12 +902,21 @@ class SupabaseStore:
             return True
 
     def log_event(self, reviewer, kind, meta="", team=None) -> None:
-        """append-only 이벤트 한 줄(중복 검사 없음 · 보너스 0) · 검수 소요 시간 등 측정 기록용."""
-        row = {"reviewer_id": reviewer or None, "kind": kind, "day": int(time.strftime("%Y%m%d")),
-               "bonus": 0, "meta": meta or ""}
-        if team:
-            row["team_id"] = team
-        self._req("POST", "events", body=[row], prefer="return=minimal")
+        """append-only 이벤트 한 줄(중복 검사 없음 · 보너스 0) · 검수 소요 시간 등 측정 기록용.
+        운영 DB 의 고유 제약 ux_prism_events_once(reviewer_id, kind, day)는 미션 보상 1일 1회용이라
+        여기서는 day 에 날짜 대신 기록 시각(epoch 초)을 넣어 피한다(한 진입은 1초 이상이고 순서대로 끝나
+        같은 초가 겹칠 일이 없다 · 겹치면 1초 뒤로 한 번 더). 집계는 created_at 을 쓰므로 day 를 읽지 않는다."""
+        sec = int(time.time())
+        for d in (sec, sec + 1):
+            row = {"reviewer_id": reviewer or None, "kind": kind, "day": d, "bonus": 0, "meta": meta or ""}
+            if team:
+                row["team_id"] = team
+            try:
+                self._req("POST", "events", body=[row], prefer="return=minimal")
+                return
+            except Exception:
+                if d != sec:
+                    raise
 
     def events_since(self, kinds, since: float, team=None) -> list:
         """kind 목록의 since(epoch) 이후 이벤트 [{reviewer, kind, meta(문자열), ts(epoch)}]."""
