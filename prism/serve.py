@@ -84,7 +84,7 @@ from . import autoreview as AR       # AI 초안 판정(실험실 · 운영자 �
 AR._SV = sys.modules[__name__]      # 동일 주입
 from . import decide as DC           # 솔라 디사이드 판정 시험(실험실 · 운영자 전용) · /lab-decide-*
 from . import reviewtime as RT       # 검수 소요 시간 측정 · /review-time · /review-time-stats
-from . import entrefine as ER        # 엔티티 재처리 · 서비스(구독) 키워드 3개 시험(실험실) · /lab-entrefine-*
+from . import entrefine as ER        # 핵심 키워드 / 문장 재가공 시험(실험실) · /lab-entrefine-* · /lab-core-config
 ER._SV = sys.modules[__name__]
 DC._SV = sys.modules[__name__]
 from . import mcpserver as MCPS       # 외부 MCP(트랙 B): 전송은 mcprpc · 도구는 위 prismtools
@@ -2223,6 +2223,11 @@ def _g_lab_entrefine_status(h, q):
     return ER.status(q.get("id", [""])[0])
 
 
+@_get_route("/lab-core-config", admin=True)          # 핵심 키워드 / 문장 호출별 모델·프롬프트(규칙부) · 출력 형식은 고정
+def _g_lab_core_config(h, q):
+    return {"ok": True, **ER.get_config(h._req_team())}
+
+
 @_get_route("/lab-entrefine-votes", admin=True)      # 키워드 비교 투표 집계(재처리 vs 확신도 상위 3)
 def _g_lab_entrefine_votes(h, q):
     return ER.votes(h._req_team())
@@ -3293,7 +3298,12 @@ def _p_lab_entrefine_try(h, body):
 @_post_route("/lab-entrefine-run", gate="super")     # 엔티티 재처리 정답셋 일괄 시험(백그라운드 잡)
 def _p_lab_entrefine_run(h, body):
     data = json.loads(body or b"{}")
-    return ER.start(team=h._req_team(), n=data.get("n") or 30, model=str(data.get("model") or ""))
+    return ER.start(team=h._req_team(), n=data.get("n") or 30)
+
+
+@_post_route("/lab-core-config", gate="super")      # 핵심 키워드 / 문장 모델·프롬프트 저장(비우거나 기본과 같으면 기본으로)
+def _p_lab_core_config(h, body):
+    return ER.save_config(json.loads(body or b"{}"), team=h._req_team())
 
 
 @_post_route("/lab-entrefine-vote", gate="team")     # 키워드 비교 투표 → events(kind=entkw_vote) · 키워드 정답 라벨
