@@ -38,11 +38,11 @@
           </section>
         </template>
         <section class="panel">
-          <div class="panel-hd"><b>호출별 모델 · 저장</b><span class="meta">비우면 시스템 기본 모델</span></div>
+          <div class="panel-hd"><b>호출별 모델 · 저장</b><span class="meta">기본 설정 모델 = 시스템 기본 텍스트 모델</span></div>
           <div class="panel-bd dc-body">
             <div class="dc-row">
-              <div><label class="ds-label">핵심 키워드 모델</label><x-modelpick key="erk" value="erKwModel" set="erKwModel=$v" options="availableModels" width="260px" tip="핵심 키워드 호출에 쓰는 모델"></x-modelpick></div>
-              <div><label class="ds-label">핵심 문장 모델</label><x-modelpick key="ers" value="erStModel" set="erStModel=$v" options="availableModels" width="260px" tip="핵심 문장 호출에 쓰는 모델"></x-modelpick></div>
+              <div><label class="ds-label">핵심 키워드 모델</label><x-modelpick key="erk" value="erKwModel" set="erKwModel=$v" groups="textGroups" first-label="기본 설정 모델" first-value="" width="260px" tip="핵심 키워드 호출에 쓰는 모델 · 직접(Solar)·라우터 전체에서 고름 · 미연결 제공자는 키 등록 후 선택 · 목록이 오래됐으면 '모델 새로고침'"></x-modelpick></div>
+              <div><label class="ds-label">핵심 문장 모델</label><x-modelpick key="ers" value="erStModel" set="erStModel=$v" groups="textGroups" first-label="기본 설정 모델" first-value="" width="260px" tip="핵심 문장 호출에 쓰는 모델 · 직접(Solar)·라우터 전체에서 고름 · 미연결 제공자는 키 등록 후 선택 · 목록이 오래됐으면 '모델 새로고침'"></x-modelpick></div>
               <button type="button" class="ds-btn ds-btn--solid ds-btn--c-primary ds-btn--s-sm ml-auto" x-bind:disabled="erSaving" x-on:click="erSaveCfg()" x-text="erSaving ? '저장 중…' : '모델·프롬프트 저장'"></button>
             </div>
             <p class="ds-hint" x-bind:class="erCfgErr ? 'ds-hint--error' : ''" x-show="erCfgMsg" x-cloak x-text="erCfgMsg"></p>
