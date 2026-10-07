@@ -1,8 +1,11 @@
 import json
 import os
 import tempfile
+import threading
+import time
 import types
 import unittest
+from unittest.mock import patch
 
 from prism import entrefine as ER
 
@@ -94,7 +97,9 @@ class EntRefineTest(unittest.TestCase):
         ER._SV = types.SimpleNamespace(get_store=lambda: None)
         self.addCleanup(lambda: setattr(ER, "_SV", None))
         eng = {"keyword": (Boom(), False, "s", "m"), "sentence": (None, True, "s", "m")}
-        out = ER.process({"title": "가나다라마바사 제목", "body": "가 나 다"}, {"entities": ["가", "나", "다"], "summary": "요약"}, eng)
+        stages = []
+        out = ER.process({"title": "가나다라마바사 제목", "body": "가 나 다"}, {"entities": ["가", "나", "다"], "summary": "요약"}, eng, stages.append)
+        self.assertEqual(stages, ["keyword", "sentence"])
         self.assertIn("down", out["error"]); self.assertEqual(len(out["base"]), 3)  # 키워드 실패 · 지금 방식은 남김
         self.assertTrue(out["sentence"]["text"]); self.assertEqual(out["sentence"]["base"], "요약")
         self.assertFalse(out["sentence"]["from_keywords"])                            # 키워드 실패 → 메타만으로
@@ -109,6 +114,43 @@ class EntRefineTest(unittest.TestCase):
         ER._llm("timely|claude-opus-5"); ER._llm("solar-pro3"); ER._llm("")
         self.assertEqual(seen, ["claude-opus-5", "solar-pro3", ""])
         self.assertEqual(ER._model_id("bizrouter|openai/gpt-5.4"), "openai/gpt-5.4")
+
+    def test_batch_reports_stage_and_finishes_failed_item(self):
+        row = {"content": {"title": "시험", "body": "내용"},
+               "expected": {"entities": ["가", "나", "다"], "summary": "요약"}}
+        ER._SV = types.SimpleNamespace(get_store=lambda: types.SimpleNamespace(get_golden=lambda team: [row]))
+        self.addCleanup(lambda: setattr(ER, "_SV", None))
+        entered, release = threading.Event(), threading.Event()
+
+        def broken_process(content, item_meta, eng, progress):
+            progress("keyword")
+            entered.set()
+            release.wait(2)
+            raise RuntimeError("호출 실패")
+
+        try:
+            with patch.object(ER, "_engines", return_value=({"keyword": (None, True, "", "mock"),
+                                                              "sentence": (None, True, "", "mock")}, "")), \
+                 patch.object(ER, "process", side_effect=broken_process):
+                started = ER.start(n=1)
+                self.assertTrue(started["ok"])
+                self.assertTrue(entered.wait(2))
+                during = ER.status(started["id"])
+                self.assertEqual(during["done"], 0)
+                self.assertEqual(list(during["active"].values()), ["keyword"])
+                self.assertGreaterEqual(during["elapsed_s"], 0)
+                release.set()
+                for _ in range(100):
+                    result = ER.status(started["id"])
+                    if not result["running"]:
+                        break
+                    time.sleep(0.01)
+                self.assertFalse(result["running"])
+                self.assertEqual((result["done"], result["total"]), (1, 1))
+                self.assertEqual(result["summary"]["fails"], 1)
+                self.assertIn("호출 실패", result["items"][0]["error"])
+        finally:
+            release.set()
 
 
 if __name__ == "__main__":

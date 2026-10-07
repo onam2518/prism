@@ -112,6 +112,7 @@
             <div class="ds-progress" x-show="erRunning" x-cloak>
               <div class="ds-progress__head"><span class="ds-progress__label">진행</span><span class="ds-progress__pct" x-text="erDone + ' / ' + erTotal"></span></div>
               <div class="ds-progress__track"><div class="ds-progress__fill" x-bind:style="'width:' + (erTotal ? Math.round(erDone * 100 / erTotal) : 0) + '%'"></div></div>
+              <p class="ds-hint" x-text="erPhase"></p>
             </div>
             <p class="ds-hint" x-bind:class="erErr ? 'ds-hint--error' : ''" x-show="erMsg" x-cloak x-text="erMsg"></p>
             <template x-if="erSum && (erSum.n || erSum.sent_n)">

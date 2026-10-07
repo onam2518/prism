@@ -297,15 +297,19 @@ def _engines(team=None):
     return out, ""
 
 
-def process(content: dict, item_meta: dict, eng: dict) -> dict:
+def process(content: dict, item_meta: dict, eng: dict, progress=None) -> dict:
     """① 핵심 키워드 → ② 핵심 문장(키워드를 받아 재구축) 순서 · 키워드가 실패해도 문장은 메타만으로 쓴다(from_keywords=False)."""
     out = {}
+    if progress:
+        progress("keyword")
     try:
         llm, mock, system, _ = eng["keyword"]
         out.update(refine(content, item_meta, llm, mock, system))
     except Exception as e:
         out["error"] = str(e)
         out["base"] = baseline(item_meta, content)
+    if progress:
+        progress("sentence")
     try:
         llm, mock, system, _ = eng["sentence"]
         out["sentence"] = sentence(item_meta, (out.get("refined") or {}).get("keywords") or [], llm, mock, system)
@@ -367,7 +371,7 @@ def start(team=None, n: int = 30) -> dict:
     with _LOCK:
         _SEQ += 1
         rid = _SEQ
-        _RUNS[rid] = {"running": True, "total": len(rows), "done": 0, "items": [], "error": "",
+        _RUNS[rid] = {"running": True, "total": len(rows), "done": 0, "items": [], "active": {}, "error": "",
                       "models": {c: eng[c][3] for c in CALLS}, "started": time.time()}
         for k in [k for k, v in _RUNS.items() if not v["running"] and k < rid - 10]:
             _RUNS.pop(k, None)
@@ -380,10 +384,19 @@ def _run(rid, rows, eng):
 
     def one(row):
         h, content, im = row
-        item = {"hash": h, "title": content.get("title") or "", **process(content, im, eng)}
-        with _LOCK:
-            run["items"].append(item)
-            run["done"] += 1
+        def progress(stage):
+            with _LOCK:
+                run["active"][h] = stage
+        try:
+            item = {"hash": h, "title": content.get("title") or "", **process(content, im, eng, progress)}
+        except Exception as e:
+            item = {"hash": h, "title": (content.get("title") or "") if isinstance(content, dict) else "",
+                    "error": str(e), "sentence": {"error": "재가공하지 못했습니다"}}
+        finally:
+            with _LOCK:
+                run["items"].append(item)
+                run["done"] += 1
+                run["active"].pop(h, None)
 
     try:
         with ThreadPoolExecutor(WORKERS) as ex:
@@ -428,7 +441,8 @@ def status(run_id) -> dict:
         if not run:
             return {"ok": False, "error": "만료된 실행입니다 · 다시 실행하세요"}
         items = list(run["items"])
-        out = {"ok": True, "id": rid, **{k: v for k, v in run.items() if k not in ("started", "items")}}
+        out = {"ok": True, "id": rid, **{k: v for k, v in run.items() if k not in ("started", "items", "active")},
+               "active": dict(run["active"]), "elapsed_s": round(time.time() - run["started"], 1)}
     return {**out, "items": items, "summary": summary(items)}
 
 
