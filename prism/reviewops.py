@@ -191,13 +191,15 @@ def final_review_queue(team=None, reviewer: str = "", offset=0, limit=200, reaso
     for r in reversed(rows):                       # 최근순
         ref = r.get("content_ref") or {}
         ch = _row_key(ref)                         # 스토어 키 지름길(본문 SHA 재계산 생략 · 내용 동일)
-        fb = fmap.get(ch)
+        fb = fmap.get(ch) or {}
+        from .learnops import _current_review_votes
+        fb, current_final = _current_review_votes(st, ch, team, fb, finals.get(ch))
         if ch in rewrite and ch not in golden:     # 다시 생성한 수정 필요 건 · 기초 합의와 무관하게 최종 결정 대상
             d = _SV._detail_row(r)
             d["version"] = int((r.get("trace") or {}).get("version") or 0) or None
             d["model"] = ""                        # 출처 비표시(원장에만 기록)
             d["final_reason"] = REWRITE_REASON
-            fv = finals.get(ch) or {}
+            fv = (finals.get(ch) or {}) if current_final else {}
             d["final"], d["final_by"], d["final_ts"] = fv.get("verdict", ""), fv.get("by", ""), fv.get("ts", 0)
             out.append(d)
             continue
@@ -229,7 +231,7 @@ def final_review_queue(team=None, reviewer: str = "", offset=0, limit=200, reaso
         d = _SV._detail_row(r)
         d["version"] = int((r.get("trace") or {}).get("version") or 0) or None   # 초안 프롬프트 버전(재실행 여부 식별)
         d["final_reason"] = reason
-        fv = finals.get(ch) or {}
+        fv = (finals.get(ch) or {}) if current_final else {}
         d["final"] = fv.get("verdict", "")
         d["final_by"] = fv.get("by", "")               # 목록 = 결정 현황판: 누가 · 언제
         d["final_ts"] = fv.get("ts", 0)

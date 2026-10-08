@@ -20,6 +20,7 @@ window.PRISM_APP_PARTS.push(() => ({
       const r=await this.opsRequest(this.opsUrl(c.hash));
       if (!this.detail || this.detail.hash!==c.hash) return;
       this.opsDetail=r;
+      if(this._rt && this._rt.hash===c.hash)this._rt.team=r.team;
       if(this._rt && this._rt.hash===c.hash && this._rt.verdictWall==null && r.review && Object.keys(r.review.axes||{}).length)this._rt.revisit=true;
       if(!this.detail.body && r.basis.body)this.detail.body=r.basis.body;
       this.opsFields.forEach(f=>{const a=Object.assign({status:'',reason:'',proposal:''},((r.review||{}).axes||{})[f.key]||{}); if(a.status==='needs_fix' && !a.proposal)a.proposal=a.reason; this.opsAxes[f.key]=a;});

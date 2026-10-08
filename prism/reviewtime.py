@@ -43,7 +43,25 @@ def clean(data: dict) -> dict:
     outcome = str(data.get("outcome") or "")
     if outcome not in OUTCOMES:
         raise ValueError("허용하지 않는 결과 값입니다")
+    import uuid
+    event_id = data.get("event_id")
+    if event_id:
+        try:
+            event_id = str(uuid.UUID(str(event_id)))
+        except ValueError:
+            raise ValueError("시간 기록 ID가 올바르지 않습니다") from None
     meta = {"hash": h, "outcome": outcome, "verdict": str(data.get("verdict") or "")[:16]}
+    if event_id:
+        meta["event_id"] = event_id
+    if data.get("recorded_at") is not None:
+        import time, math
+        try:
+            recorded = float(data["recorded_at"])
+            if not math.isfinite(recorded) or recorded < 0:
+                raise ValueError()
+            meta["recorded_at"] = min(recorded, time.time())
+        except (TypeError, ValueError):
+            raise ValueError("기록 시각이 올바르지 않습니다") from None
     for k in _MS_FIELDS:
         meta[k] = _ms(data.get(k))
     if meta["wall_ms"] is None or meta["active_ms"] is None:

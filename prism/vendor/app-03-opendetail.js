@@ -440,6 +440,7 @@ window.PRISM_APP_PARTS.push(() => ({
       // ── 팀 실시간 협업: 검수자 식별 · 검수 대기 · 라이브 ──
       loadReviewer() {
         try { this.reviewer = localStorage.getItem('prism_reviewer') || ''; this.reviewerChar = localStorage.getItem('prism_reviewer_char') || 'boksil'; this.authToken = localStorage.getItem('prism_token') || ''; this.rtoken = localStorage.getItem('prism_rtoken') || ''; } catch (e) {}
+        this._rtInit();
         this._loadCred();                              // 저장된 아이디·비밀번호 프리필(이 기기)
         if (!this.reviewer) this.reviewerEditing = true;            // 첫 방문 → 등록/로그인 모달
       },

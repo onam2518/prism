@@ -2357,8 +2357,16 @@ def _p_review_time(h, body):
     st = get_store()
     if not (st and hasattr(st, "log_event")):
         return {"ok": False, "error": "지원하지 않는 저장소"}
-    st.log_event((data.get("reviewer") or "").strip(), "review_time", json.dumps(meta, ensure_ascii=False),
-                 team=data.get("_team") or h._req_team())
+    reviewer = (data.get("reviewer") or "").strip()
+    team = data.get("_team") or h._req_team()
+    if data.get("actor_key") and data["actor_key"] != reviewer:
+        return {"ok": False, "error": "기록한 검수자 계정으로 다시 로그인하세요"}
+    if "team_scope" in data and data["team_scope"] != team:
+        return {"ok": False, "error": "기록한 팀에서 다시 전송하세요"}
+    if meta.get("event_id"):
+        st.log_review_time(reviewer, meta["event_id"], json.dumps(meta, ensure_ascii=False), team=team)
+    else:
+        st.log_event(reviewer, "review_time", json.dumps(meta, ensure_ascii=False), team=team)
     return {"ok": True}
 
 

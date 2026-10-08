@@ -209,3 +209,51 @@ class OperationsTests(unittest.TestCase):
         self.assertEqual(expected['content_category'],['Sports'])
         self.assertEqual(serve.build_golden_from_reviews()['new'],0)
         self.assertEqual(self.st.golden_count(),1)
+
+    def test_hold_then_final_promotes_corrected_answers_without_feedback(self):
+        from prism import serve
+        with patch.object(serve,'_STORE',self.st):
+            self.addCleanup(serve._agg_bump)
+            self.request('review',axes=self.axes('hold'))
+            self.assertFalse(self.st.feedback_map())
+            self.assertTrue(self.request('correct_final',patch={'summary':'최종 정답'})['ok'])
+            serve._agg_bump()
+            self.assertEqual(serve.promotion_pending()['promote'],1)
+            self.assertEqual(serve.build_golden_from_reviews()['new'],1)
+            self.assertEqual(self.st.get_golden()[0]['expected']['summary'],'최종 정답')
+            self.assertEqual(set(O.FIELDS)-set(self.st.get_golden()[0]['expected']),set())
+
+    def test_final_queue_drops_stale_disagreement_after_patch(self):
+        from prism import serve
+        with patch.object(serve,'_STORE',self.st):
+            self.addCleanup(serve._agg_bump)
+            self.request('review',axes=self.axes())
+            d=O.detail(self.st,self.ch,who='other')
+            self.assertTrue(O.action(self.st,dict(action='review',hash=self.ch,revision=d['revision'],basis_token=d['basis']['token'],axes=self.axes('needs_fix')),who='other')['ok'])
+            serve._agg_bump()
+            self.assertEqual(serve.final_review_queue()['n'],1)
+            self.request('patch',patch={'summary':'재검수할 리드문'})
+            serve._agg_bump()
+            self.assertEqual(serve.final_review_queue()['n'],0)
+
+    def test_holdout_routes_do_not_reenter_learning(self):
+        self.st.set_purpose([self.ch],'eval')
+        self.st.save_routes(self.ch,'me',[{'stage':'analyze','directive':'평가용 공통 보정'}])
+        self.st.save_routes(self.ch,'me',[{'stage':'analyze','directive':'평가용 모델 보정'}],model='test')
+        self.assertEqual(self.st.routes_by_stage(),{})
+        self.assertEqual(self.st.routes_by_stage_model(),{})
+
+    def test_holdout_is_evaluable_but_excluded_from_training_exports(self):
+        from prism import serve, learnops as L
+        with patch.object(serve,'_STORE',self.st):
+            self.addCleanup(serve._agg_bump)
+            self.request('review',axes=self.axes('needs_fix'))
+            self.request('correct_final',patch={'summary':'교정 정답'})
+            serve.build_golden_from_reviews()
+            self.assertTrue(L.learn_export('sft')[1])
+            self.assertTrue(L.learn_export('dpo')[1])
+            self.st.set_purpose([self.ch],'eval')
+            self.assertEqual(L._holdout_scope(),'eval')
+            self.assertEqual(len(L._scope_golden(self.st.get_golden(),'eval',self.st)),1)
+            for kind in ('sft','dpo','rationale','knowhow'):
+                self.assertEqual(L.learn_export(kind)[1],'',kind)
