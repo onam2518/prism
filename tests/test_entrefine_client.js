@@ -7,6 +7,10 @@ async function run() {
   const window = {};
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../prism/vendor/app-23-entrefine.js'), 'utf8'), { window, clearTimeout });
   const app = window.PRISM_APP_PARTS[0]();
+  assert.equal(app.erSentenceText(null), '');
+  assert.equal(app.erSentenceText({ draft: '검사 미통과 초안', error: '길이' }), '검사 미통과 초안');
+  assert.equal(app.erSentenceLength({ text: '가 😀 나' }), 5); // Python len과 같은 공백·Unicode 코드포인트 수
+  assert.equal(app.erSentenceText({ text: '확정', draft: '초안' }), '확정');
   const config = {
     default_model: 'solar-pro4', defaults: { keyword: 'default kw', sentence: 'default sentence' },
     keyword: { model: 'solar-pro3', rules: 'three', rules_by_model: { 'solar-pro3': 'three' } },

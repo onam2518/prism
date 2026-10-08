@@ -10,6 +10,8 @@ window.PRISM_APP_PARTS.push(() => ({
       erPicks: [['refined', '재가공'], ['base', '지금 방식'], ['both', '둘 다 좋음'], ['neither', '둘 다 별로']],
 
       erPickKo(p) { return (this.erPicks.find((x) => x[0] === p) || [p, p])[1]; },
+      erSentenceText(s) { return (s && (s.text || s.draft)) || ''; },
+      erSentenceLength(s) { return Array.from(this.erSentenceText(s)).length; },
       erVotesTxt() {
         const v = this.erVotes; if (!v || !v.n) return '아직 투표가 없습니다 · 결과 옆 버튼으로 어느 쪽이 나은지 골라 주세요';
         const t = v.tally; return '투표 ' + v.n + '건 · 재처리 ' + t.refined + ' · 지금 방식 ' + t.base + ' · 둘 다 좋음 ' + t.both + ' · 둘 다 별로 ' + t.neither;
