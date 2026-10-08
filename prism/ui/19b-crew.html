@@ -26,7 +26,7 @@
       </template>
       <!-- 검수 소요 시간(2026-10-07): 상세 진입 → 처음 판정까지 · 실측과 과거 추정(판정 간격) 분리 · 로직 prism/reviewtime.py -->
       <template x-if="mod === 'admin'">
-        <section x-show="adminTab === 'crew' && crewTab === 'dash'" x-cloak class="panel w-full" x-init="rtsLoad()">
+        <section x-show="adminTab === 'crew' && crewTab === 'dash'" x-cloak class="panel w-full" x-effect="if(adminTab === 'crew' &amp;&amp; crewTab === 'dash') rtsLoad()">
           <header class="panel-hd"><b>검수 소요 시간</b><span class="meta">콘텐츠 상세를 연 뒤 처음 판정하기까지 · 골드 문항 제외</span>
             <div class="ds-segmented ml-auto" role="group" aria-label="기간">
               <template x-for="d in [7, 14, 30, 90]" x-bind:key="d"><button type="button" class="ds-segmented__item" x-bind:aria-pressed="rtsDays === d ? 'true' : 'false'" x-on:click="rtsDays = d; rtsLoad()" x-text="d + '일'"></button></template>

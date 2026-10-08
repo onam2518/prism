@@ -20,6 +20,7 @@ window.PRISM_APP_PARTS.push(() => ({
       const r=await this.opsRequest(this.opsUrl(c.hash));
       if (!this.detail || this.detail.hash!==c.hash) return;
       this.opsDetail=r;
+      if(this._rt && this._rt.hash===c.hash && this._rt.verdictWall==null && r.review && Object.keys(r.review.axes||{}).length)this._rt.revisit=true;
       if(!this.detail.body && r.basis.body)this.detail.body=r.basis.body;
       this.opsFields.forEach(f=>{const a=Object.assign({status:'',reason:'',proposal:''},((r.review||{}).axes||{})[f.key]||{}); if(a.status==='needs_fix' && !a.proposal)a.proposal=a.reason; this.opsAxes[f.key]=a;});
       const pending=r.cases.filter(x=>x.state!=='closed');
@@ -33,6 +34,11 @@ window.PRISM_APP_PARTS.push(() => ({
     this.opsBusy=true;
     try {
       const r=await this.opsRequest('/ops-review',Object.assign({hash:current.hash,revision:current.revision,basis_token:current.basis.token},data));
+      if(data.action==='review') {
+        const statuses=Object.values((r.review||{}).axes||data.axes||{}).map(a=>a.status);
+        this._rtMark({hash:r.hash},'verdict',statuses.includes('hold')?'hold':statuses.includes('needs_fix')?'bad':'good');
+        if(statuses.includes('needs_fix'))this._rtMark({hash:r.hash},'note');
+      }
       if (this.detail && this.detail.hash===r.hash) {
         this.opsDetail=r;
         if(r.basis.token!==current.basis.token)this.opsFields.forEach(f=>{this.opsAxes[f.key]={status:'',reason:'',proposal:''};});
