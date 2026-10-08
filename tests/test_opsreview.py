@@ -25,7 +25,34 @@ class OperationsTests(unittest.TestCase):
         detail=O.detail(self.st,self.ch,who='me')
         return O.action(self.st,dict(action=action,hash=self.ch,revision=detail['revision'],basis_token=detail['basis']['token'],**kw),who='me',privileged=True,final=True)
     def axes(self,status='accurate'):
-        return {k:{'status':status,'reason':'원문 근거' if status!='accurate' else ''} for k in O.FIELDS}
+        return {k:{'status':status,'reason':'보류 근거' if status=='hold' else '', 'proposal':'수정 제안' if status=='needs_fix' else ''} for k in O.FIELDS}
+    def test_status_specific_fields_are_validated_and_persisted(self):
+        axes=self.axes()
+        axes['summary']={'status':'needs_fix','reason':'숨겨진 보류 사유','proposal':'리드문 수치 수정'}
+        axes['entities']={'status':'accurate','reason':'예전 사유','proposal':'예전 제안'}
+        result=self.request('review',axes=axes)
+        self.assertTrue(result['ok'],result)
+        stored=self.st.get_report('ops_review_'+self.ch)['reviews'][-1]['axes']
+        self.assertEqual(stored['summary']['reason'],'')
+        self.assertEqual(stored['summary']['proposal'],'리드문 수치 수정')
+        self.assertEqual(stored['entities']['reason'],'')
+        self.assertEqual(stored['entities']['proposal'],'')
+        self.assertIn('리드문 수치 수정',result['cases'][0]['reason'])
+        self.assertNotIn('숨겨진',result['cases'][0]['reason'])
+        note=self.st._conn().execute('SELECT note FROM feedback WHERE content_hash=?',(self.ch,)).fetchone()[0]
+        self.assertIn('리드문 수치 수정',note)
+        axes['summary']={'status':'hold','reason':'원문 수치 확인 필요','proposal':'숨겨진 수정 제안'}
+        self.assertTrue(self.request('review',axes=axes)['ok'])
+        stored=self.st.get_report('ops_review_'+self.ch)['reviews'][-1]['axes']['summary']
+        self.assertEqual(stored['reason'],'원문 수치 확인 필요')
+        self.assertEqual(stored['proposal'],'')
+
+    def test_inactive_text_does_not_satisfy_required_field(self):
+        for status,reason,proposal in [('needs_fix','남은 보류 사유',''),('hold','','남은 수정 제안')]:
+            axes=self.axes();axes['summary']={'status':status,'reason':reason,'proposal':proposal}
+            self.assertFalse(self.request('review',axes=axes)['ok'])
+            self.assertIsNone(self.st.get_report('ops_review_'+self.ch))
+
     def test_bad_and_hold_survive_outside_todo(self):
         axes=self.axes();axes['entities']['status']='hold';axes['entities']['reason']='원문 확인 필요'
         result=self.request('review',axes=axes);self.assertTrue(result['ok'],result)

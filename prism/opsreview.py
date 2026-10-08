@@ -168,10 +168,12 @@ def action(st, data, team=None, who='', privileged=False, final=False):
                 for key, axis in axes.items():
                     if not isinstance(axis, dict) or axis.get('status') not in STATUSES:
                         raise ValueError('항목별 판정을 확인하세요')
-                    if axis['status'] != 'accurate' and not _text(axis.get('reason')):
-                        raise ValueError(LABELS[key] + '의 수정·보류 근거를 입력하세요')
-                axes = {k: {'status': a['status'], 'reason': _text(a.get('reason')),
-                            'proposal': _text(a.get('proposal')), 'value': copy.deepcopy((row.get('item_meta') or {}).get(k))}
+                    if axis['status'] == 'hold' and not _text(axis.get('reason')):
+                        raise ValueError(LABELS[key] + '의 보류 사유를 입력하세요')
+                    if axis['status'] == 'needs_fix' and not _text(axis.get('proposal')):
+                        raise ValueError(LABELS[key] + '의 삭제·추가·수정 제안을 입력하세요')
+                axes = {k: {'status': a['status'], 'reason': _text(a.get('reason')) if a['status'] == 'hold' else '',
+                            'proposal': _text(a.get('proposal')) if a['status'] == 'needs_fix' else '', 'value': copy.deepcopy((row.get('item_meta') or {}).get(k))}
                         for k, a in axes.items()}
                 states = [a['status'] for a in axes.values()]
                 verdict = 'hold' if 'hold' in states else ('bad' if 'needs_fix' in states else 'good')
@@ -183,9 +185,9 @@ def action(st, data, team=None, who='', privileged=False, final=False):
                                 'owner': who, 'priority': 'normal', 'due': '', 'state': 'open', 'receipts': []}
                         new['cases'].append(case)
                     case['state'] = 'hold' if verdict == 'hold' else 'open'
-                    case['reason'] = '\n'.join(LABELS[k]+': '+a['reason'] for k,a in axes.items() if a['status']!='accurate')
+                    case['reason'] = '\n'.join(LABELS[k]+': '+(a['reason'] or a['proposal']) for k,a in axes.items() if a['status']!='accurate')
                 feedback = {'reviewer': who, 'verdict': verdict,
-                            'note': '\n'.join(LABELS[k]+': '+a['reason'] for k,a in axes.items() if a['reason']),
+                            'note': '\n'.join(LABELS[k]+': '+(a['reason'] or a['proposal']) for k,a in axes.items() if a['reason'] or a['proposal']),
                             'element': ','.join('category' if k=='content_category' else k for k,a in axes.items() if a['status']=='needs_fix')}
             else:
                 new['reviews'].append({'by': who, 'ts': now, 'basis': basis_ref, 'axes': {}, 'withdrawn': True})
