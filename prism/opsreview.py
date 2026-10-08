@@ -293,7 +293,8 @@ def action(st, data, team=None, who='', privileged=False, final=False):
         else:
             raise ValueError('지원하지 않는 검수 작업입니다')
         new['revision'] += 1
-        new['history'].append({'action':cmd,'by':who,'ts':now,'basis':basis_ref,'data':copy.deepcopy(data)})
+        history_data = dict(data, axes=axes) if cmd == 'review' else data
+        new['history'].append({'action':cmd,'by':who,'ts':now,'basis':basis_ref,'data':copy.deepcopy(history_data)})
         if not commit(st,ch,team,row,old,new,patch,feedback,extra):
             raise ValueError('저장 중 원문·정책·다른 담당자의 기록이 바뀌었습니다. 다시 확인하세요')
         return detail(st,ch,team,who,privileged)

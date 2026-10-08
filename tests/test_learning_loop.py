@@ -310,9 +310,9 @@ class TestFeedbackOrchestrator(unittest.TestCase):
 
         def slow_golden(team=None):
             _t.sleep(0.3)                      # 락을 쥔 채 대기 → 다른 스레드가 확실히 부딪히게
-            return {"confirmed": 0, "need_category": 0}
+            return {"ok": True, "confirmed": 0, "need_category": 0}
         LO.build_golden_from_reviews = slow_golden
-        LO.eval_golden = lambda team=None, model="", scope="all": {"ok": False}
+        LO.eval_golden = lambda team=None, model="", scope="all": {"ok": True, "grade_accuracy": 0.9}
         LO.meta_compile_run = lambda team=None: {"ok": True, "results": {}}
         self.addCleanup(lambda: (setattr(LO, "build_golden_from_reviews", orig_golden),
                                  setattr(LO, "eval_golden", orig_eval),

@@ -388,6 +388,26 @@ def reviewer_fixed_meta(st, team=None) -> dict:
     return out
 
 
+def _current_review_votes(st, ch, team, fb, final):
+    """편입과 대기 집계가 같은 콘텐츠 기준의 판정만 사용한다."""
+    from .opsreview import basis, read_row
+    managed = st.get_report("ops_review_" + ch, team)
+    current_token = basis(read_row(st, ch, team))["token"] if managed else None
+    if managed:
+        latest = {v["by"]:v for v in managed.get("reviews", []) if v["basis"]["token"] == current_token}
+        current_votes = []
+        for v in latest.values():
+            statuses = [axis["status"] for axis in v.get("axes", {}).values()]
+            if len(statuses) != 4 or "hold" in statuses:
+                continue
+            current_votes.append({"reviewer":v["by"], "verdict":"good" if all(x == "accurate" for x in statuses) else "bad"})
+        fb = {"verdicts": current_votes, "good":sum(v["verdict"] == "good" for v in current_votes), "bad":sum(v["verdict"] == "bad" for v in current_votes)}
+    fv = (final or {}).get("verdict")
+    if managed and (final or {}).get("basis_token") != current_token:
+        fv = None
+    return fb, fv
+
+
 def build_golden_from_reviews(team=None) -> dict:
     """검수 = 골든 생성: '정확' 신뢰도 가중 다수결 + 카테고리 채워진 콘텐츠 → 골든셋에 **누적**(upsert).
     전체 교체가 아니므로 관리자 등록분(source=manual)과 과거 확정분을 보존하고, 합의가 '수정필요'로
@@ -432,26 +452,12 @@ def build_golden_from_reviews(team=None) -> dict:
         fb = fmap.get(ch)
         if not fb:
             continue
-        from .opsreview import basis, read_row
-        managed = st.get_report("ops_review_" + ch, team)
-        current_token = basis(read_row(st, ch, team))["token"] if managed else None
-        if managed:
-            latest = {v["by"]:v for v in managed.get("reviews", []) if v["basis"]["token"] == current_token}
-            current_votes = []
-            for v in latest.values():
-                statuses = [axis["status"] for axis in v.get("axes", {}).values()]
-                if len(statuses) != 4 or "hold" in statuses:
-                    continue
-                current_votes.append({"reviewer":v["by"], "verdict":"good" if all(x == "accurate" for x in statuses) else "bad"})
-            fb = {"verdicts": current_votes, "good":sum(v["verdict"] == "good" for v in current_votes), "bad":sum(v["verdict"] == "bad" for v in current_votes)}
+        fb, fv = _current_review_votes(st, ch, team, fb, finals.get(ch))
         # 신뢰도 가중 다수결: 골드 정확도 기반 가중치(없으면 전원 1.0 = 기존 다수결과 동일)
         gw = sum(weights.get(v.get("reviewer_id") or v.get("reviewer"), 1.0)
                  for v in fb.get("verdicts", []) if v.get("verdict") == "good")
         bw = sum(weights.get(v.get("reviewer_id") or v.get("reviewer"), 1.0)
                  for v in fb.get("verdicts", []) if v.get("verdict") == "bad")
-        fv = (finals.get(ch) or {}).get("verdict")     # 리드 최종판정(있으면 다수결보다 우선)
-        if managed and (finals.get(ch) or {}).get("basis_token") != current_token:
-            fv = None
         if fv == "bad":                                # 리드가 '수정 필요' 확정 → 승격 금지 + 검수 유래 골든 강등
             disagree += 1
             if ch in existing and by_source.get(ch, "review") == "review":
@@ -559,7 +565,7 @@ def promotion_pending(team=None) -> dict:
         fb = fmap.get(ch)
         if not fb or ch in golden:                    # 기초 검수 없음 · 이미 골든 → 대기 아님
             continue
-        fv = (finals.get(ch) or {}).get("verdict")
+        fb, fv = _current_review_votes(st, ch, team, fb, finals.get(ch))
         if fv == "bad":                               # 리드가 '제외' 확정 → 대기 아님(결정 완료)
             continue
         gw = sum(weights.get(v.get("reviewer_id") or v.get("reviewer"), 1.0)
@@ -867,7 +873,7 @@ def compose_prompts(team=None, model: str = "") -> dict:
     except Exception:
         ver = 1
     from .schema import Content
-    _SV.sync_prompt()
+    # 조회·스냅샷은 평가를 통과한 현재 보정을 그대로 보존한다.
     cfg = Config.load()
     base_model = (model or "").strip() or cfg.model or ""
     cm = dict(getattr(cfg, "meta_call_models", {}) or {})
@@ -1120,6 +1126,8 @@ def learning_batch(team=None, models=None, model: str = "", golden_hashes=None, 
         except Exception:
             quest_bonus = None
         golden = build_golden_from_reviews(team)             # 전/후를 같은 정답셋으로 재도록 먼저 고정
+        if not golden.get("ok"):
+            return {"ok": False, "error": "정답셋 구축 실패 · 학습 미반영", "golden": golden}
         gopt = {"hashes": golden_hashes} if golden_hashes else {}   # 오토파일럿: 런 시작 셋만 평가(새 골든은 다음 런부터)
         step = progress or (lambda phase, done=0, total=0: None)   # 단계 진척: pre → improve → post(보정이 바뀐 때만) → wrap
         popt = (lambda ph: {"progress": lambda d, t: step(ph, d, t)}) if progress else (lambda ph: {})
@@ -1128,8 +1136,16 @@ def learning_batch(team=None, models=None, model: str = "", golden_hashes=None, 
         scope = _holdout_scope(team, golden_hashes)          # 전/후를 개선이 못 본 홀드아웃으로 잰다(없으면 전체 · 고정 셋 안에서 판정)
         step("pre")
         eval_pre = eval_golden(team, model=model, scope=scope, **gopt, **popt("pre"))            # 개선 전(현행 프롬프트) 점수 · model 비면 기본 텍스트 슬롯
+        if not eval_pre.get("ok"):
+            return {"ok": False, "error": "개선 전 평가 실패 · 학습 미반영",
+                    "golden": golden, "eval": eval_pre}
         step("improve")
-        improve = meta_compile_run(team)
+        try:
+            improve = meta_compile_run(team)
+        except BaseException:
+            PR.LEARNED = prev_learned
+            PR.LEARNED_BY_MODEL = prev_by_model
+            raise
         changed = (PR.LEARNED != prev_learned) or (PR.LEARNED_BY_MODEL != prev_by_model)
         delta = None
         if changed and eval_pre.get("ok"):
@@ -1141,10 +1157,11 @@ def learning_batch(team=None, models=None, model: str = "", golden_hashes=None, 
                 PR.LEARNED_BY_MODEL = prev_by_model
                 raise
             try:
-                delta = round((evalr.get("grade_accuracy") or 0.0) - (eval_pre.get("grade_accuracy") or 0.0), 4)
+                delta = (round((evalr.get("grade_accuracy") or 0.0) - (eval_pre.get("grade_accuracy") or 0.0), 4)
+                         if evalr.get("ok") else None)
             except (TypeError, ValueError):
                 delta = None
-            regressions = _batch_regressions(eval_pre, evalr, grade_drop=_regress_grade_drop()) if evalr.get("ok") else []
+            regressions = _batch_regressions(eval_pre, evalr, grade_drop=_regress_grade_drop()) if evalr.get("ok") else ["개선 후 평가 실패"]
             if regressions:                                  # 악화 가드: 이전 프롬프트로 원복
                 PR.LEARNED = prev_learned
                 PR.LEARNED_BY_MODEL = prev_by_model
