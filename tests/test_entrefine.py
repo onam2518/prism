@@ -93,6 +93,8 @@ class EntRefineTest(unittest.TestCase):
               "intent": ["속보·단신"], "content_category": []}
         with patch.object(ER, "_canon", return_value={}):
             out = ER.process({"title": "원문 전용 제목", "body": "원문 전용 본문"}, im, eng)
+        self.assertEqual(out["content"]["body"], "원문 전용 본문")
+        self.assertEqual(out["content"]["summary"], im["summary"])
         self.assertEqual([c[0] for c in calls], ["core_keyword", "core_sentence"])
         self.assertEqual(calls[1][2]["핵심키워드"], [
             {"키워드": "기준금리 인하", "유형": "단일형"}, {"키워드": "한국은행", "유형": "단일형"}])

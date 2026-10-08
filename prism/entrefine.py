@@ -434,7 +434,9 @@ def _engines(team=None):
 
 def process(content: dict, item_meta: dict, eng: dict, progress=None) -> dict:
     """① 핵심 키워드 → ② 핵심 문장(키워드를 받아 재구축) 순서 · 키워드가 실패해도 문장은 메타만으로 쓴다(from_keywords=False)."""
-    out = {}
+    out = {"content": {**content, "summary": item_meta.get("summary") or "",
+                       "entities": item_meta.get("entities") or [], "intent": item_meta.get("intent") or [],
+                       "category": item_meta.get("content_category") or []}}
     if progress:
         progress("keyword")
     try:
