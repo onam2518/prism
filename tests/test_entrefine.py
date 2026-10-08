@@ -228,6 +228,20 @@ class EntRefineTest(unittest.TestCase):
         self.assertFalse(out["sentence"]["from_keywords"])                            # 키워드 실패 → 메타만으로
 
 
+    def test_invalid_sentence_keeps_draft_without_counting_as_success(self):
+        draft = "검토 중인 계획이며 아직 확정되지 않았다. " * 8
+        class Long:
+            def complete_json(self, *args, **kwargs):
+                return {"sentence": draft}, None
+        result = ER.sentence({"summary": "기존 리드문"}, [], Long())
+        self.assertEqual(result["draft"], draft.strip())
+        self.assertIn("길이", result["error"])
+        self.assertNotIn("text", result)
+        self.assertEqual(result["base"], "기존 리드문")
+        stats = ER.summary([{"error": "키워드 실패", "sentence": result}])
+        self.assertEqual((stats["sent_n"], stats["sent_fails"]), (0, 1))
+        self.assertIsNone(stats["sent_len_avg"])
+
     def test_picker_value_to_model_id(self):
         """픽커 값 'timely|claude-opus-5' 를 그대로 넘기면 라우터가 bad_request(2026-10-07 운영) → 모델 id 만."""
         seen = []

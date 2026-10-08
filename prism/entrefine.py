@@ -368,8 +368,16 @@ def sentence(item_meta: dict, keywords: list, llm, mock: bool = False, system: s
     else:
         user = json.dumps({"핵심키워드": kws, **m}, ensure_ascii=False)
         obj, tokens = _call(llm, system or _system("sentence", {}), user, "core_sentence")
-    return {"text": validate_sentence(obj), "base": m["리드문"], "from_keywords": bool(kws),
-            "latency_ms": round((time.time() - t0) * 1000), "tokens": tokens}
+    result = {"base": m["리드문"], "from_keywords": bool(kws),
+              "latency_ms": round((time.time() - t0) * 1000), "tokens": tokens}
+    try:
+        result["text"] = validate_sentence(obj)
+    except ValueError as e:
+        result["error"] = str(e)
+        # 길이 검사에 실패한 생성문도 실험실에서 검토한다. 성공 text·통계에는 포함하지 않는다.
+        if isinstance(obj, dict):
+            result["draft"] = " ".join(str(obj.get("sentence") or "").split()).strip().strip('"“”')
+    return result
 
 
 def _model_id(model: str) -> str:
