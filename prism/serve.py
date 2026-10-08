@@ -86,6 +86,8 @@ from . import decide as DC           # 솔라 디사이드 판정 시험(실험�
 from . import reviewtime as RT       # 검수 소요 시간 측정 · /review-time · /review-time-stats
 from . import entrefine as ER        # 핵심 키워드 / 문장 재가공 시험(실험실) · /lab-entrefine-* · /lab-core-config
 ER._SV = sys.modules[__name__]
+from . import keywordlab as KL
+KL._SV = sys.modules[__name__]
 DC._SV = sys.modules[__name__]
 from . import mcpserver as MCPS       # 외부 MCP(트랙 B): 전송은 mcprpc · 도구는 위 prismtools
 IG._SV = sys.modules[__name__]      # 인입·잡 주입(동일)
@@ -2228,6 +2230,29 @@ def _g_lab_core_config(h, q):
     return {"ok": True, **ER.get_config(h._req_team())}
 
 
+@_get_route("/lab-keywords")
+def _g_lab_keywords(h, q):
+    if not h._require_team():
+        return None
+    try:
+        if q.get("run"):
+            return KL.run_detail(q["run"][0], h._req_team())
+        if q.get("version"):
+            return {"ok": True, "version": KL._version(q["version"][0], h._req_team())}
+        result = KL.catalog(h._req_team())
+        uid, privileged = _ops_access(h)
+        result["can_manage"] = privileged
+        result["can_final"] = privileged or is_final_reviewer(uid, h._req_team())
+        return result
+    except (ValueError, TypeError) as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@_get_route("/lab-keyword-history", admin=True)
+def _g_lab_keyword_history(h, q):
+    return ER.keyword_history(team=h._req_team())
+
+
 @_get_route("/lab-entrefine-votes", admin=True)      # 키워드 비교 투표 집계(재처리 vs 확신도 상위 3)
 def _g_lab_entrefine_votes(h, q):
     return ER.votes(h._req_team())
@@ -3296,6 +3321,16 @@ def _p_lab_decide_run(h, body):
     data = json.loads(body or b"{}")
     return DC.start(team=h._req_team(), n=data.get("n") or 100, scope=data.get("scope") or "all",
                     gate=float(data.get("gate") or DC.GATE), defs=data.get("defs", True) is not False)
+
+
+@_post_route("/lab-keywords", gate="team")
+def _p_lab_keywords(h, body):
+    data = json.loads(body or b"{}")
+    if not isinstance(data, dict) or not h._inject_reviewer(data):
+        return {"ok": False, "error": "검수자 정보가 필요합니다"}
+    uid, privileged = _ops_access(h)
+    return KL.action(data, h._req_team(), data.get("reviewer") or uid,
+                     privileged, privileged or is_final_reviewer(uid, h._req_team()))
 
 
 @_post_route("/lab-entrefine-try", gate="super")     # 엔티티 재처리 한 건(정답셋 해시 또는 직접 입력)

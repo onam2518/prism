@@ -2,14 +2,15 @@
            1차 추출 뒤 두 재가공 호출: ① 핵심 키워드(엔티티 재처리 · 구독 키워드 3개) ② 핵심 문장(구독 카드·알림용 1문장)
            STEP 1 모델·프롬프트(호출별 모델·규칙 저장 · 출력 형식은 코드 고정) → STEP 2 실행(단건 | 다건 선택) · 로직 prism/entrefine.py -->
       <template x-if="mod === 'lab'">
-        <div x-show="labTab === 'entref'" x-cloak class="w-full dc-body">
+        <div x-show="labTab === 'entref' && kwTab === 'sentence'" role="tabpanel" id="kw-panel-sentence" aria-labelledby="kw-tab-sentence" x-cloak class="w-full dc-body">
 
         <section class="panel">
-          <div class="panel-hd"><b>핵심 키워드 / 문장</b><span class="meta">발행 메타로 구독·콘텐츠 묶음·검색용 키워드와 문장을 만드는 두 호출</span><span class="ds-badge ds-badge--neutral ml-auto">운영자 전용</span></div>
+          <div class="panel-hd"><b>핵심 키워드 / 문장</b><span class="meta">발행 메타로 구독·콘텐츠 묶음·검색용 키워드 선정·근거 검사 후 문장 생성</span><span class="ds-badge ds-badge--neutral ml-auto">운영자 전용</span></div>
           <div class="panel-bd dc-body">
             <ul class="ds-bullets">
               <li>입력은 <b>발행된 메타(리드문·엔티티·인텐트·카테고리)뿐</b>입니다 · 제목·본문은 쓰지 않고, 키워드 근거 확인도 메타 안에서 합니다</li>
               <li><b>핵심 키워드</b> 최대 3개 · 기본 선정 비중은 구독 40%·클러스터링 40%·검색 의도 20%입니다<ul><li>메타가 뒷받침하는 후보에서 선정합니다 · 조합형(엔티티를 포함한 명사구)과 단일형(엔티티 또는 주제어)은 형태와 관계없이 선정 순서를 유지합니다</li><li>비중은 프롬프트의 판단 기준이며 실측 점수가 아닙니다 · 비교 기준인 지금 방식은 확신도 상위 3개입니다</li></ul></li>
+              <li>키워드 후보는 별도 모델 검사에서 메타 근거·대상 간 관계·부정·미확정 상태·중복을 확인합니다 · 검사 실패 후보는 사용하지 않습니다 · 모델 검사도 오판 가능성이 있어 사람의 비교 검토가 필요합니다</li>
               <li><b>핵심 문장</b>: 핵심 키워드가 나온 뒤 그 키워드와 메타로 다시 씁니다 · 키워드가 실패하면 메타만으로 쓰고 표시합니다</li>
               <li>프롬프트는 호출·모델별로 저장합니다 · Solar 모델에는 Upstage 쿡북을 바탕으로 만든 입출력 예시를 자동으로 붙입니다</li>
             </ul>
@@ -95,6 +96,11 @@
                     <p class="ds-hint ds-hint--error" x-show="erOne.error" x-text="erOne.error"></p></dd></div>
                   <div class="ds-fieldrow"><dt class="ds-fieldrow__label">모델 · 지연</dt><dd class="ds-fieldrow__value tnum" x-text="erOneMeta()"></dd></div>
                 </dl>
+                <p class="ds-hint" x-text="erKeywordProvenance(erOne)"></p>
+                <p class="ds-hint ds-hint--error" x-show="erOne.keyword_storage_error" x-text="erOne.keyword_storage_error"></p>
+                <details x-show="erKeywordChecks(erOne).length"><summary>키워드 근거·제외 사유</summary>
+                  <ul class="ds-bullets"><template x-for="(check, i) in erKeywordChecks(erOne)" x-bind:key="i"><li><b x-text="check.state + ' · ' + check.text"></b><span x-text="' — ' + check.reason"></span><p class="ds-hint" x-show="(check.evidence || []).length" x-text="(check.evidence || []).join(' / ')"></p></li></template></ul>
+                </details>
                 <table class="ds-table ds-table--compact w-full" x-show="erOne.refined">
                   <thead><tr><th>엔티티</th><th>정식명</th><th>유형</th><th class="tnum">관련도</th><th>키워드 후보</th></tr></thead>
                   <tbody><template x-for="e in ((erOne.refined || {}).entities || [])" x-bind:key="e.name">
@@ -103,7 +109,7 @@
                 </table>
                 <div class="flex items-center gap-2 flex-wrap" x-show="erOne.hash && erOne.refined">
                   <span class="ds-label">구독·콘텐츠 묶음에 적합하고 검색 의도에도 맞는 키워드는 어느 쪽인가요?</span>
-                  <template x-for="p in erPicks" x-bind:key="p[0]"><button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-bind:disabled="erOne._voted" x-on:click="erVote(erOne, p[0])" x-text="p[1]"></button></template>
+                  <template x-for="p in erPicks" x-bind:key="p[0]"><button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-bind:disabled="!erOne.result_id || erOne._voting || erOne._voted" x-on:click="erVote(erOne, p[0])" x-text="p[1]"></button></template>
                   <span class="ds-hint" x-show="erOne._voted" x-cloak>기록했습니다</span>
                 </div>
               </div>
@@ -128,7 +134,7 @@
             <ul class="ds-bullets" x-show="erMsg" x-cloak><template x-for="(s,i) in sents(erMsg)" x-bind:key="i"><li><span x-bind:class="erErr ? 'ds-hint ds-hint--error' : ''" x-text="s"></span></li></template></ul>
             <template x-if="erSum && (erSum.n || erSum.sent_n)">
             <div class="ds-stat-grid">
-              <div class="ds-stat"><div class="ds-stat__value tnum" x-text="(erSum.overlap_avg ?? '·') + ' / 3'"></div><div class="ds-stat__label">지금 방식과 겹친 키워드</div></div>
+              <div class="ds-stat"><div class="ds-stat__value tnum" x-text="(erSum.overlap_avg ?? '·') + ' / 3'"></div><div class="ds-stat__label">지금 방식과 같은 표기 · 품질 점수 아님</div></div>
               <div class="ds-stat"><div class="ds-stat__value tnum" x-text="erSum.dropped_share != null ? Math.round(erSum.dropped_share * 100) + '%' : '·'"></div><div class="ds-stat__label">후보에서 뺀 엔티티</div></div>
               <div class="ds-stat"><div class="ds-stat__value tnum" x-text="erSum.combo_share != null ? Math.round(erSum.combo_share * 100) + '%' : '·'"></div><div class="ds-stat__label">조합형 키워드 비율</div></div>
               <div class="ds-stat"><div class="ds-stat__value tnum" x-text="erSum.sent_len_avg != null ? erSum.sent_len_avg + '자' : '·'"></div><div class="ds-stat__label">성공 문장 평균 길이</div></div>
@@ -156,7 +162,12 @@
                     </dd></div>
                     <div class="ds-fieldrow"><dt class="ds-fieldrow__label">키워드 · 지금 방식</dt><dd class="ds-fieldrow__value ds-fieldrow__chips"><template x-for="b in (it.base || [])" x-bind:key="b.name"><span class="ds-badge ds-badge--entity" x-text="b.name"></span></template></dd></div>
                   </dl>
-                  <div class="control-row control-row--compact"><span class="ds-label">키워드 비교</span><div class="flex gap-2 flex-wrap" x-show="!it.error && !it._voted"><template x-for="p in erPicks" x-bind:key="p[0]"><button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-on:click="erVote(it, p[0])" x-text="p[1]"></button></template></div><span class="ds-hint" x-show="it._voted" x-text="'기록 · ' + erPickKo(it._voted)"></span></div>
+                  <p class="ds-hint" x-text="erKeywordProvenance(it)"></p>
+                <p class="ds-hint ds-hint--error" x-show="it.keyword_storage_error" x-text="it.keyword_storage_error"></p>
+                <details x-show="erKeywordChecks(it).length"><summary>키워드 근거·제외 사유</summary>
+                  <ul class="ds-bullets"><template x-for="(check, i) in erKeywordChecks(it)" x-bind:key="i"><li><b x-text="check.state + ' · ' + check.text"></b><span x-text="' — ' + check.reason"></span><p class="ds-hint" x-show="(check.evidence || []).length" x-text="(check.evidence || []).join(' / ')"></p></li></template></ul>
+                </details>
+                  <div class="control-row control-row--compact"><span class="ds-label">키워드 비교</span><div class="flex gap-2 flex-wrap" x-show="!it.error && !it._voted"><template x-for="p in erPicks" x-bind:key="p[0]"><button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-bind:disabled="!it.result_id || it._voting" x-on:click="erVote(it, p[0])" x-text="p[1]"></button></template></div><span class="ds-hint" x-show="it._voted" x-text="'기록 · ' + erPickKo(it._voted)"></span></div>
                 </article>
               </template>
             </div>
@@ -171,5 +182,26 @@
           </div>
         </section>
 
+
+        <section class="panel">
+          <div class="panel-hd"><b>키워드 보관 결과</b><span class="meta">팀별 최근 50건 · 당시 메타·모델·프롬프트·근거 보관</span>
+            <button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm ml-auto" x-on:click="erLoadHistory()">보관 결과 불러오기</button></div>
+          <div class="panel-bd dc-body">
+            <p class="ds-hint">기존 투표 기록은 보존되며, 아래 집계는 결과에 연결된 새 투표만 포함합니다 · 문장 결과는 이 보관 대상에 포함되지 않습니다</p>
+            <p class="ds-hint ds-hint--error" x-show="erHistoryError" x-text="erHistoryError"></p>
+            <p class="ds-hint" x-show="erHistoryLoaded && !erHistory.length">보관된 키워드 결과가 없습니다</p>
+            <template x-for="saved in erHistory" x-bind:key="saved.result_id"><details>
+              <summary x-text="(saved.title || '직접 입력') + ' · ' + new Date(saved.created_at * 1000).toLocaleString()"></summary>
+              <p class="ds-hint" x-text="erKeywordProvenance(saved)"></p>
+              <p x-text="'재가공: ' + (((saved.refined || {}).keywords || []).map(k => k.text).join(' / ') || '선정 없음')"></p>
+              <p x-text="'지금 방식: ' + (saved.base || []).map(k => k.name).join(' / ')"></p>
+              <p class="ds-hint ds-hint--error" x-show="saved.error" x-text="saved.error"></p>
+              <ul class="ds-bullets"><template x-for="(check, i) in erKeywordChecks(saved)" x-bind:key="i"><li><span x-text="check.state + ' · ' + check.text + ' — ' + check.reason"></span><p class="ds-hint" x-text="(check.evidence || []).join(' / ')"></p></li></template></ul>
+              <details><summary>당시 입력 메타</summary><pre class="ds-code" x-text="JSON.stringify(saved.input, null, 2)"></pre></details>
+              <div class="flex gap-2 flex-wrap" x-show="!saved.error"><template x-for="p in erPicks" x-bind:key="p[0]"><button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-bind:disabled="saved._voting || saved._voted" x-on:click="erVote(saved, p[0])" x-text="p[1]"></button></template></div>
+              <p class="ds-hint" x-show="saved._voted" x-text="'기록 · ' + erPickKo(saved._voted)"></p>
+            </details></template>
+          </div>
+        </section>
         </div>
       </template>
