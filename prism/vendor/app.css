@@ -1685,23 +1685,6 @@ button.tbchip:disabled{cursor:default;opacity:.8}
   .dc-row{display:flex;align-items:flex-end;gap:var(--ds-space-4);flex-wrap:wrap}
   .dc-num{width:8em}
   .dc-top{align-items:start}
-  /* 실험실 핵심 문장: 생성문을 먼저 읽고 리드문·키워드를 비교한다. */
-  .er-results{display:flex;flex-direction:column;gap:var(--ds-space-6)}
-  .er-result{min-width:0;padding-block:var(--ds-space-5);border-top:1px solid var(--ds-hairline)}
-  .er-result__title{margin:0 0 var(--ds-space-3);font-size:var(--ds-size-caption);font-weight:500;color:var(--ds-muted);overflow-wrap:anywhere}
-  .er-sentence{padding:var(--ds-space-5);background:var(--ds-surface-on);border-left:3px solid var(--ds-primary);border-radius:var(--ds-radius-sm)}
-  .er-sentence__head{display:flex;align-items:center;gap:var(--ds-space-2);flex-wrap:wrap;margin-bottom:var(--ds-space-3)}
-  .er-sentence__label{font-size:var(--ds-size-caption);font-weight:700;color:var(--ds-primary-deep)}
-  .er-sentence__text{margin:0;font-size:var(--ds-size-subtitle);font-weight:600;line-height:1.75;color:var(--ds-ink);word-break:keep-all;overflow-wrap:anywhere}
-  .er-sentence .ds-hint{margin-top:var(--ds-space-2)}
-  .er-original{margin-top:var(--ds-space-3);font-size:var(--ds-size-caption);color:var(--ds-muted)}
-  .er-original summary{cursor:pointer;width:fit-content;padding-block:var(--ds-space-2)}
-  .er-original p{margin:var(--ds-space-2) 0 0;line-height:1.7;overflow-wrap:anywhere}
-  .er-keywords{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--ds-space-4);margin-block:var(--ds-space-4)}
-  .er-keywords dt{font-size:var(--ds-size-caption);color:var(--ds-muted);margin-bottom:var(--ds-space-2)}
-  .er-keywords dd{margin:0;min-width:0}
-  .er-vote{display:flex;align-items:center;gap:var(--ds-space-2);flex-wrap:wrap}
-  @media(max-width:640px){.er-keywords{grid-template-columns:1fr}.er-sentence{padding:var(--ds-space-4)}}
   .ar-prog{display:flex;align-items:center;gap:20px;flex-wrap:wrap;background:var(--ds-surface-on);
     border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-md);padding:13px 16px}
   .ar-stat{display:flex;flex-direction:column;gap:2px;min-width:64px}
