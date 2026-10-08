@@ -79,13 +79,15 @@
             </div>
             <template x-if="erOne">
               <div class="dc-body">
-                <section class="fn" aria-label="핵심 문장 결과">
-                  <div class="flex items-center gap-2 flex-wrap"><b class="fn__title">핵심 문장</b><span class="ds-hint tnum" x-show="erSentenceText(erOne.sentence)" x-text="erSentenceLength(erOne.sentence) + '자 · 공백 포함'"></span><span class="ds-badge ds-badge--error" x-show="(erOne.sentence || {}).draft">검사 미통과 · 생성 초안</span></div>
+                <div class="layout-grid--two">
+                  <section class="fn" aria-label="기존 메타 리드문"><div class="flex items-center gap-2 flex-wrap"><b class="fn__title">기존 메타 · 리드문</b><span class="ds-hint tnum" x-show="(erOne.sentence || {}).base" x-text="Array.from((erOne.sentence || {}).base || '').length + '자 · 공백 포함'"></span></div><p class="ds-fieldrow__value" x-text="(erOne.sentence || {}).base || '기존 리드문이 없습니다'"></p></section>
+                  <section class="fn" aria-label="핵심 문장 결과">
+                  <div class="flex items-center gap-2 flex-wrap"><b class="fn__title">핵심 문장 · 재가공</b><span class="ds-hint tnum" x-show="erSentenceText(erOne.sentence)" x-text="erSentenceLength(erOne.sentence) + '자 · 공백 포함'"></span><span class="ds-badge ds-badge--error" x-show="(erOne.sentence || {}).draft">검사 미통과 · 생성 초안</span></div>
                   <p class="ds-fieldrow__value" x-text="erSentenceText(erOne.sentence) || '생성된 문장이 없습니다'"></p>
                   <p class="ds-hint" x-show="erSentenceText(erOne.sentence) && !erOne.sentence.from_keywords">키워드 없이 메타만으로 생성</p>
                   <p class="ds-hint ds-hint--error" x-show="(erOne.sentence || {}).error" x-text="(erOne.sentence || {}).error"></p>
                 </section>
-                <details class="fn"><summary class="ds-label">기존 리드문과 비교</summary><p class="ds-fieldrow__value" x-text="(erOne.sentence || {}).base || '기존 리드문이 없습니다'"></p></details>
+                </div>
                 <dl class="ds-deflist">
                   <div class="ds-fieldrow"><dt class="ds-fieldrow__label">키워드 · 지금 방식</dt><dd class="ds-fieldrow__value ds-fieldrow__chips"><template x-for="b in (erOne.base || [])" x-bind:key="b.name"><span class="ds-badge ds-badge--entity" x-text="b.name + ' ' + Math.round(b.conf * 100)"></span></template></dd></div>
                   <div class="ds-fieldrow"><dt class="ds-fieldrow__label">키워드 · 재가공</dt><dd class="ds-fieldrow__value">
@@ -138,13 +140,15 @@
               <template x-for="it in erPageItems()" x-bind:key="it.hash">
                 <article class="content-section fn-stack" x-bind:aria-label="it.title || it.hash">
                   <h3 class="ds-fieldrow__label" x-text="it.title || it.hash"></h3>
+                  <div class="layout-grid--two">
+                  <section class="fn" aria-label="기존 메타 리드문"><div class="flex items-center gap-2 flex-wrap"><b class="fn__title">기존 메타 · 리드문</b><span class="ds-hint tnum" x-show="(it.sentence || {}).base" x-text="Array.from((it.sentence || {}).base || '').length + '자 · 공백 포함'"></span></div><p class="ds-fieldrow__value" x-text="(it.sentence || {}).base || '기존 리드문이 없습니다'"></p></section>
                   <section class="fn" aria-label="핵심 문장 결과">
-                    <div class="flex items-center gap-2 flex-wrap"><b class="fn__title">핵심 문장</b><span class="ds-hint tnum" x-show="erSentenceText(it.sentence)" x-text="erSentenceLength(it.sentence) + '자 · 공백 포함'"></span><span class="ds-badge ds-badge--error" x-show="(it.sentence || {}).draft">검사 미통과 · 생성 초안</span></div>
+                    <div class="flex items-center gap-2 flex-wrap"><b class="fn__title">핵심 문장 · 재가공</b><span class="ds-hint tnum" x-show="erSentenceText(it.sentence)" x-text="erSentenceLength(it.sentence) + '자 · 공백 포함'"></span><span class="ds-badge ds-badge--error" x-show="(it.sentence || {}).draft">검사 미통과 · 생성 초안</span></div>
                     <p class="ds-fieldrow__value" x-text="erSentenceText(it.sentence) || '생성된 문장이 없습니다'"></p>
                     <p class="ds-hint" x-show="erSentenceText(it.sentence) && !it.sentence.from_keywords">키워드 없이 메타만으로 생성</p>
                     <p class="ds-hint ds-hint--error" x-show="(it.sentence || {}).error" x-text="(it.sentence || {}).error"></p>
                   </section>
-                  <details class="fn"><summary class="ds-label">기존 리드문과 비교</summary><p class="ds-fieldrow__value" x-text="(it.sentence || {}).base || '기존 리드문이 없습니다'"></p></details>
+                </div>
                   <dl class="ds-deflist">
                     <div class="ds-fieldrow"><dt class="ds-fieldrow__label">키워드 · 재가공</dt><dd class="ds-fieldrow__value">
                       <div class="ds-fieldrow__chips" x-show="!it.error"><template x-for="k in ((it.refined || {}).keywords || [])" x-bind:key="k.text"><span class="ds-badge" x-bind:class="k.kind === 'combo' ? 'ds-badge--category' : 'ds-badge--entity'" x-text="k.text"></span></template></div>
