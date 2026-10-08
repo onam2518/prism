@@ -18,12 +18,40 @@ def _rec(**kw):
 
 class ReviewTimeTest(unittest.TestCase):
     @unittest.skipUnless(shutil.which('node'), 'Node.js 없음')
+    def test_retry_after_reload_is_idempotent_and_account_scoped(self):
+        script = r'''
+const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
+const saved=new Map(),calls=[];let now=10000,fail=true;
+const window={addEventListener(){},crypto:require('crypto')};
+const localStorage={get length(){return saved.size},key:i=>[...saved.keys()][i],getItem:k=>saved.get(k),setItem:(k,v)=>saved.set(k,v),removeItem:k=>saved.delete(k)};
+vm.runInNewContext(fs.readFileSync('prism/vendor/app-22-reviewtime.js','utf8'),{window,localStorage,Date:{now:()=>now},setInterval(){},clearInterval(){},document:{hidden:false},
+ fetch:async(url,opt)=>{calls.push(JSON.parse(opt.body));if(fail)throw Error('response lost');return {ok:true,json:async()=>({ok:true})}}});
+function app(reviewer){return Object.assign(window.PRISM_APP_PARTS[0](),{reviewer,_authHeaders:()=>({}),myVerdict:()=>'',detailOpen:true,detail:{hash:'1234567890abcdef'}})}
+(async()=>{
+ let a=app('alice');a._rtStart(a.detail);now+=2000;a._rtMark(a.detail,'verdict','good');a._rtFlush();await new Promise(setImmediate);
+ assert.equal(saved.size,1);assert.equal(calls.length,1);
+ a=app('bob');fail=false;await a._rtDrain();assert.equal(calls.length,1);
+ a=app('alice');await a._rtDrain();assert.equal(saved.size,0);assert.equal(calls.length,2);
+ assert.equal(calls[0].event_id,calls[1].event_id);process.stdout.write(JSON.stringify(calls));
+})().catch(e=>{console.error(e);process.exitCode=1});
+'''
+        result=subprocess.run(['node','-e',script],cwd=pathlib.Path(__file__).resolve().parents[1],
+                              check=True,capture_output=True,text=True,timeout=10)
+        from prism.store import Store
+        with tempfile.TemporaryDirectory() as tmp:
+            st=Store(os.path.join(tmp,'retry.db'))
+            for data in json.loads(result.stdout):
+                meta=RT.clean(data)
+                st.log_review_time('alice',meta['event_id'],json.dumps(meta))
+            self.assertEqual(len(st.events_since(('review_time',),0)),1)
+
+    @unittest.skipUnless(shutil.which('node'), 'Node.js 없음')
     def test_axis_save_flows_into_time_statistics(self):
         script = r'''
 const fs=require('fs'), vm=require('vm'), assert=require('assert/strict');
-const window={addEventListener(){}};let now=10000;const sent=[];
+const window={addEventListener(){},crypto:require('crypto')};let now=10000;const sent=[];
 const context={window,Date:{now:()=>now},document:{hidden:false},setInterval(){},clearInterval(){},
- fetch:async(url,opt)=>{sent.push(JSON.parse(opt.body));return {ok:true}}};
+ fetch:async(url,opt)=>{sent.push(JSON.parse(opt.body));return {ok:true,json:async()=>({ok:true})}}};
 for(const f of ['app-20-operations.js','app-22-reviewtime.js'])vm.runInNewContext(fs.readFileSync('prism/vendor/'+f,'utf8'),context);
 const app={};for(const p of window.PRISM_APP_PARTS)Object.defineProperties(app,Object.getOwnPropertyDescriptors(p()));
 Object.assign(app,{reviewer:'tester',myVerdict:()=>'',_authHeaders:()=>({}),liveToast(){},_err(){},opsLoad:async()=>{},
@@ -34,19 +62,19 @@ app.opsRequest=async()=>({hash:app.detail.hash,basis:{token:'v1'},review:{axes},
  app._rtStart(app.detail);
  for(let i=0;i<10;i++){now+=1000;app._rtTick();}
  await app.opsSave({action:'review',axes});
- now+=5000;app._rtFlush();
+ now+=5000;app._rtFlush();await new Promise(setImmediate);
  assert.equal(sent[0].outcome,'verdict');assert.equal(sent[0].verdict,'good');
  assert.equal(sent[0].verdict_active_ms,10000);assert.equal(sent[0].verdict_wall_ms,10000);
  app._rtStart(app.detail);await app.opsOpen(app.detail);
- now+=2000;await app.opsSave({action:'review',axes});app._rtFlush();
+ now+=2000;await app.opsSave({action:'review',axes});app._rtFlush();await new Promise(setImmediate);
  assert.equal(sent[1].outcome,'revisit');
  app._rtStart(app.detail);app.opsRequest=async()=>{throw Error('save failed')};
- now+=2000;await app.opsSave({action:'review',axes});app._rtFlush();
+ now+=2000;await app.opsSave({action:'review',axes});app._rtFlush();await new Promise(setImmediate);
  assert.equal(sent[2].outcome,'abandoned');
  app._rtStart(app.detail);axes.summary.status='needs_fix';
  app.opsRequest=async()=>({hash:app.detail.hash,basis:{token:'v1'},review:{axes},cases:[]});
  for(let i=0;i<10;i++){now+=1000;app._rtTick();}
- await app.opsSave({action:'review',axes});app._rtFlush();
+ await app.opsSave({action:'review',axes});app._rtFlush();await new Promise(setImmediate);
  assert.equal(sent[3].verdict,'bad');assert.equal(sent[3].note_active_ms,10000);
  process.stdout.write(JSON.stringify(sent));
 })().catch(e=>{console.error(e);process.exitCode=1});

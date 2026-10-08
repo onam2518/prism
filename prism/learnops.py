@@ -28,6 +28,17 @@ def sync_learned():
     모델 귀속 라우트는 LEARNED_BY_MODEL 계층으로 분리(그 모델 프롬프트에만 병기)."""
     try:
         st = _SV.get_store()
+        if _BATCH_LOCK.locked():
+            return  # 평가 중 후보를 조회·설정 갱신이 덮지 않는다.
+        active = st.get_report("active_learned") if st else None
+        if not active and st:
+            legacy = st.get_report("prompt_snapshot_latest")
+            if isinstance(legacy, dict) and "learned" in legacy and "learned_by_model" in legacy:
+                active = dict(legacy, schema=1, source="legacy_snapshot")
+        if isinstance(active, dict) and active.get("schema") == 1:
+            PR.LEARNED = dict(active["learned"])
+            PR.LEARNED_BY_MODEL = {m: dict(v) for m, v in active["learned_by_model"].items()}
+            return
         try:                                       # 관리자가 끈 지시(개별 무효화)는 컴파일에서 제외
             ex = _SV.disabled_directives()
         except Exception:
@@ -449,8 +460,8 @@ def build_golden_from_reviews(team=None) -> dict:
         content = {"displayServiceName": ref.get("displayServiceName", ""), "title": ref.get("title", ""),
                    "subtitle": ref.get("subtitle", ""), "body": ref.get("body", "")}
         ch = content_hash(content)
-        fb = fmap.get(ch)
-        if not fb:
+        fb = fmap.get(ch) or {}
+        if not fb and ch not in finals:
             continue
         fb, fv = _current_review_votes(st, ch, team, fb, finals.get(ch))
         # 신뢰도 가중 다수결: 골드 정확도 기반 가중치(없으면 전원 1.0 = 기존 다수결과 동일)
@@ -562,8 +573,8 @@ def promotion_pending(team=None) -> dict:
         if ch in seen:
             continue
         seen.add(ch)
-        fb = fmap.get(ch)
-        if not fb or ch in golden:                    # 기초 검수 없음 · 이미 골든 → 대기 아님
+        fb = fmap.get(ch) or {}
+        if (not fb and ch not in finals) or ch in golden:                    # 기초 검수 없음 · 이미 골든 → 대기 아님
             continue
         fb, fv = _current_review_votes(st, ch, team, fb, finals.get(ch))
         if fv == "bad":                               # 리드가 '제외' 확정 → 대기 아님(결정 완료)
@@ -1175,6 +1186,19 @@ def learning_batch(team=None, models=None, model: str = "", golden_hashes=None, 
             if eval_pre.get("ok"):
                 delta = 0.0
         step("wrap")
+        st_active = _SV.get_store()
+        if st_active:
+            try:
+                st_active.save_report("active_learned", {
+                    "schema": 1, "team": team, "ts": time.time(),
+                    "learned": dict(PR.LEARNED),
+                    "learned_by_model": {m: dict(v) for m, v in PR.LEARNED_BY_MODEL.items()},
+                    "evaluation": _guard_view(evalr),
+                    "reverted": bool((improve or {}).get("reverted"))})
+            except Exception:
+                PR.LEARNED = prev_learned
+                PR.LEARNED_BY_MODEL = prev_by_model
+                return {"ok": False, "error": "승인 보정 저장 실패 · 이전 보정 유지", "golden": golden}
         compare = compare_models_on_golden(models, team) if (models and len(models) > 1) else None
         try:                                        # 학습 반영 회차 기록 → 초안 버전(v = 회차+1)
             stv = _SV.get_store()
@@ -1523,12 +1547,16 @@ def learn_export(kind: str, team=None):
     st = _SV.get_store()
     if not st:
         return None, "store unavailable"
+    from .store import golden_hash
+    holdout = {h for h,p in st.purpose_map(team).items() if p == "eval"} if hasattr(st,"purpose_map") else set()
     lines = []
     if kind == "sft":                                  # LIMA · Llama Guard 방식
         sys_p = _sft_system()
         control = st.get_report("dnm_control", team=team) if hasattr(st, "get_report") else {}
         policy_version = ((control or {}).get("policy") or {}).get("policy_version")
         for g in (st.get_golden(team) if hasattr(st, "get_golden") else []):
+            if golden_hash(g) in holdout:
+                continue
             content, exp = g.get("content") or {}, g.get("expected") or {}
             if not (content.get("title") or content.get("body")):
                 continue
@@ -1544,6 +1572,8 @@ def learn_export(kind: str, team=None):
     if kind == "dpo":                                  # DPO(Rafailov 2023) 선호쌍: 교정 전=rejected · 후=chosen
         cmap = st.contents_by_hash(team=team) if hasattr(st, "contents_by_hash") else {}
         for p in (st.patch_rows(team=team) if hasattr(st, "patch_rows") else []):
+            if p["hash"] in holdout:
+                continue
             if not p.get("before") and not p.get("after"):
                 continue
             lines.append(json.dumps({
@@ -1561,6 +1591,8 @@ def learn_export(kind: str, team=None):
             fmap = {}
         count = 0
         for ch, e in fmap.items():
+            if ch in holdout:
+                continue
             for v in e.get("verdicts", []):
                 note = (v.get("note") or "").strip()
                 if not note:
@@ -1582,6 +1614,8 @@ def learn_export(kind: str, team=None):
         return "prism_rationale.jsonl", "\n".join(lines)
     if kind == "knowhow":                              # 판단 궤적: 골든 ← 검수 의견·REAP 사유·교정 전/후 결속
         for r in knowhow_rows(team):
+            if r["hash"] in holdout:
+                continue
             if r["revisions"] or r["rationales"] or any(o.get("note") for o in r["opinions"]):
                 lines.append(json.dumps(r, ensure_ascii=False))
         return "prism_knowhow.jsonl", "\n".join(lines)

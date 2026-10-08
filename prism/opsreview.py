@@ -113,7 +113,7 @@ def detail(st, ch, team=None, who='', privileged=False):
     row = read_row(st, ch, team); b = basis(row)
     record = st.get_report('ops_review_' + ch, team) or {'revision': 0, 'reviews': [], 'cases': [], 'sessions': [], 'history': []}
     latest = next((r for r in reversed(record['reviews']) if r['by'] == who and r['basis']['token'] == b['token']), None)
-    result = {'ok': True, 'hash': ch, 'basis': b, 'revision': record['revision'], 'review': latest,
+    result = {'ok': True, 'team': team, 'hash': ch, 'basis': b, 'revision': record['revision'], 'review': latest,
               'cases': record['cases'], 'sessions': [s for s in record['sessions'] if privileged or s['by'] == who],
               'history': record['history'] if privileged else [x for x in record['history'] if x['by'] == who],
               'values': {k: (row.get('item_meta') or {}).get(k, '' if k == 'summary' else []) for k in FIELDS}}
@@ -408,9 +408,13 @@ def overview(st, team=None, who='', privileged=False, legacy=None, live_hashes=N
 
 
 def human_expected(st, ch, team=None):
+    row=read_row(st,ch,team); token=basis(row)['token']
+    final=((st.get_report('final_verdicts',team) or {}).get('items') or {}).get(ch) or {}
+    if final.get('verdict')=='good' and final.get('basis_token')==token:
+        return {k:copy.deepcopy((row.get('item_meta') or {}).get(k)) for k in FIELDS}
     record=st.get_report('ops_review_'+ch,team)
     if not record: return {}
-    token=basis(read_row(st,ch,team))['token']; latest={r['by']:r for r in record['reviews'] if r['basis']['token']==token}
+    latest={r['by']:r for r in record['reviews'] if r['basis']['token']==token}
     result={}
     for field in FIELDS:
         votes=[r['axes'][field] for r in latest.values() if field in r['axes']]

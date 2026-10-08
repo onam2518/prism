@@ -8,6 +8,40 @@ window.PRISM_APP_PARTS = window.PRISM_APP_PARTS || [];
 window.PRISM_APP_PARTS.push(() => ({
 
       _rt: null, _rtTimer: null, _rtLastInput: 0, _rtBound: false,
+      _rtSending: false, _rtRetryTimer: null, _rtMemory: {},
+      _rtOwner() {
+        if(this.authToken) {
+          try { return JSON.parse(atob(this.authToken.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))).sub; } catch(e) { return ''; }
+        }
+        return this.reviewer || '';
+      },
+      _rtInit() {
+        if(!this._rtRetryTimer) {
+          this._rtRetryTimer=setInterval(()=>this._rtDrain(),30000);
+          window.addEventListener('online',()=>this._rtDrain());
+        }
+        this._rtDrain();
+      },
+      async _rtDrain() {
+        const actor=this._rtOwner();
+        if(this._rtSending || !actor)return;
+        this._rtSending=true;
+        try {
+          const prefix='prism-review-time:'+actor+':', pending=Object.assign({},this._rtMemory);
+          try { for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k.startsWith(prefix))pending[k]=JSON.parse(localStorage.getItem(k));} } catch(e) {}
+          for(const [key,body] of Object.entries(pending)) {
+            if(!key.startsWith(prefix) || this._rtOwner()!==actor)continue;
+            try {
+              const response=await fetch('/review-time',{method:'POST',keepalive:true,headers:this._authHeaders(),body:JSON.stringify(body)});
+              const result=await response.json();
+              if(response.ok && result.ok) {
+                delete this._rtMemory[key];
+                try {localStorage.removeItem(key);} catch(e) {}
+              }
+            } catch(e) {} // 다음 접속·온라인 복귀·30초 주기에 같은 ID로 재전송
+          }
+        } finally { this._rtSending=false; }
+      },
       _RT_IDLE_MS: 120000,                // reviewtime.IDLE_MS 와 같은 값
 
       rtsDays: 14, rtsData: null, rtsMsg: '',      // 관리자 요약(검수운영 › 현황 · GET /review-time-stats)
@@ -27,10 +61,11 @@ window.PRISM_APP_PARTS.push(() => ({
         this._rtFlush();                  // 앞 진입 마감(다른 콘텐츠로 바로 넘어온 경우)
         if (!c || !c.hash) return;
         const now = Date.now();
-        this._rt = { hash: c.hash, open: now, active: 0, verdictWall: null, verdictActive: null, badWall: null, badActive: null,
+        this._rt = { eventId: window.crypto.randomUUID(), actor: this._rtOwner(), hash: c.hash, open: now, active: 0, verdictWall: null, verdictActive: null, badWall: null, badActive: null,
                      noteWall: null, noteActive: null, verdict: '', bodyLen: String(c.body || '').length,
                      gold: String(c.hash).startsWith('gold:'), src: this.mod || '', revisit: !!this.myVerdict(c.fb || {}) };
         this._rtLastInput = now;
+        this._rtInit();
         if (!this._rtBound) {
           const touch = () => { this._rtLastInput = Date.now(); };
           ['keydown', 'mousedown', 'mousemove', 'wheel', 'touchstart', 'scroll'].forEach((t) => window.addEventListener(t, touch, { passive: true, capture: true }));
@@ -66,9 +101,12 @@ window.PRISM_APP_PARTS.push(() => ({
         if (!r) return;
         const wall = Date.now() - r.open;
         if (wall < 1000) return;          // 스쳐 지나간 진입은 버린다
-        const body = { reviewer: this.reviewer || '', hash: r.hash, outcome: r.verdictWall != null ? 'verdict' : (r.revisit ? 'revisit' : 'abandoned'), verdict: r.verdict,
+        const body = { event_id:r.eventId, recorded_at:Date.now()/1000, actor_key:r.actor, team_scope:r.team, reviewer: r.actor, hash: r.hash, outcome: r.verdictWall != null ? 'verdict' : (r.revisit ? 'revisit' : 'abandoned'), verdict: r.verdict,
                        wall_ms: wall, active_ms: r.active, verdict_wall_ms: r.verdictWall, verdict_active_ms: r.verdictActive,
                        note_wall_ms: r.noteWall, note_active_ms: r.noteActive, body_len: r.bodyLen, gold: r.gold, src: r.src };
-        try { fetch('/review-time', { method: 'POST', keepalive: true, headers: this._authHeaders(), body: JSON.stringify(body) }).catch(() => {}); } catch (e) {}
+        const key='prism-review-time:'+r.actor+':'+r.eventId;
+        this._rtMemory[key]=body;
+        try { localStorage.setItem(key,JSON.stringify(body)); } catch(e) { if(this.liveToast)this.liveToast('시간 기록 임시 저장 불가 · 이 화면에서 전송을 기다려 주세요'); }
+        this._rtDrain();
       },
 }));

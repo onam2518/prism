@@ -365,6 +365,10 @@ class Store:
         CREATE INDEX IF NOT EXISTS ix_autoreview_reviewer ON autoreview(reviewer, ts);
         """)
         c.commit()
+        if "event_id" not in [r[1] for r in c.execute("PRAGMA table_info(events)")]:
+            c.execute("ALTER TABLE events ADD COLUMN event_id TEXT")
+        c.execute("CREATE UNIQUE INDEX IF NOT EXISTS ix_review_time_event ON events(reviewer,event_id)")
+        c.commit()
         self._migrate_feedback(c)
         if "source" not in [r[1] for r in c.execute("PRAGMA table_info(results)")]:
             c.execute("ALTER TABLE results ADD COLUMN source TEXT"); c.commit()   # 출처 필터
@@ -896,6 +900,12 @@ class Store:
         c = self._conn()
         c.execute("INSERT INTO events(reviewer,kind,day,bonus,meta,ts) VALUES(?,?,?,?,?,?)",
                   (reviewer or "(익명)", kind, int(time.strftime("%Y%m%d")), 0, meta or "", time.time()))
+        c.commit()
+
+    def log_review_time(self, reviewer, event_id, meta, team=None):
+        c = self._conn()
+        c.execute("INSERT OR IGNORE INTO events(reviewer,kind,day,bonus,meta,ts,event_id) VALUES(?,?,?,?,?,?,?)",
+                  (reviewer or "(익명)", "review_time", int(time.strftime("%Y%m%d")), 0, meta, json.loads(meta).get("recorded_at",time.time()), event_id))
         c.commit()
 
     def events_since(self, kinds, since: float, team=None) -> list:
@@ -1437,14 +1447,17 @@ class Store:
         out = {}
         seen = set()
         ex = exclude or set()
+        holdout = {h for h,p in self.purpose_map(team).items() if p == "eval"}
         try:
-            rows = c.execute("SELECT stage,directive FROM feedback_routes "
+            rows = c.execute("SELECT stage,directive,content_hash FROM feedback_routes "
                              "WHERE COALESCE(directive,'')!='' AND COALESCE(model,'')='' "
                              "ORDER BY ts DESC").fetchall()
         except sqlite3.OperationalError:               # 구 스키마(model 컬럼 없음)
-            rows = c.execute("SELECT stage,directive FROM feedback_routes "
+            rows = c.execute("SELECT stage,directive,content_hash FROM feedback_routes "
                              "WHERE COALESCE(directive,'')!='' ORDER BY ts DESC").fetchall()
-        for stage, directive in rows:
+        for stage, directive, ch in rows:
+            if ch in holdout:
+                continue
             st = stage if stage in ("extract", "analyze", "review", "judge") else "analyze"
             d = directive.strip()
             if d in ex:
@@ -1463,13 +1476,16 @@ class Store:
         out = {}
         seen = set()
         ex = exclude or set()
+        holdout = {h for h,p in self.purpose_map(team).items() if p == "eval"}
         try:
-            rows = c.execute("SELECT stage,directive,COALESCE(model,'') FROM feedback_routes "
+            rows = c.execute("SELECT stage,directive,COALESCE(model,''),content_hash FROM feedback_routes "
                              "WHERE COALESCE(directive,'')!='' AND COALESCE(model,'')!='' "
                              "ORDER BY ts DESC").fetchall()
         except sqlite3.OperationalError:
             return {}
-        for stage, directive, model in rows:
+        for stage, directive, model, ch in rows:
+            if ch in holdout:
+                continue
             st = stage if stage in ("extract", "analyze", "review", "judge") else "analyze"
             d, m = directive.strip(), model.strip()
             if d in ex:

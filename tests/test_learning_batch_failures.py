@@ -68,3 +68,27 @@ class LearningFailureTests(unittest.TestCase):
         self.assertEqual(snapshot['learned'], {'analyze': '기존 지시'})
         self.assertEqual(PR.LEARNED, snapshot['learned'])
         self.sv.sync_prompt.assert_not_called()
+
+    def test_accepted_correction_survives_settings_sync_and_restart(self):
+        import tempfile, os
+        from prism.store import Store
+        with tempfile.TemporaryDirectory() as tmp:
+            st=Store(os.path.join(tmp,'learn.db'))
+            self.sv.get_store.return_value=st
+            pre={'ok':True,'grade_accuracy':.9,'evaluated':30}
+            with patch.object(LO,'eval_golden',side_effect=[pre,pre]), patch.object(LO,'meta_compile_run',side_effect=self.compile):
+                self.assertTrue(LO.learning_batch()['ok'])
+            PR.LEARNED={};PR.LEARNED_BY_MODEL={}
+            self.sv.get_store.return_value=Store(os.path.join(tmp,'learn.db'))
+            LO.sync_learned()
+            self.assertEqual(PR.LEARNED,{'analyze':'검증 전 지시'})
+            self.assertEqual(PR.LEARNED_BY_MODEL,{'model':{'review':'검증 전 지시'}})
+
+    def test_approved_write_failure_does_not_activate_candidate(self):
+        self.sv.get_store.return_value=Mock()
+        self.sv.get_store.return_value.save_report.side_effect=RuntimeError('DB unavailable')
+        pre={'ok':True,'grade_accuracy':.9,'evaluated':30}
+        with patch.object(LO,'eval_golden',side_effect=[pre,pre]), patch.object(LO,'meta_compile_run',side_effect=self.compile):
+            self.assertFalse(LO.learning_batch()['ok'])
+        self.assertEqual(PR.LEARNED,{'analyze':'기존 지시'})
+        LO.snapshot_prompts.assert_not_called()
