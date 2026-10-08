@@ -1,9 +1,10 @@
-/* 핵심 키워드 작업공간 · 기존 문장 실험은 app-23 그대로 유지 */
+/* 키워드·문장 공통 실험 · 결과 검수 · 프롬프트 관리 */
 window.PRISM_APP_PARTS = window.PRISM_APP_PARTS || [];
 window.PRISM_APP_PARTS.push(() => ({
-  kwTab: 'run', kwTabs: [['run','실행·비교'], ['review','키워드 검수'], ['versions','프롬프트 버전'], ['loop','개선 루프'], ['sentence','문장 실험']],
+  kwTab: 'run', kwTabs: [['run','실행·비교'], ['prompts','프롬프트 관리']],
+  kwTarget:'keyword', kwKeywordSource:'manual', kwSentenceKeywords:'', kwKeywordSlot:'', kwInputRun:null, kwInputLoading:false,
   kwCatalog: null, kwBusy: false, kwError: '', kwMessage: '', kwRunData: null, kwRunId: '', _kwTimer: null,
-  kwCount: 3, kwSlots: [{model:'',version_id:''},{model:'',version_id:''},{model:'',version_id:''}],
+  kwMode: '', kwCount: 1, kwDraftSlot: null, kwSlots: [{model:'',version_id:''},{model:'',version_id:''},{model:'',version_id:''}],
   kwSource: 'direct', kwSample: 3, kwHashes: '', kwReuse: '', kwTitle: '', kwLead: '', kwEntities: '', kwIntents: '', kwCategories: '', kwBlind: true,
   kwDraft: {model:'',title:'',rules:'',note:'',parent_id:'',proposal_id:''}, kwVersion: null,
   kwReview: null, kwCompiler: '', kwLoopVersion: '', kwTraining: [], kwProposal: null, kwAdoptVersion: '',
@@ -21,13 +22,12 @@ window.PRISM_APP_PARTS.push(() => ({
   async kwLoad() {
     try {
       this.kwCatalog = await this.kwRequest();
-      if (!this.kwDraft.rules) this.kwDraft.rules = this.kwCatalog.default_rules;
+      if (!this.kwDraft.rules) this.kwDraft.rules = this.kwDefaultRules();
     } catch(e) { this.kwError=e.message; }
   },
   kwChangeTab(id) {
     this.kwTab=id; this.kwError=''; this.kwMessage='';
-    if(id==='sentence') this.erInit();
-    else this.kwInit();
+    this.kwInit();
   },
   kwTabKey(event) {
     const tabs=Array.from(event.currentTarget.querySelectorAll('[role="tab"]'));
@@ -39,20 +39,83 @@ window.PRISM_APP_PARTS.push(() => ({
     else return;
     event.preventDefault(); tabs[next].click(); tabs[next].focus();
   },
+  kwTargetLabel(target=this.kwTarget) {return target==='sentence' ? '문장' : '키워드';},
+  kwDefaultRules() {return this.kwCatalog?.rules_by_target?.[this.kwTarget] || (this.kwTarget==='keyword' ? this.kwCatalog?.default_rules : '') || '';},
+  kwTargetChange(target) {
+    this.kwTarget=target; clearTimeout(this._kwTimer); this.kwRunId='';this.kwRunData=null;this.kwReview=null;
+    this.kwSlots.forEach(s=>s.version_id='');this.kwVersion=null;this.kwDraftSlot=null;
+    this.kwDraft={target,model:'',title:'',rules:this.kwDefaultRules(),note:'',parent_id:'',proposal_id:''};
+    this.kwLoopVersion='';this.kwTraining=[];this.kwProposal=null;this.kwAdoptVersion='';
+    this.kwSource='direct';this.kwReuse='';this.kwKeywordSource='manual';this.kwKeywordSlot='';this.kwInputRun=null;
+    this.kwError='';this.kwMessage='';
+  },
+  kwAllVersions() {return (this.kwCatalog?.versions || []).filter(v=>(v.target || 'keyword')===this.kwTarget);},
+  kwRuns() {return (this.kwCatalog?.runs || []).filter(r=>(r.target || 'keyword')===this.kwTarget);},
+  kwAnswers(g) {return g?.target==='sentence' ? (g.sentences || []) : (g?.keywords || []);},
+  kwCandidates(cell) {
+    if(cell?.sentence) {const text=cell.sentence.text || cell.sentence.draft;return text ? [{text,kind:'sentence'}] : [];}
+    return cell?.refined?.keywords || [];
+  },
+  kwReviewable(cell) {return cell && (cell.status==='done' || Boolean(cell.sentence?.draft));},
+  kwInputText(item) {return JSON.stringify({...item.meta,...(item.keywords ? {'입력 키워드':item.keywords.map(k=>k.text)} : {})},null,2);},
+  kwSourceChanged() {
+    this.kwReuse='';this.kwInputRun=null;this.kwKeywordSlot='';
+    this.kwKeywordSource=this.kwSource==='direct' ? 'manual' : this.kwSource==='reuse' ? 'run' : 'gold';
+  },
+  async kwLoadInputRun(id) {
+    this.kwInputRun=null;this.kwKeywordSlot='';if(!id)return;
+    this.kwInputLoading=true;
+    try {const r=await this.kwRequest('?run='+encodeURIComponent(id));if(this.kwReuse===id)this.kwInputRun=r.run;}
+    catch(e){this.kwError=e.message;}finally{this.kwInputLoading=false;}
+  },
   kwModel(slot, value) { slot.model=value; slot.version_id=''; },
-  kwVersions(model) { return ((this.kwCatalog || {}).versions || []).filter(v=>v.model===model); },
+  kwVersions(model) { return this.kwAllVersions().filter(v=>v.model===model); },
   kwVersionLabel(v) { return 'v'+v.number+' · '+v.title; },
   kwDate(t) { return new Date(t*1000).toLocaleString(); },
   kwState(run) { return ({running:'실행 중',done:'완료',interrupted:'중단'})[run.status] || run.status; },
-  kwReady() { return this.kwSlots.slice(0,this.kwCount).every(s=>s.model && s.version_id) && !this.kwBusy; },
+  kwChooseMode(mode) {
+    this.kwMode=mode; this.kwCount=mode==='single' ? 1 : 2;
+    if(mode==='single') { this.kwSample=1; if(!this.kwReusableRuns().some(r=>r.id===this.kwReuse)) this.kwReuse=''; }
+    this.kwError='';
+  },
+  kwReusableRuns() {return ((this.kwCatalog || {}).runs || []).filter(r=>(this.kwTarget==='sentence' || (r.target || 'keyword')==='keyword') && (this.kwMode!=='single' || r.n===1));},
+  kwInputIssue() {
+    if(!['single','compare'].includes(this.kwMode)) return '테스트 방식을 먼저 선택하세요';
+    if((this.kwMode==='single' && this.kwCount!==1) || (this.kwMode==='compare' && ![2,3].includes(this.kwCount))) return '비교 조합 수를 확인하세요';
+    const slots=this.kwSlots.slice(0,this.kwCount);
+    if(slots.some(s=>!s.model || !s.version_id)) return '각 조합의 모델과 프롬프트 버전을 선택하세요';
+    if(new Set(slots.map(s=>s.version_id)).size!==slots.length) return '서로 다른 모델·프롬프트 조합을 선택하세요';
+    if(this.kwSource==='direct' && (!this.kwLead.trim() || (this.kwTarget==='keyword' && !this.kwSplit(this.kwEntities).length))) return this.kwTarget==='sentence' ? '리드문을 입력하세요' : '리드문과 엔티티를 입력하세요';
+    if(this.kwSource==='sample' && this.kwMode==='compare' && (!Number.isInteger(this.kwSample) || this.kwSample<1 || this.kwSample>30)) return '샘플 수는 1~30건으로 입력하세요';
+    if(this.kwSource==='hash') {
+      const hashes=this.kwHashes.split(/[\s,]+/).filter(Boolean);
+      if(!hashes.length || hashes.length>30 || new Set(hashes).size!==hashes.length) return '중복 없이 콘텐츠 해시를 1~30개 입력하세요';
+      if(this.kwMode==='single' && hashes.length!==1) return '단건 테스트에는 콘텐츠 해시 1개만 입력하세요';
+    }
+    if(this.kwSource==='reuse' && !this.kwReusableRuns().some(r=>r.id===this.kwReuse)) return '입력을 재사용할 실험을 선택하세요';
+    if(this.kwTarget==='sentence') {
+      if(this.kwInputLoading)return '입력 실험을 불러오는 중입니다';
+      if(this.kwSource==='reuse' && this.kwInputRun?.target==='sentence') return '';
+      if(this.kwKeywordSource==='manual' && (this.kwSource!=='direct' || !this.kwSplit(this.kwSentenceKeywords).length || this.kwSplit(this.kwSentenceKeywords).length>3)) return '입력 키워드를 1~3개 지정하세요';
+      if(this.kwKeywordSource==='run' && (!this.kwInputRun?.revealed || !this.kwKeywordSlot)) return '공개된 키워드 실험과 사용할 결과 조합을 선택하세요';
+    }
+    return '';
+  },
+  kwReady() { return !this.kwInputIssue() && !this.kwBusy; },
+  kwCreateVersion(index) {
+    const slot=this.kwSlots[index]; this.kwDraftSlot=index;
+    this.kwDraft={target:this.kwTarget,model:slot.model,title:'',rules:this.kwDefaultRules(),note:'',parent_id:'',proposal_id:''};
+    this.kwChangeTab('prompts');
+  },
   kwSplit(s) { return String(s || '').split(',').map(x=>x.trim()).filter(Boolean); },
   async kwStart() {
     if(!this.kwReady()) return;
     this.kwBusy=true; this.kwError=''; this.kwMessage='';
     try {
-      const data={action:'start', slots:this.kwSlots.slice(0,this.kwCount).map(s=>({...s})),blind:this.kwBlind};
+      const data={action:'start',target:this.kwTarget, slots:this.kwSlots.slice(0,this.kwCount).map(s=>({...s})),blind:this.kwMode==='compare' && this.kwBlind};
+      if(this.kwTarget==='sentence') Object.assign(data,{keyword_source:this.kwKeywordSource,keyword_slot:this.kwKeywordSlot,keywords:this.kwSplit(this.kwSentenceKeywords)});
       if(this.kwSource==='reuse') data.source_run=this.kwReuse;
-      else if(this.kwSource==='sample') data.sample=Number(this.kwSample);
+      else if(this.kwSource==='sample') data.sample=this.kwMode==='single' ? 1 : Number(this.kwSample);
       else if(this.kwSource==='hash') data.hashes=this.kwHashes.split(/[\s,]+/).filter(Boolean);
       else Object.assign(data,{title:this.kwTitle,meta:{summary:this.kwLead,entities:this.kwSplit(this.kwEntities),
         intent:this.kwSplit(this.kwIntents),content_category:this.kwSplit(this.kwCategories)}});
@@ -62,8 +125,8 @@ window.PRISM_APP_PARTS.push(() => ({
     finally {this.kwBusy=false;}
   },
   async kwOpenRun(id) {
-    if(!id) return;
     clearTimeout(this._kwTimer); this.kwRunId=id;
+    if(!id) {this.kwRunData=null;this.kwReview=null;return;}
     try {
       const r=await this.kwRequest('?run='+encodeURIComponent(id));
       if(this.kwRunId!==id) return;
@@ -86,30 +149,36 @@ window.PRISM_APP_PARTS.push(() => ({
   },
   kwCloneVersion() {
     if(!this.kwVersion) return;
-    const v=this.kwVersion;
-    this.kwDraft={model:v.model,title:v.title+' 개선',rules:v.rules,note:'',parent_id:v.id,proposal_id:''};
+    const v=this.kwVersion; this.kwDraftSlot=null;
+    this.kwDraft={target:v.target || 'keyword',model:v.model,title:v.title+' 개선',rules:v.rules,note:'',parent_id:v.id,proposal_id:''};
     this.kwMessage='복제했습니다 · 변경 후 새 버전으로 저장하세요';
   },
   async kwSaveVersion() {
     if(this.kwBusy) return;
     this.kwBusy=true;this.kwError='';
     try {
-      const r=await this.kwRequest('',{action:'version',...this.kwDraft});
+      const r=await this.kwRequest('',{action:'version',target:this.kwTarget,...this.kwDraft});
       this.kwVersion=r.version; await this.kwLoad();this.kwMessage=this.kwVersionLabel(r.version)+' 저장 완료';
-      this.kwDraft={model:r.version.model,title:'',rules:r.version.rules,note:'',parent_id:r.version.id,proposal_id:''};
+      this.kwDraft={target:r.version.target || 'keyword',model:r.version.model,title:'',rules:r.version.rules,note:'',parent_id:r.version.id,proposal_id:''};
+      if(this.kwDraftSlot!=null && this.kwSlots[this.kwDraftSlot].model===r.version.model) {
+        this.kwSlots[this.kwDraftSlot].version_id=r.version.id; this.kwChangeTab('run');
+        this.kwMessage=this.kwVersionLabel(r.version)+' 저장 완료 · 해당 조합에 선택했습니다';
+      }
+      this.kwDraftSlot=null;
     } catch(e){this.kwError=e.message;} finally{this.kwBusy=false;}
   },
   kwOpenReview(item, slot) {
-    const cell=this.kwCell(item,slot); if(!cell || cell.status!=='done') return;
+    const cell=this.kwCell(item,slot); if(!this.kwReviewable(cell)) return;
     const latest=(cell.reviews || []).slice(-1)[0];
-    this.kwReview={item,slot:slot.label,cell_id:cell.id,expected_revision:cell.review_revision,
-      judgments:((cell.refined || {}).keywords || []).map((k,i)=>({original:k.text,kind:k.kind,
+    this.kwReview={target:this.kwRunData.target || 'keyword',item,slot:slot.label,cell_id:cell.id,expected_revision:cell.review_revision,
+      judgments:this.kwCandidates(cell).map((k,i)=>({original:k.text,kind:k.kind,
         verdict:latest ? latest.judgments[i].verdict : '',reason:latest ? latest.judgments[i].reason : '',
         corrected:latest ? latest.judgments[i].corrected : k.text})),
       additions:latest ? JSON.parse(JSON.stringify(latest.additions)) : [],
       no_keywords:latest ? latest.no_keywords : false, note:latest ? latest.note : '',
       partition:(cell.final || {}).partition || 'development',final:cell.final || null};
-    this.kwChangeTab('review');
+    this.kwChangeTab('run');
+    if(this.$nextTick) this.$nextTick(()=>this.$refs.kwReviewEditor?.scrollIntoView({behavior:'smooth',block:'start'}));
   },
   async kwSaveReview(finalize=false) {
     if(this.kwBusy || !this.kwReview) return;
@@ -121,7 +190,7 @@ window.PRISM_APP_PARTS.push(() => ({
         no_keywords:q.no_keywords,note:q.note,partition:q.partition,finalize});
       await this.kwOpenRun(this.kwRunId);
       const cell=this.kwRunData.cells[q.cell_id];q.expected_revision=cell.review_revision;q.final=cell.final;
-      this.kwMessage=finalize ? '최종 확정했습니다 · 정답셋 반영 여부를 선택하세요' : '키워드별 판단을 저장했습니다';
+      this.kwMessage=finalize ? '최종 확정했습니다 · 정답셋 반영 여부를 선택하세요' : '판단을 저장했습니다';
     }catch(e){this.kwError=e.message;}finally{this.kwBusy=false;}
   },
   kwCurrentGold() {return ((this.kwCatalog || {}).gold || []).find(g=>this.kwReview && g.item_key===this.kwReview.item.key);},
@@ -131,10 +200,10 @@ window.PRISM_APP_PARTS.push(() => ({
     try {
       await this.kwRequest('',{action:'gold',run_id:this.kwRunId,cell_id:this.kwReview.cell_id,
         expected_gold_id:(this.kwCurrentGold() || {}).id || ''});
-      await this.kwLoad();this.kwMessage='키워드 정답셋에 반영했습니다';
+      await this.kwLoad();this.kwMessage=this.kwTargetLabel()+' 정답셋에 반영했습니다';
     }catch(e){this.kwError=e.message;}finally{this.kwBusy=false;}
   },
-  kwDevelopmentGold() {return ((this.kwCatalog || {}).gold || []).filter(g=>g.partition==='development');},
+  kwDevelopmentGold() {return ((this.kwCatalog || {}).gold || []).filter(g=>g.partition==='development' && (g.target || 'keyword')===this.kwTarget);},
   async kwCompile() {
     if(this.kwBusy) return;
     this.kwBusy=true;this.kwError='';this.kwProposal=null;
@@ -143,9 +212,9 @@ window.PRISM_APP_PARTS.push(() => ({
     catch(e){this.kwError=e.message;}finally{this.kwBusy=false;}
   },
   kwUseProposal() {
-    const p=this.kwProposal;if(!p)return;
-    this.kwDraft={model:p.model,title:'검수 기반 개선',rules:p.rules,note:p.changes.map(c=>c.reason+': '+c.change).join('\n'),parent_id:p.parent_id,proposal_id:p.id};
-    this.kwChangeTab('versions');this.kwMessage='개선안을 확인하고 새 버전으로 저장하세요';
+    const p=this.kwProposal;if(!p)return;this.kwDraftSlot=null;
+    this.kwDraft={target:p.target || 'keyword',model:p.model,title:'검수 기반 개선',rules:p.rules,note:p.changes.map(c=>c.reason+': '+c.change).join('\n'),parent_id:p.parent_id,proposal_id:p.id};
+    this.kwChangeTab('prompts');this.kwMessage='개선안을 확인하고 새 버전으로 저장하세요';
   },
   async kwAdopt() {
     if(this.kwBusy)return;this.kwBusy=true;this.kwError='';

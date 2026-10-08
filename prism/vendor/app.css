@@ -1722,3 +1722,22 @@ button.tbchip:disabled{cursor:default;opacity:.8}
   .ar-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--ds-muted)}
   .ar-legend span{display:inline-flex;align-items:center;gap:6px}
   .ar-legend i{width:11px;height:11px;border-radius:3px}
+
+  /* 키워드 작업 칩·단계별 실행: 기존 공통 컨트롤과 토큰 사용 */
+  .kw-workflow-chips{margin-top:var(--ds-space-4);gap:var(--ds-space-2)}
+  .kw-workflow-chips .srcfilter__chip:focus-visible{outline:none;box-shadow:var(--ds-focus-ring)}
+  .kw-workspace :is(.dc-body,.fn) > .ds-btn{align-self:flex-start;width:fit-content;max-width:100%}
+  .kw-mode-options{display:flex;flex-wrap:wrap;gap:var(--ds-space-3);border:0;padding:0;margin:0}
+  .kw-mode-options .pickchip{min-height:var(--ds-control-height,36px);box-sizing:border-box}
+  .kw-mode-options .pickchip:has(input:focus-visible){box-shadow:var(--ds-focus-ring)}
+  .kw-check{display:inline-flex;align-items:center;gap:var(--ds-space-2);font-size:var(--ds-size-body)}
+  .kw-check input{accent-color:var(--ds-primary)}
+  .kw-history > .field{width:auto;flex:0 1 auto;max-width:100%}
+  .kw-workspace .kw-count-field{width:calc(var(--ds-space-4) * 5)}
+  .kw-settings-table .kw-model-control{min-width:0}
+  .kw-model-control .mpick{width:100%;min-width:0;align-items:center}
+  .kw-model-control .mpick__btn{flex:1;width:0;min-width:0;max-width:100%}
+  .kw-settings-table :is(td,th){vertical-align:middle}
+  .kw-workspace .ds-table tbody th{font-family:var(--ds-font-body);color:var(--ds-ink);font-size:var(--ds-size-body)}
+  .kw-settings-table .kw-version-control,.kw-settings-table .kw-model-control{max-width:calc(var(--ds-space-4) * 24)}
+  .kw-model-control .mpick__refresh{height:var(--control-row-h);width:var(--control-row-h)}

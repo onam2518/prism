@@ -13,9 +13,9 @@
           <button type="button" x-bind:class="labTab==='decide'?'sel':''" x-on:click="labTab='decide'">솔라 디사이드</button>
           <button type="button" x-bind:class="labTab==='entref'?'sel':''" x-on:click="labTab='entref'; kwInit()">핵심 키워드 / 문장</button>
         </div>
-        <div class="evaltabs" x-show="labTab==='entref'" role="tablist" aria-label="핵심 키워드 작업" x-on:keydown="kwTabKey($event)">
-          <template x-for="t in kwTabs" x-bind:key="t[0]"><button type="button" role="tab" x-bind:id="'kw-tab-'+t[0]" x-bind:aria-controls="'kw-panel-'+t[0]" x-bind:aria-selected="kwTab===t[0]" x-bind:tabindex="kwTab===t[0]?0:-1" x-bind:class="kwTab===t[0]?'sel':''" x-on:click="kwChangeTab(t[0])" x-text="t[1]"></button></template>
+        <div class="control-row kw-workflow-chips" x-show="labTab==='entref'" role="tablist" aria-label="키워드·문장 작업" x-on:keydown="kwTabKey($event)">
+          <template x-for="t in kwTabs" x-bind:key="t[0]"><button type="button" class="srcfilter__chip" role="tab" x-bind:id="'kw-tab-'+t[0]" x-bind:aria-controls="'kw-panel-'+t[0]" x-bind:aria-selected="kwTab===t[0]" x-bind:tabindex="kwTab===t[0]?0:-1" x-bind:class="kwTab===t[0]?'sel':''" x-on:click="kwChangeTab(t[0])" x-text="t[1]"></button></template>
         </div>
-        <ul class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4);margin-top:10px"><li>지금 테스트 대상이 아닌 <b>탐구 요소</b>를 모아둔 공간입니다<ul><li>테스트 대상으로 확정되면 본 메뉴로 승격합니다</li></ul></li></ul>
+        <ul x-show="labTab!=='entref'" class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4);margin-top:10px"><li>지금 테스트 대상이 아닌 <b>탐구 요소</b>를 모아둔 공간입니다<ul><li>테스트 대상으로 확정되면 본 메뉴로 승격합니다</li></ul></li></ul>
       </div>
       </template>

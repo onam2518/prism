@@ -2,15 +2,41 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('nod
 async function main(){
  const window={};vm.runInNewContext(fs.readFileSync('prism/vendor/app-24-keywordlab.js','utf8'),{window,clearTimeout,setTimeout});
  const a=window.PRISM_APP_PARTS[0]();a._authHeaders=()=>({});a.reviewer='검수자';
- assert.equal(a.kwReady(),false);a.kwCount=1;a.kwSlots[0]={model:'solar',version_id:'v1'};assert.equal(a.kwReady(),true);
+ assert.equal(a.kwReady(),false);a.kwChooseMode('single');a.kwSlots[0]={model:'solar',version_id:'v1'};
+ assert.equal(a.kwReady(),false);a.kwLead='한국은행이 금리를 인하했다';a.kwEntities='한국은행';assert.equal(a.kwReady(),true);
  a.kwModel(a.kwSlots[0],'gpt');assert.equal(a.kwSlots[0].version_id,'');
  let sent;a._afetch=async(url,opt)=>{sent=JSON.parse(opt.body);return{json:async()=>({ok:true})}};
  await a.kwRequest('',{action:'review'});assert.equal(sent.reviewer,'검수자');
  a.kwRunData={cells:{'key:A':{id:'key:A',status:'done',review_revision:2,refined:{keywords:[{text:'한국은행',kind:'single'}]},reviews:[],final:null}}};
- a.kwCatalog={versions:[],gold:[]};a.kwOpenReview({key:'key'},{label:'A'});assert.equal(a.kwReview.expected_revision,2);assert.equal(a.kwReview.judgments[0].verdict,'');
+ a.kwCatalog={versions:[],gold:[]};a.kwOpenReview({key:'key'},{label:'A'});assert.equal(a.kwReview.expected_revision,2);assert.equal(a.kwReview.judgments[0].verdict,'');assert.equal(a.kwTab,'run');
  a.kwRunId='run';a.kwOpenRun=async()=>{a.kwRunData.cells['key:A'].review_revision=3};
  await a.kwSaveReview();assert.equal(sent.expected_revision,2);assert.equal(a.kwReview.expected_revision,3);
  a._afetch=async()=>({json:async()=>({ok:false,error:'저장 충돌'})});await a.kwSaveReview();assert.equal(a.kwError,'저장 충돌');assert.equal(a.kwBusy,false);
+
+ const b=window.PRISM_APP_PARTS[0]();
+ assert.deepEqual(Array.from(b.kwTabs,t=>t[0]),['run','prompts']);
+ b.kwCatalog={runs:[{id:'one',n:1},{id:'many',n:3}],versions:[],default_rules:'기본 규칙'};
+ b.kwChooseMode('compare');assert.equal(b.kwCount,2);
+ b.kwCount=3;b.kwSlots=[{model:'m1',version_id:'v1'},{model:'m2',version_id:'v2'},{model:'m3',version_id:'v3'}];
+ b.kwSource='reuse';b.kwReuse='many';assert.equal(b.kwReady(),true);
+ b.kwSlots[2].version_id='v2';assert.equal(b.kwReady(),false);b.kwSlots[2].version_id='v3';
+ b.kwChooseMode('single');assert.equal(b.kwCount,1);assert.equal(b.kwReuse,'');assert.equal(b.kwReady(),false);
+ b.kwSource='hash';b.kwHashes='a,b';assert.equal(b.kwReady(),false);b.kwHashes='a';assert.equal(b.kwReady(),true);
+ b.kwSource='sample';b.kwSample=20;b.kwRequest=async(q,data)=>{sent=data;return{ok:true,id:'new'}};b.kwOpenRun=async()=>{};b.kwLoad=async()=>{};
+ await b.kwStart();assert.equal(sent.slots.length,1);assert.equal(sent.sample,1);assert.equal(sent.blind,false);
+ b.kwChooseMode('compare');b.kwCount=3;b.kwSample=2;await b.kwStart();assert.equal(sent.slots.length,3);assert.equal(sent.sample,2);assert.equal(sent.blind,true);
+ b.kwCreateVersion(1);assert.equal(b.kwTab,'prompts');assert.equal(b.kwDraft.model,'m2');
+ b.kwRequest=async()=>({ok:true,version:{id:'new-v',model:'m2',number:1,rules:'new rules',title:'new'}});
+ await b.kwSaveVersion();assert.equal(b.kwTab,'run');assert.equal(b.kwSlots[1].version_id,'new-v');assert.equal(b.kwDraftSlot,null);
+ const c=window.PRISM_APP_PARTS[0]();c.kwRunData={id:'old'};c.kwReview={};await c.kwOpenRun('');assert.equal(c.kwRunData,null);assert.equal(c.kwReview,null);
+ b.kwCatalog.rules_by_target={keyword:'keyword rules',sentence:'preserved sentence rules'};
+ b.kwTargetChange('sentence');assert.equal(b.kwDraft.rules,'preserved sentence rules');assert.equal(b.kwSlots[0].version_id,'');assert.equal(b.kwRunData,null);
+ b.kwChooseMode('single');b.kwSlots[0]={model:'m1',version_id:'sv1'};b.kwLead='리드문';b.kwEntities='';b.kwSource='direct';
+ assert.equal(b.kwReady(),false);b.kwSentenceKeywords='한국은행';assert.equal(b.kwReady(),true);
+ b.kwRequest=async(q,data)=>{sent=data;return{ok:true,id:'sentence-run'}};
+ await b.kwStart();assert.equal(sent.target,'sentence');assert.equal(sent.keyword_source,'manual');assert.equal(sent.keywords[0],'한국은행');
+ b.kwRunData={target:'sentence',cells:{'s:A':{id:'s:A',status:'failed',review_revision:0,sentence:{draft:'긴 문장 초안'},reviews:[]}}};
+ b.kwOpenReview({key:'s'},{label:'A'});assert.equal(b.kwReview.target,'sentence');assert.equal(b.kwReview.judgments[0].original,'긴 문장 초안');assert.equal(b.kwTab,'run');
  console.log('Keyword workspace client: required selection, review identity, revision and failures passed');
 }
 main().catch(e=>{console.error(e);process.exitCode=1});
