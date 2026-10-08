@@ -139,7 +139,7 @@
             <div x-show="erItems.length" x-cloak>
               <template x-for="it in erPageItems()" x-bind:key="it.hash">
                 <article class="content-section fn-stack" x-bind:aria-label="it.title || it.hash">
-                  <header class="panel-hd" style="padding-left:0"><h3 class="fn__title" x-text="it.title || it.hash"></h3><button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm ml-auto" x-show="it.content" x-on:click="erOpenContent(it)">콘텐츠 상세</button></header>
+                  <header class="content-section__head" style="margin-bottom:0;padding-bottom:var(--ds-space-4);border-bottom:1px solid var(--ds-hairline-soft)"><h3 class="content-section__title" x-text="it.title || it.hash"></h3><button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm ml-auto" x-show="it.content" x-on:click="erOpenContent(it)">콘텐츠 상세</button></header>
                   <div class="layout-grid--two">
                   <section class="fn" aria-label="기존 메타 리드문"><div class="flex items-center gap-2 flex-wrap"><b class="fn__title">기존 메타 · 리드문</b><span class="ds-hint tnum" x-show="(it.sentence || {}).base" x-text="Array.from((it.sentence || {}).base || '').length + '자 · 공백 포함'"></span></div><p class="tbox" x-text="(it.sentence || {}).base || '기존 리드문이 없습니다'"></p></section>
                   <section class="fn" aria-label="핵심 문장 결과">
