@@ -2,7 +2,8 @@
    로더(app.js)가 파일명 순으로 디스크립터 병합(게터 보존) · 조각 간 this 공유. */
 window.PRISM_APP_PARTS = window.PRISM_APP_PARTS || [];
 window.PRISM_APP_PARTS.push(() => ({
-      openDetail(c) {
+      openDetail(c, manage = false) {
+        this.opsManage = manage; this.histOpen = false;
         this.finalCtx = null;                    // 최종검수 결정 바는 최종 검수 탭 진입(openFinalDetail)에서만
         this.detailNav = null; this.detail = Object.assign({ entities: [], entities_scored: [], intent: [], category: [], reasons: [], images: [], fb: {} }, c); if (!this.detail.fb) this.detail.fb = {};
         this.entLowOpen = false;                 // 연관 낮음(확신도 0.5 이하) 접기는 콘텐츠별 초기화

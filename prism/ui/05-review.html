@@ -15,7 +15,7 @@
             <div class="fn-row"><label class="fn"><span class="fn__title">처리 상태</span><select class="field" x-model="opsState"><option value="">전체</option><template x-for="s in ['open','working','recheck','verify','hold','closed']" x-bind:key="s"><option x-bind:value="s" x-text="opsStateLabel(s)"></option></template></select></label>
             <label class="fn"><span class="fn__title">담당자 식별값</span><input class="field" x-model="opsOwner" placeholder="비우면 전체 담당자"></label></div>
             <section class="overflow-auto"><table class="ds-table"><thead><tr><th>콘텐츠</th><th>상태</th><th>담당·기한</th><th>근거·다음 조치</th><th></th></tr></thead><tbody>
-              <template x-for="c in opsFilteredCases" x-bind:key="c.id"><tr><td x-text="c.title||c.hash"></td><td><b x-text="opsStateLabel(c.state)"></b><p class="text-xs" x-show="c.overdue||c.check_overdue">기한 경과</p></td><td><p x-text="c.owner||'담당 미지정'"></p><time x-show="c.due" x-text="c.due"></time></td><td x-text="c.reason"></td><td><button class="copybtn" type="button" x-on:click="opsOpenCase(c)">조치 열기</button></td></tr></template>
+              <template x-for="c in opsFilteredCases" x-bind:key="c.id"><tr><td x-text="c.title||c.hash"></td><td><b x-text="opsStateLabel(c.state)"></b><p class="text-xs" x-show="c.overdue||c.check_overdue">기한 경과</p></td><td><p x-text="c.owner||'담당 미지정'"></p><time x-show="c.due" x-text="c.due"></time></td><td x-text="c.reason"></td><td><button class="copybtn" type="button" x-on:click="opsOpenCase(c, true)">조치 열기</button></td></tr></template>
               <tr x-show="!opsFilteredCases.length"><td colspan="5">해당 조건의 조치 건이 없습니다.</td></tr>
             </tbody></table></section>
           </section>

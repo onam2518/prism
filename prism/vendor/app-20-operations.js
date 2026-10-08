@@ -1,7 +1,7 @@
 /* 상시 검수 원장 · 실제 메뉴 안에서 판정/조치/시간/주차를 연결한다. */
 window.PRISM_APP_PARTS = window.PRISM_APP_PARTS || [];
 window.PRISM_APP_PARTS.push(() => ({
-  opsDetail: null, opsAxes: {}, opsBusy: false, opsList: null, opsState: '', opsOwner: '',
+  opsManage: false, opsDetail: null, opsAxes: {}, opsBusy: false, opsList: null, opsState: '', opsOwner: '',
   opsHistoryBasis:'', opsTimeType: 'first', opsCase: null, opsDecision: '', opsEvidence: '',
   opsFields: [{key:'summary',label:'리드문'},{key:'entities',label:'엔티티'},{key:'intent',label:'인텐트'},{key:'content_category',label:'카테고리'}],
   opsStateLabel(s) { return ({open:'미조치',working:'조치 중',recheck:'재검수 대기',verify:'반영 확인',closed:'종료',hold:'판단 보류'})[s] || s; },
@@ -67,12 +67,12 @@ window.PRISM_APP_PARTS.push(() => ({
     catch(e) { this._err(e.message); }
   },
   get opsFilteredCases() { return ((this.opsList||{}).items||[]).filter(c=>(!this.opsState||c.state===this.opsState)&&(!this.opsOwner||c.owner===this.opsOwner)); },
-  async opsOpenCase(c) {
+  async opsOpenCase(c, manage = false) {
     try {
       const r=await this.opsRequest(this.opsUrl(c.hash)); const b=r.basis.snapshot, im=b.item_meta||{}, qm=b.quality_meta||{};
       if(c.legacy){await this.opsRequest('/ops-review',{action:'import_legacy',hash:c.hash,revision:r.revision,basis_token:r.basis.token});}
       this.openDetail({hash:c.hash,title:b.title,body:b.body,service:b.service,model:b.model,summary:im.summary||'',
-        entities:(im.entities||[]).map(e=>typeof e==='string'?e:e.name),intent:im.intent||[],category:this._categoryPaths(im.content_category),grade:qm.finalGrade||'',reasons:qm.reasons||[]});
+        entities:(im.entities||[]).map(e=>typeof e==='string'?e:e.name),intent:im.intent||[],category:this._categoryPaths(im.content_category),grade:qm.finalGrade||'',reasons:qm.reasons||[]}, manage);
     } catch(e) { this._err(e.message); }
   },
   get opsMySession() {

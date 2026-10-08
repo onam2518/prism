@@ -314,7 +314,7 @@
       <div class="detailview__hd">
         <span style="display:flex;align-items:center;gap:8px">
           <button type="button" class="ds-iconbtn ds-iconbtn--sm" x-show="detailBack" x-on:click="detailOpen=false; drillOpen=true" data-tip="목록으로" data-tip-pos="bottom" aria-label="목록으로 뒤로가기"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-          <b>콘텐츠 상세 · 검수</b>
+          <b x-text="opsManage ? '콘텐츠 상세 · 조치 관리' : '콘텐츠 상세 · 검수'"></b>
           <span class="text-xs text-muted tnum" x-show="detailNav" x-text="detailNav ? ((detailNav.idx + 1) + ' / ' + detailNav.list.length) : ''"></span>
         </span>
         <span style="display:flex;align-items:center;gap:6px">
@@ -480,8 +480,8 @@
             <!-- 항목별 판정(상시 검수 · opsreview): 기본 판정 영역과 같은 verdictbtn·ds-btn·dve__lbl 규격을 쓴다 -->
             <div class="dve__opswrap">
             <section class="dve__ops">
-              <div class="dve__lbl">검수 기준·항목별 판정</div>
-              <details class="dve__fold">
+              <div class="dve__lbl">항목별 판정</div>
+              <details class="dve__fold" x-show="opsManage">
                 <summary>분석 당시 저장 원문·버전</summary>
                 <pre class="dve__pre" x-text="opsDetail.basis.body||'저장 원문 없음 · 원문 링크와 근거 확인 필요'"></pre>
                 <dl class="dve__kv">
@@ -512,7 +512,7 @@
                 <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-bind:disabled="opsBusy" x-on:click="opsSave({action:'undo'})" data-tip="내 항목별 판정만 철회합니다 · 다른 검수자 기록은 유지됩니다" data-tip-pos="top">내 판정 철회</button>
               </div>
             </section>
-            <section class="dve__ops">
+            <section class="dve__ops" x-show="opsManage" x-cloak>
               <div class="dve__lbl">실제 작업시간</div>
               <div class="control-row control-row--compact">
                 <select class="field field--compact dve__select" aria-label="작업 유형" x-model="opsTimeType"><template x-for="s in ['first','fix','recheck','final','operation']" x-bind:key="s"><option x-bind:value="s" x-text="opsTypeLabel(s)"></option></template></select>
@@ -523,7 +523,7 @@
               </div>
               <p class="dve__hint" x-text="opsMySession ? (opsMySession.active_since ? '작업 진행 중 · 화면을 떠나기 전에 중단하세요' : '중단 중 · 중단 구간은 시간에서 제외') : '진행 중인 작업 없음'"></p>
             </section>
-            <template x-if="opsCase">
+            <template x-if="opsManage && opsCase">
               <section class="dve__ops">
                 <div class="dve__lbl">조치 진행</div>
                 <div class="dve__form">
@@ -544,7 +544,7 @@
                 <div class="control-row control-row--compact dve__actions"><button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-bind:disabled="opsBusy" x-on:click="opsSaveCase()">조치 저장</button></div>
               </section>
             </template>
-            <section class="dve__ops">
+            <section class="dve__ops" x-show="opsManage" x-cloak>
               <div class="dve__axis-row">
                 <span class="dve__lbl dve__lbl--inline">정답셋</span>
                 <span class="ds-badge" x-bind:class="opsDetail.golden ? 'ds-badge--success' : 'ds-badge--neutral'" data-tip="정답셋 편입 기록 여부 · 서비스 발행 반영과는 별도로 확인합니다" data-tip-pos="top" x-text="opsDetail.golden ? '편입 기록 있음' : '미편입'"></span>
@@ -571,7 +571,7 @@
                 </template>
               </details>
             </section>
-            <section class="dve__ops" x-show="opsAdmin">
+            <section class="dve__ops" x-show="opsManage && opsAdmin" x-cloak>
               <div class="dve__lbl">검수 기준 합의</div>
               <div class="dve__form">
                 <label class="dve__field dve__field--wide"><span class="dve__lbl">합의 내용</span><textarea class="field" rows="2" x-model="opsDecision"></textarea></label>
@@ -582,7 +582,7 @@
             </div>
           </template>
           <!-- 작업 이력: 판정·교정·재실행 타임라인(접이식 · 회의 소요) · 운영은 팀 생성자·슈퍼관리자 전용 -->
-          <div class="dve__sec" x-show="backend !== 'supabase' || (adminData && adminData.isSuperAdmin)" x-cloak>
+          <div class="dve__sec" x-show="opsManage && (backend !== 'supabase' || (adminData && adminData.isSuperAdmin))" x-cloak>
             <button type="button" class="copybtn" x-on:click="toggleHistory()" x-text="histOpen ? '작업 이력 닫기' : '작업 이력 보기'"></button>
             <div x-show="histOpen" x-cloak class="histbox">
               <div class="text-xs text-muted" x-show="histBusy">불러오는 중…</div>
@@ -600,7 +600,7 @@
           <!-- 검수 보조 자리표(#asxSlot)는 2026-08-13 에 걷었다. 보조가 접이식 패널에서
                대화창이 되면서 화면 우하단 플로팅 버튼으로 옮겨졌다(ui/19e-review-assist.html
                이 body 로 텔레포트). 여기 있던 패널이 판정 UI 를 아래로 밀던 것도 함께 사라졌다. -->
-          <div class="dve__verdict">
+          <div class="dve__verdict" x-show="!opsDetail || finalMode">
             <div class="dve__lbl" style="display:flex;align-items:center;gap:8px"><span x-text="finalMode ? '최종검수 결정' : '검수 판정'"></span>
               <label x-show="detailNav && !finalMode" class="chk-inline" style="font-size:11px;font-weight:400;color:var(--ds-muted);margin-left:auto">
                 <input type="checkbox" x-model="autoNext" x-on:change="saveAutoNext()">저장 후 다음 미검수로
