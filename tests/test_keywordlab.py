@@ -137,3 +137,107 @@ class KeywordClientTest(unittest.TestCase):
         import subprocess, shutil
         if not shutil.which('node'): self.skipTest('node unavailable')
         subprocess.run(['node', 'tests/test_keywordlab_client.js'], check=True, capture_output=True)
+
+
+class SentenceLabTest(unittest.TestCase):
+    setUp = KeywordLabTest.setUp
+    version = KeywordLabTest.version
+    run_case = KeywordLabTest.run_case
+    final = KeywordLabTest.final
+    def sentence_run(self, body=None, versions=1):
+        vs=[K.create_version({'target':'sentence','model':'solar-pro3','rules':E.SENT_RULES,'title':'문장 '+str(i)},'a','tester')['version'] for i in range(versions)]
+        request={'target':'sentence','slots':[{'model':v['model'],'version_id':v['id']} for v in vs],
+                 'meta':self.meta,'keyword_source':'manual','keywords':['한국은행 기준금리 인하']}
+        request.update(body or {})
+        with patch.object(K.threading,'Thread'):
+            rid=K.start(request,'a','tester')['id']
+        with patch.object(E,'_llm',return_value=(None,True,'')), patch.object(E,'refine',side_effect=AssertionError('sentence must not regenerate keywords')):
+            K._run(rid,'a')
+        return K._get(K._key('run',rid),'a')
+
+    def sentence_final(self, run, partition='development'):
+        cell=next(iter(run['cells'].values()))
+        b={'run_id':run['id'],'cell_id':cell['id'],'expected_revision':cell['review_revision'],
+           'judgments':[{'verdict':'edit','reason':'핵심 사건이 드러나도록 수정','corrected':'한국은행이 기준금리를 인하했다.'}],
+           'finalize':True,'partition':partition}
+        K.review(b,'a','tester',True)
+        return b
+
+    def test_sentence_three_versions_freeze_keywords_and_preserve_system(self):
+        run=self.sentence_run(versions=3)
+        self.assertEqual(len(run['cells']),3)
+        self.assertTrue(all(c['status']=='done' and c['sentence']['from_keywords'] for c in run['cells'].values()))
+        self.assertEqual(run['items'][0]['keywords'],[{'text':'한국은행 기준금리 인하','kind':'single'}])
+        self.assertEqual(run['slots'][0]['version']['system'],E._system('sentence',{'sentence':{'rules':E.SENT_RULES}},'solar-pro3'))
+        self.assertEqual([v['version']['number'] for v in sorted(run['slots'],key=lambda s:s['version']['number'])],[1,2,3])
+
+    def test_sentence_gold_and_compiler_are_separate_from_keywords(self):
+        keyword_run=self.run_case(1); cell=next(iter(keyword_run['cells'].values()))
+        keyword_gold=K.confirm_gold(self.final(keyword_run,cell),'a','tester',True)['gold']
+        run=self.sentence_run();gold=K.confirm_gold(self.sentence_final(run),'a','tester',True)['gold']
+        self.assertNotEqual(gold['item_key'],keyword_gold['item_key'])
+        self.assertIn('sentences',gold);self.assertNotIn('keywords',gold)
+        self.assertEqual(len(K.catalog('a')['gold']),2)
+        vid=run['slots'][0]['version']['id']
+        with self.assertRaisesRegex(ValueError,'개발용'):
+            K.compile_proposal({'version_id':vid,'compiler_model':'solar-pro3','gold_keys':[keyword_gold['item_key']]},'a','tester')
+        with patch.object(E,'_llm',return_value=(None,True,'')):
+            p=K.compile_proposal({'version_id':vid,'compiler_model':'solar-pro3','gold_keys':[gold['item_key']]},'a','tester')['proposal']
+        stored=K._get(K._key('proposal',p['id']),'a')
+        self.assertEqual(stored['input']['schema'],E.SENT_SCHEMA)
+        self.assertEqual(stored['input']['reviews'][0]['input_keywords'],run['items'][0]['keywords'])
+        self.assertIn('핵심 문장',stored['system'])
+        self.assertEqual(p['target'],'sentence')
+        v=K.create_version({'target':'sentence','model':p['model'],'title':'문장 개선','rules':p['rules'],'parent_id':vid,'proposal_id':p['id']},'a','tester')['version']
+        self.assertEqual(v['training_keys'],[gold['item_key']])
+
+    def test_sentence_failed_draft_can_be_corrected_but_not_accepted(self):
+        run=self.sentence_run();cid=next(iter(run['cells']))
+        def corrupt(r):
+            r['cells'][cid]['status']='failed'
+            r['cells'][cid]['sentence']={'draft':'가'*150,'error':'too long'}
+        K._update(K._key('run',run['id']),'a',corrupt)
+        b={'run_id':run['id'],'cell_id':cid,'expected_revision':0,'judgments':[{'verdict':'accept'}],'finalize':True}
+        with self.assertRaisesRegex(ValueError,'길이'):K.review(b,'a','tester',True)
+        b['judgments']=[{'verdict':'edit','reason':'중복 정보 축약','corrected':'한국은행이 기준금리를 인하했다.'}]
+        K.review(b,'a','tester',True)
+        self.assertEqual(K.confirm_gold(b,'a','tester',True)['gold']['sentences'][0]['text'],'한국은행이 기준금리를 인하했다.')
+
+    def test_sentence_keyword_sources_and_target_mismatch(self):
+        kwrun=self.run_case(1)
+        with self.assertRaisesRegex(ValueError,'공개된'):
+            K._prepare_items({'source_run':kwrun['id'],'keyword_source':'run','keyword_slot':'A'},'a','sentence')
+        for c in kwrun['cells'].values():self.final(kwrun,c)
+        K.reveal({'run_id':kwrun['id']},'a')
+        items=K._prepare_items({'source_run':kwrun['id'],'keyword_source':'run','keyword_slot':'A'},'a','sentence')
+        self.assertEqual(items[0]['keywords'],next(iter(kwrun['cells'].values()))['refined']['keywords'])
+        with self.assertRaisesRegex(ValueError,'실험 대상'):
+            K.start({'target':'sentence','slots':[{'model':kwrun['slots'][0]['version']['model'],'version_id':kwrun['slots'][0]['version']['id']}],'meta':self.meta},'a','tester')
+        run=self.sentence_run({'keyword_source':'none'})
+        self.assertFalse(next(iter(run['cells'].values()))['sentence']['from_keywords'])
+        with self.assertRaisesRegex(ValueError,'입력 방식'):
+            K._prepare_items({'meta':self.meta},'a','sentence')
+
+    def test_sentence_evaluation_cannot_enter_improvement(self):
+        run=self.sentence_run();gold=K.confirm_gold(self.sentence_final(run,'evaluation'),'a','tester',True)['gold']
+        with self.assertRaisesRegex(ValueError,'개발용'):
+            K.compile_proposal({'version_id':run['slots'][0]['version']['id'],'compiler_model':'solar-pro3','gold_keys':[gold['item_key']]},'a','tester')
+
+    def test_sentence_training_and_adoption_do_not_overwrite_keyword_state(self):
+        kwrun=self.run_case(1)
+        for c in kwrun['cells'].values():self.final(kwrun,c)
+        K.reveal({'run_id':kwrun['id']},'a')
+        kwvid=kwrun['slots'][0]['version']['id']
+        K.adopt({'run_id':kwrun['id'],'version_id':kwvid},'a')
+        run=self.sentence_run();b=self.sentence_final(run)
+        g=K.confirm_gold(b,'a','tester',True)['gold']
+        vid=run['slots'][0]['version']['id']
+        with patch.object(E,'_llm',return_value=(None,True,'')):
+            K.compile_proposal({'version_id':vid,'compiler_model':'solar-pro3','gold_keys':[g['item_key']]},'a','tester')
+        K.reveal({'run_id':run['id']},'a')
+        K.adopt({'run_id':run['id'],'version_id':vid},'a')
+        self.assertEqual(K.catalog('a')['active']['solar-pro3']['version_id'],kwvid)
+        self.assertEqual(K.catalog('a')['active']['sentence|solar-pro3']['version_id'],vid)
+        b.update(expected_revision=1,partition='evaluation',expected_gold_id=g['id'])
+        K.review(b,'a','tester',True)
+        with self.assertRaisesRegex(ValueError,'개선에 사용'):K.confirm_gold(b,'a','tester',True)
