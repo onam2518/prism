@@ -79,13 +79,13 @@
             </div>
             <template x-if="erOne">
               <div class="dc-body">
-                <section class="er-sentence" aria-label="핵심 문장 결과">
-                  <div class="er-sentence__head"><b class="er-sentence__label">핵심 문장</b><span class="ds-badge ds-badge--neutral tnum" x-show="erSentenceText(erOne.sentence)" x-text="erSentenceLength(erOne.sentence) + '자 · 공백 포함'"></span><span class="ds-badge ds-badge--warning" x-show="(erOne.sentence || {}).draft">검사 미통과 · 생성 초안</span></div>
-                  <p class="er-sentence__text" x-text="erSentenceText(erOne.sentence) || '생성된 문장이 없습니다'"></p>
+                <section class="fn" aria-label="핵심 문장 결과">
+                  <div class="flex items-center gap-2 flex-wrap"><b class="fn__title">핵심 문장</b><span class="ds-hint tnum" x-show="erSentenceText(erOne.sentence)" x-text="erSentenceLength(erOne.sentence) + '자 · 공백 포함'"></span><span class="ds-badge ds-badge--error" x-show="(erOne.sentence || {}).draft">검사 미통과 · 생성 초안</span></div>
+                  <p class="ds-fieldrow__value" x-text="erSentenceText(erOne.sentence) || '생성된 문장이 없습니다'"></p>
                   <p class="ds-hint" x-show="erSentenceText(erOne.sentence) && !erOne.sentence.from_keywords">키워드 없이 메타만으로 생성</p>
                   <p class="ds-hint ds-hint--error" x-show="(erOne.sentence || {}).error" x-text="(erOne.sentence || {}).error"></p>
                 </section>
-                <details class="er-original"><summary>기존 리드문과 비교</summary><p x-text="(erOne.sentence || {}).base || '기존 리드문이 없습니다'"></p></details>
+                <details class="fn"><summary class="ds-label">기존 리드문과 비교</summary><p class="ds-fieldrow__value" x-text="(erOne.sentence || {}).base || '기존 리드문이 없습니다'"></p></details>
                 <dl class="ds-deflist">
                   <div class="ds-fieldrow"><dt class="ds-fieldrow__label">키워드 · 지금 방식</dt><dd class="ds-fieldrow__value ds-fieldrow__chips"><template x-for="b in (erOne.base || [])" x-bind:key="b.name"><span class="ds-badge ds-badge--entity" x-text="b.name + ' ' + Math.round(b.conf * 100)"></span></template></dd></div>
                   <div class="ds-fieldrow"><dt class="ds-fieldrow__label">키워드 · 재가공</dt><dd class="ds-fieldrow__value">
@@ -134,25 +134,25 @@
               <div class="ds-stat"><div class="ds-stat__value tnum" x-text="erSum.empty || 0"></div><div class="ds-stat__label">키워드 없음 · 검토 필요</div></div>
             </div>
             </template>
-            <div class="er-results" x-show="erItems.length" x-cloak>
+            <div x-show="erItems.length" x-cloak>
               <template x-for="it in erPageItems()" x-bind:key="it.hash">
-                <article class="er-result" x-bind:aria-label="it.title || it.hash">
-                  <h3 class="er-result__title" x-text="it.title || it.hash"></h3>
-                  <section class="er-sentence" aria-label="핵심 문장 결과">
-                    <div class="er-sentence__head"><b class="er-sentence__label">핵심 문장</b><span class="ds-badge ds-badge--neutral tnum" x-show="erSentenceText(it.sentence)" x-text="erSentenceLength(it.sentence) + '자 · 공백 포함'"></span><span class="ds-badge ds-badge--warning" x-show="(it.sentence || {}).draft">검사 미통과 · 생성 초안</span></div>
-                    <p class="er-sentence__text" x-text="erSentenceText(it.sentence) || '생성된 문장이 없습니다'"></p>
+                <article class="content-section fn-stack" x-bind:aria-label="it.title || it.hash">
+                  <h3 class="ds-fieldrow__label" x-text="it.title || it.hash"></h3>
+                  <section class="fn" aria-label="핵심 문장 결과">
+                    <div class="flex items-center gap-2 flex-wrap"><b class="fn__title">핵심 문장</b><span class="ds-hint tnum" x-show="erSentenceText(it.sentence)" x-text="erSentenceLength(it.sentence) + '자 · 공백 포함'"></span><span class="ds-badge ds-badge--error" x-show="(it.sentence || {}).draft">검사 미통과 · 생성 초안</span></div>
+                    <p class="ds-fieldrow__value" x-text="erSentenceText(it.sentence) || '생성된 문장이 없습니다'"></p>
                     <p class="ds-hint" x-show="erSentenceText(it.sentence) && !it.sentence.from_keywords">키워드 없이 메타만으로 생성</p>
                     <p class="ds-hint ds-hint--error" x-show="(it.sentence || {}).error" x-text="(it.sentence || {}).error"></p>
                   </section>
-                  <details class="er-original"><summary>기존 리드문과 비교</summary><p x-text="(it.sentence || {}).base || '기존 리드문이 없습니다'"></p></details>
-                  <dl class="er-keywords">
-                    <div><dt>키워드 · 재가공</dt><dd>
+                  <details class="fn"><summary class="ds-label">기존 리드문과 비교</summary><p class="ds-fieldrow__value" x-text="(it.sentence || {}).base || '기존 리드문이 없습니다'"></p></details>
+                  <dl class="ds-deflist">
+                    <div class="ds-fieldrow"><dt class="ds-fieldrow__label">키워드 · 재가공</dt><dd class="ds-fieldrow__value">
                       <div class="ds-fieldrow__chips" x-show="!it.error"><template x-for="k in ((it.refined || {}).keywords || [])" x-bind:key="k.text"><span class="ds-badge" x-bind:class="k.kind === 'combo' ? 'ds-badge--category' : 'ds-badge--entity'" x-text="k.text"></span></template></div>
                       <span class="ds-hint" x-show="!it.error && !((it.refined || {}).keywords || []).length">선정된 키워드 없음</span><span class="ds-hint ds-hint--error" x-show="it.error" x-text="it.error"></span>
                     </dd></div>
-                    <div><dt>키워드 · 지금 방식</dt><dd class="ds-fieldrow__chips"><template x-for="b in (it.base || [])" x-bind:key="b.name"><span class="ds-badge ds-badge--entity" x-text="b.name"></span></template></dd></div>
+                    <div class="ds-fieldrow"><dt class="ds-fieldrow__label">키워드 · 지금 방식</dt><dd class="ds-fieldrow__value ds-fieldrow__chips"><template x-for="b in (it.base || [])" x-bind:key="b.name"><span class="ds-badge ds-badge--entity" x-text="b.name"></span></template></dd></div>
                   </dl>
-                  <div class="er-vote"><span class="ds-label">키워드 비교</span><div class="flex gap-2 flex-wrap" x-show="!it.error && !it._voted"><template x-for="p in erPicks" x-bind:key="p[0]"><button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-on:click="erVote(it, p[0])" x-text="p[1]"></button></template></div><span class="ds-hint" x-show="it._voted" x-text="'기록 · ' + erPickKo(it._voted)"></span></div>
+                  <div class="control-row control-row--compact"><span class="ds-label">키워드 비교</span><div class="flex gap-2 flex-wrap" x-show="!it.error && !it._voted"><template x-for="p in erPicks" x-bind:key="p[0]"><button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-on:click="erVote(it, p[0])" x-text="p[1]"></button></template></div><span class="ds-hint" x-show="it._voted" x-text="'기록 · ' + erPickKo(it._voted)"></span></div>
                 </article>
               </template>
             </div>
