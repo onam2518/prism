@@ -2,6 +2,9 @@ import json
 import os
 import tempfile
 import unittest
+import pathlib
+import shutil
+import subprocess
 
 from prism import reviewtime as RT
 
@@ -14,6 +17,51 @@ def _rec(**kw):
 
 
 class ReviewTimeTest(unittest.TestCase):
+    @unittest.skipUnless(shutil.which('node'), 'Node.js 없음')
+    def test_axis_save_flows_into_time_statistics(self):
+        script = r'''
+const fs=require('fs'), vm=require('vm'), assert=require('assert/strict');
+const window={addEventListener(){}};let now=10000;const sent=[];
+const context={window,Date:{now:()=>now},document:{hidden:false},setInterval(){},clearInterval(){},
+ fetch:async(url,opt)=>{sent.push(JSON.parse(opt.body));return {ok:true}}};
+for(const f of ['app-20-operations.js','app-22-reviewtime.js'])vm.runInNewContext(fs.readFileSync('prism/vendor/'+f,'utf8'),context);
+const app={};for(const p of window.PRISM_APP_PARTS)Object.defineProperties(app,Object.getOwnPropertyDescriptors(p()));
+Object.assign(app,{reviewer:'tester',myVerdict:()=>'',_authHeaders:()=>({}),liveToast(){},_err(){},opsLoad:async()=>{},
+ detailOpen:true,detail:{hash:'1234567890abcdef'},opsDetail:{hash:'1234567890abcdef',revision:0,basis:{token:'v1'}}});
+const axes={summary:{status:'accurate'},entities:{status:'accurate'},intent:{status:'accurate'},content_category:{status:'accurate'}};
+app.opsRequest=async()=>({hash:app.detail.hash,basis:{token:'v1'},review:{axes},cases:[]});
+(async()=>{
+ app._rtStart(app.detail);
+ for(let i=0;i<10;i++){now+=1000;app._rtTick();}
+ await app.opsSave({action:'review',axes});
+ now+=5000;app._rtFlush();
+ assert.equal(sent[0].outcome,'verdict');assert.equal(sent[0].verdict,'good');
+ assert.equal(sent[0].verdict_active_ms,10000);assert.equal(sent[0].verdict_wall_ms,10000);
+ app._rtStart(app.detail);await app.opsOpen(app.detail);
+ now+=2000;await app.opsSave({action:'review',axes});app._rtFlush();
+ assert.equal(sent[1].outcome,'revisit');
+ app._rtStart(app.detail);app.opsRequest=async()=>{throw Error('save failed')};
+ now+=2000;await app.opsSave({action:'review',axes});app._rtFlush();
+ assert.equal(sent[2].outcome,'abandoned');
+ app._rtStart(app.detail);axes.summary.status='needs_fix';
+ app.opsRequest=async()=>({hash:app.detail.hash,basis:{token:'v1'},review:{axes},cases:[]});
+ for(let i=0;i<10;i++){now+=1000;app._rtTick();}
+ await app.opsSave({action:'review',axes});app._rtFlush();
+ assert.equal(sent[3].verdict,'bad');assert.equal(sent[3].note_active_ms,10000);
+ process.stdout.write(JSON.stringify(sent));
+})().catch(e=>{console.error(e);process.exitCode=1});
+'''
+        result = subprocess.run(['node', '-e', script], cwd=pathlib.Path(__file__).resolve().parents[1],
+                                check=True, capture_output=True, text=True, timeout=10)
+        from prism.store import Store
+        with tempfile.TemporaryDirectory() as tmp:
+            st = Store(os.path.join(tmp, 'time.db'))
+            for record in json.loads(result.stdout):
+                st.log_event('tester', 'review_time', json.dumps(RT.clean(record)))
+            summary = RT.stats(RT.parse(st.events_since(('review_time',), 0)))['people'][0]
+            self.assertEqual((summary['n'], summary['active_med_s'], summary['wall_med_s']), (2, 10, 10))
+            self.assertEqual((summary['revisit'], summary['abandoned']), (1, 1))
+
     def test_clean_guards(self):
         m = RT.clean(_rec(active_ms=90000, wall_ms=60000, body_len="1200"))
         self.assertEqual(m["active_ms"], 60000)                     # 작업 시간은 머문 시간을 넘지 않는다
