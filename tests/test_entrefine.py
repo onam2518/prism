@@ -44,6 +44,91 @@ class EntRefineTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             ER.validate([], names, canon)
 
+    def test_rejected_entities_cannot_reenter_as_topic_or_combo(self):
+        obj = {"entities": [{"name": "삼성", "keep": False}, {"name": "이창용", "keep": "false"},
+                            {"name": "한국은행", "keep": True}],
+               "keywords": [{"text": t, "kind": k} for t, k in [
+                   ("삼성", "single"), ("삼성 금리", "combo"), ("이창용", "single"),
+                   ("한국은행 금리", "combo")]]}
+        out = ER.validate(obj, ["삼성", "이창용", "한국은행"], {}, "삼성 이창용 한국은행 금리")
+        self.assertEqual(out["keywords"], [{"text": "한국은행 금리", "kind": "combo"}])
+        self.assertEqual(len(out["rejected"]), 3)
+
+    def test_token_boundaries_normalization_and_malformed_responses(self):
+        import unicodedata
+        for text in ("삼성전자", "predict", "서울대학교"):
+            term = {"삼성전자": "삼성", "predict": "dict", "서울대학교": "서울"}[text]
+            out = ER.validate({"keywords": [{"text": term, "kind": "single"}]}, [], {}, text)
+            self.assertEqual(out["keywords"], [])
+        phrase = "기준금리 인하"
+        out = ER.validate({"keywords": [{"text": unicodedata.normalize("NFD", phrase), "kind": "single"},
+                                         {"text": phrase, "kind": "single"}]}, [], {}, "기준금리를 인하했다")
+        self.assertEqual(out["keywords"], [{"text": phrase, "kind": "single"}])
+        for obj in ({}, {"keywords": {}}, {"entities": "bad", "keywords": []}):
+            with self.assertRaises(ValueError):
+                ER.validate(obj, [], {})
+        out = ER.validate({"keywords": [None, {"text": None, "kind": "single"}]}, [], {})
+        self.assertEqual(out["keywords"], [])
+
+    def test_semantic_review_rejects_relationships_duplicates_and_false_quotes(self):
+        candidates = [{"text": t, "kind": "combo"} for t in ("가온은행 금리 인하", "가온은행 금리 하락", "누리은행 금리 인하")]
+        rows = [{"index": 0, "supported": True, "distinct": True, "evidence": ["가온은행은 금리를 인하했다"], "reason": "중심 사실"},
+                {"index": 1, "supported": True, "distinct": False, "evidence": ["가온은행은 금리를 인하했다"], "reason": "같은 범위의 중복"},
+                {"index": 2, "supported": True, "distinct": True, "evidence": ["누리은행은 금리를 인하했다"], "reason": "사실"}]
+        refined = {"keywords": candidates, "rejected": []}
+        with patch.object(ER, "_call", return_value=({"decisions": rows}, {})):
+            ER.review_keywords(refined, {"summary": "가온은행은 금리를 인하했다. 누리은행은 동결했다"}, {}, None)
+        self.assertEqual(refined["keywords"], candidates[:1])
+        self.assertIn("인용", refined["rejected"][1]["reason"])
+
+    def test_incomplete_review_fails_closed_and_sentence_fallback_unchanged(self):
+        class Stub:
+            def complete_json(self, system, user, tag):
+                if tag == "core_keyword":
+                    return {"entities": [{"name": "한국은행", "keep": True}],
+                            "keywords": [{"text": "한국은행", "kind": "single"}]}, None
+                if tag == "core_keyword_review":
+                    return {"decisions": []}, None
+                self.sentence_input = json.loads(user)
+                return {"sentence": "한국은행이 기준금리를 발표했다."}, None
+        llm = Stub()
+        eng = {c: (llm, False, "rules", "model") for c in ER.CALLS}
+        with patch.object(ER, "_canon", return_value={}):
+            out = ER.process({}, {"entities": ["한국은행"], "summary": "한국은행이 기준금리를 발표했다."}, eng)
+        self.assertEqual(out["refined"]["keywords"], [])
+        self.assertEqual(out["refined"]["verification"], "failed")
+        self.assertIn("의미 검사", out["error"])
+        self.assertEqual(llm.sentence_input["핵심키워드"], [])
+        self.assertTrue(out["sentence"]["text"])
+
+    def test_keyword_history_is_durable_scoped_and_votes_are_idempotent(self):
+        from prism.store import Store
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "t.db")
+            st = Store(path)
+            ER._SV = types.SimpleNamespace(get_store=lambda: st)
+            self.addCleanup(lambda: setattr(ER, "_SV", None))
+            eng = {"keyword": (None, True, "original rules", "model-v1")}
+            out = {"hash": "h", "title": "title", "base": [{"name": "기존"}],
+                   "refined": {"keywords": [{"text": "새 후보", "kind": "single"}], "verification": "checked"},
+                   "sentence": {"text": "보관하면 안 되는 문장"}}
+            ER._record_keywords(out, {"summary": "원래 메타"}, eng, "team-a")
+            rid = out["result_id"]
+            ER._SV = types.SimpleNamespace(get_store=lambda: Store(path))
+            stored = ER.keyword_history("team-a")["items"][0]
+            self.assertEqual(stored["input"]["리드문"], "원래 메타")
+            self.assertEqual(stored["model"], "model-v1")
+            self.assertNotIn("sentence", stored)
+            self.assertEqual(ER.keyword_history("team-b")["items"], [])
+            self.assertFalse(ER.vote({"result_id": rid, "pick": "refined"}, "qa", "team-b")["ok"])
+            for _ in range(2):
+                self.assertTrue(ER.vote({"result_id": rid, "pick": "refined", "base": ["위조"]}, "qa", "team-a")["ok"])
+            self.assertEqual(ER.votes("team-a")["n"], 1)
+            self.assertTrue(ER.vote({"result_id": rid, "pick": "base"}, "qa", "team-a")["ok"])
+            self.assertEqual(ER.votes("team-a")["tally"], {"refined": 0, "base": 1, "both": 0, "neither": 0})
+            self.assertEqual(ER.keyword_history("team-a")["items"][0]["base"], [{"name": "기존"}])
+            self.assertEqual(st.get_report(ER.KEYWORD_HISTORY_KIND, "team-a")["items"][0]["prompt"], "original rules")
+
     def test_metas_only_input(self):
         im = {"summary": "리드문", "entities": ["가"], "intent": ["속보·단신"], "content_category": [{"tier1": "Sports", "tier2": "Golf"}]}
         payload = json.loads(ER._payload(im, {}))
@@ -76,7 +161,7 @@ class EntRefineTest(unittest.TestCase):
                          obj["keywords"])
         self.assertEqual(ER.validate(obj, ["한은"], {}, "한은 기준금리 인하")["keywords"], [])
 
-    def test_two_calls_pass_only_validated_keywords_and_meta(self):
+    def test_review_passes_only_validated_keywords_and_meta_to_sentence(self):
         calls = []
         class Capture:
             def complete_json(self, system, user, tag):
@@ -86,6 +171,10 @@ class EntRefineTest(unittest.TestCase):
                         {"text": "기준금리 인하", "kind": "single"},
                         {"text": "수혜주 추천", "kind": "single"},
                         {"text": "한국은행", "kind": "single"}]}, None
+                if tag == "core_keyword_review":
+                    return {"decisions": [{"index": i, "supported": True, "distinct": True,
+                            "evidence": ["한국은행이 기준금리 인하를 결정했다."], "reason": "중심 사실"}
+                            for i in range(2)]}, None
                 return {"sentence": "한국은행이 기준금리 인하를 결정했다."}, None
         llm = Capture()
         eng = {c: (llm, False, ER._system(c, {}), "test") for c in ER.CALLS}
@@ -95,12 +184,12 @@ class EntRefineTest(unittest.TestCase):
             out = ER.process({"title": "원문 전용 제목", "body": "원문 전용 본문"}, im, eng)
         self.assertEqual(out["content"]["body"], "원문 전용 본문")
         self.assertEqual(out["content"]["summary"], im["summary"])
-        self.assertEqual([c[0] for c in calls], ["core_keyword", "core_sentence"])
-        self.assertEqual(calls[1][2]["핵심키워드"], [
+        self.assertEqual([c[0] for c in calls], ["core_keyword", "core_keyword_review", "core_sentence"])
+        self.assertEqual(calls[2][2]["핵심키워드"], [
             {"키워드": "기준금리 인하", "유형": "단일형"}, {"키워드": "한국은행", "유형": "단일형"}])
         for _, _, payload in calls:
             self.assertNotIn("원문 전용", json.dumps(payload, ensure_ascii=False))
-            self.assertEqual(payload["리드문"], im["summary"])
+            self.assertEqual(payload.get("meta", payload)["리드문"], im["summary"])
         self.assertTrue(out["sentence"]["from_keywords"])
 
     def test_empty_keywords_still_use_only_two_calls(self):
@@ -139,7 +228,9 @@ class EntRefineTest(unittest.TestCase):
         self.assertEqual(out["refined"]["keywords"][0]["kind"], "combo")              # mock 도 조합형 우선
         self.assertEqual(len(out["base"]), 3)
         self.assertFalse(ER.vote({"hash": "h", "pick": "bogus"}, "qa")["ok"])
-        self.assertTrue(ER.vote({"hash": "h", "pick": "refined", "base": ["가"], "refined": ["다"]}, "qa")["ok"])
+        eng = {"keyword": (None, True, "rules", "mock")}
+        ER._record_keywords(out, {"entities": ["가", "나", "다"]}, eng)
+        self.assertTrue(ER.vote({"result_id": out["result_id"], "pick": "refined"}, "qa")["ok"])
         self.assertEqual(ER.votes()["tally"]["refined"], 1)
 
 

@@ -63,6 +63,29 @@ async function run() {
   await app.erLoadCfg();
   assert.equal(app.erCfgErr, true);
   assert.equal(app.erCfgMsg, 'offline');
+  const sample = { result_id: 'a'.repeat(32), refined: { checks: [
+    { text: '한국은행', accepted: true, reason: '중심 대상', evidence: ['한국은행'] }
+  ], rejected: [{ text: '수혜주', reason: '근거 없음' }] } };
+  assert.equal(app.erKeywordChecks(sample).length, 2);
+  assert.equal(app.erKeywordChecks(sample)[1].state, '제외');
+  let voteCalls = 0;
+  app._err = message => { throw new Error(message); };
+  app.erInit = () => {};
+  app._afetch = async (url, options) => {
+    voteCalls++;
+    const request = JSON.parse(options.body);
+    assert.equal(request.result_id, sample.result_id);
+    assert.deepEqual(Object.keys(request).sort(), ['pick', 'result_id']);
+    return { json: async () => ({ ok: true }) };
+  };
+  await app.erVote({}, 'base');
+  assert.equal(voteCalls, 0);
+  await app.erVote(sample, 'refined');
+  assert.equal(voteCalls, 1);
+  assert.equal(sample._voted, 'refined');
+  app._afetch = async () => ({ json: async () => ({ ok: true, items: [sample] }) });
+  await app.erLoadHistory();
+  assert.equal(app.erHistory[0].result_id, sample.result_id);
   console.log('Core keyword client: model drafts, pagination, duplicate start and errors passed');
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

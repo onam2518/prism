@@ -6,7 +6,7 @@ window.PRISM_APP_PARTS.push(() => ({
       erMode: 'one', erCfg: null, erRules: { keyword: '', sentence: '' }, erDrafts: { keyword: {}, sentence: {} }, erKwModel: '', erStModel: '', erSaving: false, erCfgMsg: '', erCfgErr: false,
       erHash: '', erTitle: '', erBody: '', erEnts: '', erSum1: '', erInt: '', erCat: '', erTrying: false, erOne: null, erOneErr: '',
       erN: 30, erRunning: false, erDone: 0, erTotal: 0, erPhase: '', erItems: [], erSum: null, erMsg: '', erErr: false, _erT: null, erVotes: null,
-      erPage: 1, erPageSize: 10,
+      erPage: 1, erPageSize: 10, erHistory: [], erHistoryError: '', erHistoryLoaded: false,
       erPicks: [['refined', '재가공'], ['base', '지금 방식'], ['both', '둘 다 좋음'], ['neither', '둘 다 별로']],
 
       erOpenContent(it) { this.openContentView({ ...it.content, hash: it.hash, entities: this._entityNames(it.content.entities), category: this._categoryPaths(it.content.category) }); },
@@ -16,7 +16,25 @@ window.PRISM_APP_PARTS.push(() => ({
       erSentenceLength(s) { return Array.from(this.erSentenceText(s)).length; },
       erVotesTxt() {
         const v = this.erVotes; if (!v || !v.n) return '아직 투표가 없습니다 · 결과 옆 버튼으로 어느 쪽이 나은지 골라 주세요';
-        const t = v.tally; return '투표 ' + v.n + '건 · 재처리 ' + t.refined + ' · 지금 방식 ' + t.base + ' · 둘 다 좋음 ' + t.both + ' · 둘 다 별로 ' + t.neither;
+        const t = v.tally; return '최근 ' + (v.limit || 50) + '개 보관 결과의 투표 ' + v.n + '건 · 재처리 ' + t.refined + ' · 지금 방식 ' + t.base + ' · 둘 다 좋음 ' + t.both + ' · 둘 다 별로 ' + t.neither;
+      },
+      erKeywordChecks(it) {
+        const r = (it || {}).refined || {};
+        return [...(r.checks || []).map(x => ({ ...x, state: x.accepted ? '선정' : '제외' })),
+          ...(r.rejected || []).filter(x => !(r.checks || []).some(c => c.text === x.text && !c.accepted))
+            .map(x => ({ ...x, state: '제외', evidence: [] }))];
+      },
+      erKeywordProvenance(it) {
+        return [it.keyword_model || it.model || ((it.models || {}).keyword),
+          it.keyword_prompt_id || it.prompt_id, it.validator_version].filter(Boolean).join(' · ');
+      },
+      async erLoadHistory() {
+        this.erHistoryError = '';
+        try {
+          const r = await (await this._afetch('/lab-keyword-history', { headers: this._authHeaders() })).json();
+          if (!r.ok) throw new Error(r.error || '보관 결과 조회 실패');
+          this.erHistory = r.items || []; this.erHistoryLoaded = true;
+        } catch (e) { this.erHistoryError = e.message || '보관 결과 조회 실패'; }
       },
       async erInit() {
         try { const r = await (await this._afetch('/lab-entrefine-votes', { headers: this._authHeaders() })).json(); if (r && r.ok) this.erVotes = r; } catch (e) {}
@@ -78,7 +96,7 @@ window.PRISM_APP_PARTS.push(() => ({
         try {
           const r = await (await this._afetch('/lab-entrefine-try', { method: 'POST', headers: this._authHeaders(),
             body: JSON.stringify({ hash: this.erHash, title: this.erTitle, body: this.erBody, entities: this.erEnts, summary: this.erSum1, intent: this.erInt, category: this.erCat }) })).json();
-          if (r && r.ok) this.erOne = r; else this.erOneErr = (r && r.error) || '재가공 실패';
+          if (r && r.ok) { this.erOne = r; if (this.erHistoryLoaded) this.erLoadHistory(); } else this.erOneErr = (r && r.error) || '재가공 실패';
         } catch (e) { this.erOneErr = '재가공 실패'; }
         this.erTrying = false;
       },
@@ -105,17 +123,21 @@ window.PRISM_APP_PARTS.push(() => ({
           this.erSum = r.summary;
           if (r.running) { this._erT = setTimeout(tick, 1500); return; }
           this.erRunning = false; this.erPhase = '';
+          if (this.erHistoryLoaded) this.erLoadHistory();
           this.erErr = !!(r.error || (r.summary && (r.summary.fails || r.summary.sent_fails)));
           this.erMsg = (r.error ? '일괄 처리 중단 · ' + r.error : r.total + '건 완료') + ' · ' + r.elapsed_s + '초 · 키워드 ' + ((r.models || {}).keyword || '') + ' · 문장 ' + ((r.models || {}).sentence || '');
         };
         tick();
       },
       async erVote(it, pick) {
+        if (!it.result_id || it._voting) return;
+        it._voting = true;
         try {
           const r = await (await this._afetch('/lab-entrefine-vote', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({
-            reviewer: this.reviewer || '', hash: it.hash, pick: pick, model: ((it.models || {}).keyword) || this.erKwModel,
-            base: (it.base || []).map((b) => b.name), refined: ((it.refined || {}).keywords || []).map((k) => k.text) }) })).json();
-          if (r && r.ok) { it._voted = pick; this.erInit(); } else this._err((r && r.error) || '기록 실패');
+            result_id: it.result_id, pick }) })).json();
+          if (r && r.ok) { it._voted = pick; this.erInit(); }
+          else this._err((r && r.error) || '기록 실패');
         } catch (e) { this._err('기록 실패'); }
+        finally { it._voting = false; }
       },
 }));

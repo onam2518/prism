@@ -168,3 +168,7 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
 ## DNM 실행 상태와 토픽 승인
 
 `execution.py`는 실제 모델·추론 설정·프롬프트를 복사하고 코드 지문과 함께 평가 스냅샷으로 고정한다. `dnm.py`는 원천 이벤트·등록표·작업 시도·수동 확정·발행 순번을 관리하며 `dnmops.py`가 관리자 API를 구성한다. 일반 실험 경로에는 DNM 대상·정책 버전을 임의 부여하지 않는다. 토픽의 `preview_action`과 `undo`는 설정 revision과 후보 지문을 검증한다. SQLite `BEGIN IMMEDIATE`와 Supabase `prism_compare_report`가 읽은 상태와 같은 경우에만 변경을 저장한다. 설치·운영 증빙은 [DNM_TRANSITION](docs/DNM_TRANSITION.md)에 기록한다.
+
+### 핵심 키워드 실험실
+
+`keywordlab.py`는 `/lab-keywords`의 팀별 불변 프롬프트 버전, 1~3조합 실행 스냅샷, 개별 검수, 키워드 전용 정답셋, 쿡북 기반 개선안을 담당한다. 기존 `reports`의 CAS·guard 계약을 사용하며 콘텐츠 골든 테이블을 수정하지 않는다. 개선 노출 콘텐츠는 평가용 전환을 차단한다. UI는 `19j-keywordlab.html`·`app-24-keywordlab.js`, 기존 문장 실험은 별도 탭으로 유지한다.
