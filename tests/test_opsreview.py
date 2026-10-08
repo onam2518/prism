@@ -53,6 +53,42 @@ class OperationsTests(unittest.TestCase):
             self.assertFalse(self.request('review',axes=axes)['ok'])
             self.assertIsNone(self.st.get_report('ops_review_'+self.ch))
 
+    def test_review_lifecycle_persists_history_feedback_and_case_until_explicit_close(self):
+        axes=self.axes();axes['summary']={'status':'needs_fix','proposal':'날짜 수정','reason':'숨긴 보류'}
+        bad=self.request('review',axes=axes);self.assertTrue(bad['ok'],bad)
+        case_id=bad['cases'][0]['id']
+        stored=self.st.get_report('ops_review_'+self.ch)
+        self.assertEqual(stored['history'][-1]['data']['axes']['summary']['reason'],'')
+        self.assertEqual(self.st.feedback_map()[self.ch]['verdict'],'bad')
+        self.assertIn('날짜 수정',' '.join(self.st.learned_by_stage().values()))
+        stale=copy.deepcopy(bad)
+        axes['summary']={'status':'hold','reason':'원문 날짜 재확인','proposal':'숨긴 수정'}
+        hold=self.request('review',axes=axes);self.assertTrue(hold['ok'],hold)
+        self.assertEqual(len(hold['cases']),1)
+        self.assertEqual(hold['cases'][0]['state'],'hold')
+        self.assertNotIn(self.ch,self.st.feedback_map())
+        self.assertNotIn('날짜 수정',' '.join(self.st.learned_by_stage().values()))
+        accurate=self.request('review',axes=self.axes());self.assertTrue(accurate['ok'],accurate)
+        self.assertEqual(self.st.feedback_map()[self.ch]['verdict'],'good')
+        self.assertNotEqual(accurate['cases'][0]['state'],'closed')
+        rejected=O.action(self.st,dict(action='review',hash=self.ch,revision=stale['revision'],basis_token=stale['basis']['token'],axes=axes),who='me')
+        self.assertFalse(rejected['ok'])
+        before=self.st.get_report('ops_review_'+self.ch)
+        self.assertFalse(self.request('case',case_id=case_id,state='closed')['ok'])
+        self.assertEqual(self.st.get_report('ops_review_'+self.ch),before)
+        closed=self.request('case',case_id=case_id,state='closed',recheck_evidence='날짜 대조 완료',service_required=False,service_waiver_reason='서비스 미반영 검수 사례')
+        self.assertTrue(closed['ok'],closed)
+        self.assertEqual(closed['cases'][0]['state'],'closed')
+        self.assertTrue(self.request('undo')['ok'])
+        self.assertNotIn(self.ch,self.st.feedback_map())
+        self.assertEqual(O.detail(self.st,self.ch,who='me')['cases'][0]['state'],'closed')
+
+    def test_report_failure_rolls_back_feedback_and_review(self):
+        self.st._conn().execute("CREATE TRIGGER review_fail BEFORE INSERT ON reports WHEN NEW.kind LIKE 'ops_review_%' BEGIN SELECT RAISE(ABORT,'test report failure'); END")
+        with self.assertRaises(Exception):self.request('review',axes=self.axes('needs_fix'))
+        self.assertIsNone(self.st.get_report('ops_review_'+self.ch))
+        self.assertEqual(self.st.feedback_map(),{})
+
     def test_bad_and_hold_survive_outside_todo(self):
         axes=self.axes();axes['entities']['status']='hold';axes['entities']['reason']='원문 확인 필요'
         result=self.request('review',axes=axes);self.assertTrue(result['ok'],result)
@@ -159,8 +195,17 @@ class OperationsTests(unittest.TestCase):
         self.addCleanup(serve._agg_bump)
         self.request('review',axes=self.axes())
         self.request('patch',patch={'summary':'다른 리드문'})
+        serve._agg_bump()
+        self.assertEqual(serve.promotion_pending()['promote'],0)
         serve.build_golden_from_reviews()
         self.assertNotIn(self.ch,self.st.golden_hashes())
         self.request('review',axes=self.axes())
+        serve._agg_bump()
+        self.assertEqual(serve.promotion_pending()['promote'],1)
         serve.build_golden_from_reviews()
         self.assertIn(self.ch,self.st.golden_hashes())
+        expected=self.st.get_golden()[0]['expected']
+        self.assertEqual(expected['summary'],'다른 리드문')
+        self.assertEqual(expected['content_category'],['Sports'])
+        self.assertEqual(serve.build_golden_from_reviews()['new'],0)
+        self.assertEqual(self.st.golden_count(),1)
