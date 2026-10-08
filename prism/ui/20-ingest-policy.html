@@ -502,7 +502,7 @@
                       <button type="button" class="verdictbtn verdictbtn--hold" x-bind:class="opsAxes[f.key].status==='hold' ? 'is-on' : ''" x-bind:aria-pressed="opsAxes[f.key].status==='hold'" x-on:click="opsAxes[f.key].status='hold'"><span class="verdictbtn__dot"></span>보류</button>
                     </div>
                   </div>
-                  <label class="dve__field" x-show="opsAxes[f.key].status && opsAxes[f.key].status!=='accurate'" x-cloak><span class="dve__lbl">원문 근거·보류 사유</span><textarea class="field" rows="2" x-model="opsAxes[f.key].reason" placeholder="분석 당시 원문의 근거 또는 확인이 필요한 사유"></textarea></label>
+                  <label class="dve__field" x-show="opsAxes[f.key].status==='hold'" x-cloak><span class="dve__lbl">원문 근거·보류 사유</span><textarea class="field" rows="2" x-model="opsAxes[f.key].reason" placeholder="판단을 보류한 이유와 확인이 필요한 원문 근거"></textarea></label>
                   <label class="dve__field" x-show="opsAxes[f.key].status==='needs_fix'" x-cloak><span class="dve__lbl">삭제·추가·수정 제안</span><input class="field" x-model="opsAxes[f.key].proposal"></label>
                 </div>
               </template>

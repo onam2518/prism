@@ -21,7 +21,7 @@ window.PRISM_APP_PARTS.push(() => ({
       if (!this.detail || this.detail.hash!==c.hash) return;
       this.opsDetail=r;
       if(!this.detail.body && r.basis.body)this.detail.body=r.basis.body;
-      this.opsFields.forEach(f=>{this.opsAxes[f.key]=Object.assign({status:'',reason:'',proposal:''},((r.review||{}).axes||{})[f.key]||{});});
+      this.opsFields.forEach(f=>{const a=Object.assign({status:'',reason:'',proposal:''},((r.review||{}).axes||{})[f.key]||{}); if(a.status==='needs_fix' && !a.proposal)a.proposal=a.reason; this.opsAxes[f.key]=a;});
       const pending=r.cases.filter(x=>x.state!=='closed');
       this.opsCase=pending.length ? JSON.parse(JSON.stringify(pending[pending.length-1])) : null;
       if (this.opsCase) { this.opsCase.service_required=true; this.opsCase.receipt_evidence=''; }

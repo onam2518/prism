@@ -18,6 +18,7 @@ for (const file of ['app-03-opendetail.js', 'app-20-operations.js']) {
 }
 const app = {};
 for (const part of window.PRISM_APP_PARTS) Object.defineProperties(app, Object.getOwnPropertyDescriptors(part()));
+const loadReview = app.opsOpen;
 for (const name of ['_rtStart','loadEntLookup','loadEntLabels','opsOpen']) app[name] = () => {};
 app._categoryPaths = () => [];
 app._err = message => { throw Error(message); };
@@ -32,6 +33,9 @@ app.opsRequest = async () => ({basis:{snapshot:{title:'검수 제목',body:'원�
   await app.opsOpenCase({hash:'1234567890abcdef'});
   assert.equal(app.opsManage, false);
   assert.equal(app.detail.body, '원문');
+  app.opsRequest = async () => ({basis:{},cases:[],review:{axes:{summary:{status:'needs_fix',reason:'기존 수정 근거'}}}});
+  await loadReview.call(app, app.detail);
+  assert.equal(app.opsAxes.summary.proposal, '기존 수정 근거');
 })().catch(e => { console.error(e); process.exitCode = 1; });
 '''
         subprocess.run(['node', '-e', script], cwd=pathlib.Path(__file__).resolve().parents[1],
