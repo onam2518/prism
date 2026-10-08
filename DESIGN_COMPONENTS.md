@@ -78,6 +78,7 @@
 | `.panel-hd__controls` | 헤더 우측 조작 그룹. 가용폭을 넘으면 줄바꿈. 같은 크기의 조작은 `.control-row`를 함께 사용 |
 | `.ds-table--compact` | 표 셀 좌우14px·상하8px. 기본 데이터 셀은 좌우14px·상하12px. 구조별 첫 셀 padding 예외 없음 |
 | `.model-compare-table` | 고정 항목 열180px + 동일 너비 모델 열 최소200px. 모델 수는 `--compare-model-count`, 항목 col은 `.model-compare-label`. 넘침은 표 wrapper 내부 스크롤로 처리 |
+| `.ds-pagination` + `.control-row` | 목록 하단 페이지 이동. 상단 구분선과 내부 여백16px, 공통 컨트롤 높이36px, 줄바꿈 허용. `nav`에 영역 이름을 지정하고 이전·다음 경계에서 버튼을 비활성화한다 |
 | `.keyline` | 키·값 한 줄 행(이름 120px + 상태점 `.sdot` + 입력 flex + 버튼 + 메시지) · 행 사이 헤어라인 |
 
 ## 태그·표시

@@ -244,6 +244,7 @@
   gap: var(--ds-control-gap, 8px);
   min-width: 0;
 }
+.ds-pagination { border-top: 1px solid var(--ds-divider-content); padding-top: var(--ds-space-4); }
 .control-row--compact { --control-row-h: var(--ds-control-height-compact, 32px); }
 .control-row .field:not(textarea), .control-row .ds-field:not(textarea),
 .control-row :is(.ds-input:not(textarea), .ds-btn, .ds-iconbtn, .copybtn, .verdictbtn, .srcfilter__chip) {

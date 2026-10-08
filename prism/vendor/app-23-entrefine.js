@@ -9,6 +9,8 @@ window.PRISM_APP_PARTS.push(() => ({
       erPage: 1, erPageSize: 10,
       erPicks: [['refined', '재가공'], ['base', '지금 방식'], ['both', '둘 다 좋음'], ['neither', '둘 다 별로']],
 
+      erOpenContent(it) { this.openContentView({ ...it.content, hash: it.hash, entities: this._entityNames(it.content.entities), category: this._categoryPaths(it.content.category) }); },
+
       erPickKo(p) { return (this.erPicks.find((x) => x[0] === p) || [p, p])[1]; },
       erSentenceText(s) { return (s && (s.text || s.draft)) || ''; },
       erSentenceLength(s) { return Array.from(this.erSentenceText(s)).length; },

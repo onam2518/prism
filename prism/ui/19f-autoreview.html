@@ -102,11 +102,11 @@
                 </table>
               </div>
               <!-- 페이지네이션: 현재 페이지만 렌더(목록이 길어도 DOM 절약) -->
-              <div class="ar-pager" x-show="arView().length > arPageSize" x-cloak>
+              <nav class="ds-pagination control-row" aria-label="자동 검수 결과 페이지" x-show="arView().length > arPageSize" x-cloak>
                 <button type="button" class="ds-btn ds-btn--outline ds-btn--c-ghost ds-btn--s-sm" x-bind:disabled="arPageNow() <= 1" x-on:click="arGoto(arPageNow()-1)">이전</button>
                 <span class="meta tnum" x-text="arPageNow() + ' / ' + arPages() + ' 페이지 · 전체 ' + arView().length + '건'"></span>
                 <button type="button" class="ds-btn ds-btn--outline ds-btn--c-ghost ds-btn--s-sm" x-bind:disabled="arPageNow() >= arPages()" x-on:click="arGoto(arPageNow()+1)">다음</button>
-              </div>
+              </nav>
               <div class="flexrow" style="align-items:center;gap:10px;flex-wrap:wrap">
                 <span class="meta"><b class="tnum text-ink" x-text="arDoneN()"></b> / <span class="tnum" x-text="arItems.length"></span>건 확정</span>
                 <span class="ds-badge ds-badge--status">확정은 평소 검수와 같은 경로(사람 행위) · 자동 반영 없음</span>

@@ -80,10 +80,10 @@
             <template x-if="erOne">
               <div class="dc-body">
                 <div class="layout-grid--two">
-                  <section class="fn" aria-label="기존 메타 리드문"><div class="flex items-center gap-2 flex-wrap"><b class="fn__title">기존 메타 · 리드문</b><span class="ds-hint tnum" x-show="(erOne.sentence || {}).base" x-text="Array.from((erOne.sentence || {}).base || '').length + '자 · 공백 포함'"></span></div><p class="ds-fieldrow__value" x-text="(erOne.sentence || {}).base || '기존 리드문이 없습니다'"></p></section>
+                  <section class="fn" aria-label="기존 메타 리드문"><div class="flex items-center gap-2 flex-wrap"><b class="fn__title">기존 메타 · 리드문</b><span class="ds-hint tnum" x-show="(erOne.sentence || {}).base" x-text="Array.from((erOne.sentence || {}).base || '').length + '자 · 공백 포함'"></span></div><p class="tbox" x-text="(erOne.sentence || {}).base || '기존 리드문이 없습니다'"></p></section>
                   <section class="fn" aria-label="핵심 문장 결과">
                   <div class="flex items-center gap-2 flex-wrap"><b class="fn__title">핵심 문장 · 재가공</b><span class="ds-hint tnum" x-show="erSentenceText(erOne.sentence)" x-text="erSentenceLength(erOne.sentence) + '자 · 공백 포함'"></span><span class="ds-badge ds-badge--error" x-show="(erOne.sentence || {}).draft">검사 미통과 · 생성 초안</span></div>
-                  <p class="ds-fieldrow__value" x-text="erSentenceText(erOne.sentence) || '생성된 문장이 없습니다'"></p>
+                  <p class="tbox" x-text="erSentenceText(erOne.sentence) || '생성된 문장이 없습니다'"></p>
                   <p class="ds-hint" x-show="erSentenceText(erOne.sentence) && !erOne.sentence.from_keywords">키워드 없이 메타만으로 생성</p>
                   <p class="ds-hint ds-hint--error" x-show="(erOne.sentence || {}).error" x-text="(erOne.sentence || {}).error"></p>
                 </section>
@@ -119,13 +119,13 @@
               <p class="ds-hint" x-text="erVotesTxt()"></p>
               <button type="button" class="ds-btn ds-btn--solid ds-btn--c-primary ds-btn--s-sm ml-auto" x-bind:disabled="erRunning || !erCfg" x-on:click="erRun()" x-text="erRunning ? '재가공 중…' : '일괄 재가공 실행'"></button>
             </div>
-            <p class="ds-hint">엔티티가 있는 정답을 대분류별로 고르게 뽑습니다. 카테고리가 없으면 인텐트로 나누며, 실행할 때마다 다시 선정합니다.</p>
+            <ul class="ds-bullets"><li>엔티티가 있는 정답을 대분류별로 고르게 뽑습니다<ul><li>카테고리가 없으면 인텐트로 나누며, 실행할 때마다 다시 선정합니다</li></ul></li></ul>
             <div class="ds-progress" x-show="erRunning" x-cloak>
               <div class="ds-progress__head"><span class="ds-progress__label">진행</span><span class="ds-progress__pct" x-text="erDone + ' / ' + erTotal"></span></div>
               <div class="ds-progress__track"><div class="ds-progress__fill" x-bind:style="'width:' + (erTotal ? Math.round(erDone * 100 / erTotal) : 0) + '%'"></div></div>
               <p class="ds-hint" x-text="erPhase"></p>
             </div>
-            <p class="ds-hint" x-bind:class="erErr ? 'ds-hint--error' : ''" x-show="erMsg" x-cloak x-text="erMsg"></p>
+            <ul class="ds-bullets" x-show="erMsg" x-cloak><template x-for="(s,i) in sents(erMsg)" x-bind:key="i"><li><span x-bind:class="erErr ? 'ds-hint ds-hint--error' : ''" x-text="s"></span></li></template></ul>
             <template x-if="erSum && (erSum.n || erSum.sent_n)">
             <div class="ds-stat-grid">
               <div class="ds-stat"><div class="ds-stat__value tnum" x-text="(erSum.overlap_avg ?? '·') + ' / 3'"></div><div class="ds-stat__label">지금 방식과 겹친 키워드</div></div>
@@ -139,12 +139,12 @@
             <div x-show="erItems.length" x-cloak>
               <template x-for="it in erPageItems()" x-bind:key="it.hash">
                 <article class="content-section fn-stack" x-bind:aria-label="it.title || it.hash">
-                  <h3 class="ds-fieldrow__label" x-text="it.title || it.hash"></h3>
+                  <header class="panel-hd"><h3 class="fn__title" x-text="it.title || it.hash"></h3><button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm ml-auto" x-show="it.content" x-on:click="erOpenContent(it)">콘텐츠 상세</button></header>
                   <div class="layout-grid--two">
-                  <section class="fn" aria-label="기존 메타 리드문"><div class="flex items-center gap-2 flex-wrap"><b class="fn__title">기존 메타 · 리드문</b><span class="ds-hint tnum" x-show="(it.sentence || {}).base" x-text="Array.from((it.sentence || {}).base || '').length + '자 · 공백 포함'"></span></div><p class="ds-fieldrow__value" x-text="(it.sentence || {}).base || '기존 리드문이 없습니다'"></p></section>
+                  <section class="fn" aria-label="기존 메타 리드문"><div class="flex items-center gap-2 flex-wrap"><b class="fn__title">기존 메타 · 리드문</b><span class="ds-hint tnum" x-show="(it.sentence || {}).base" x-text="Array.from((it.sentence || {}).base || '').length + '자 · 공백 포함'"></span></div><p class="tbox" x-text="(it.sentence || {}).base || '기존 리드문이 없습니다'"></p></section>
                   <section class="fn" aria-label="핵심 문장 결과">
                     <div class="flex items-center gap-2 flex-wrap"><b class="fn__title">핵심 문장 · 재가공</b><span class="ds-hint tnum" x-show="erSentenceText(it.sentence)" x-text="erSentenceLength(it.sentence) + '자 · 공백 포함'"></span><span class="ds-badge ds-badge--error" x-show="(it.sentence || {}).draft">검사 미통과 · 생성 초안</span></div>
-                    <p class="ds-fieldrow__value" x-text="erSentenceText(it.sentence) || '생성된 문장이 없습니다'"></p>
+                    <p class="tbox" x-text="erSentenceText(it.sentence) || '생성된 문장이 없습니다'"></p>
                     <p class="ds-hint" x-show="erSentenceText(it.sentence) && !it.sentence.from_keywords">키워드 없이 메타만으로 생성</p>
                     <p class="ds-hint ds-hint--error" x-show="(it.sentence || {}).error" x-text="(it.sentence || {}).error"></p>
                   </section>
@@ -160,7 +160,7 @@
                 </article>
               </template>
             </div>
-            <nav class="control-row" aria-label="핵심 키워드 결과 페이지" x-show="erItems.length" x-cloak>
+            <nav class="ds-pagination control-row" aria-label="핵심 키워드 결과 페이지" x-show="erItems.length" x-cloak>
               <span class="ds-hint" x-text="erPageLine()"></span>
               <label class="ds-label" for="er-page-size">페이지당 결과</label>
               <select id="er-page-size" class="ds-field dc-num" x-model.number="erPageSize" x-on:change="erPage = 1"><option value="10">10건</option><option value="20">20건</option><option value="50">50건</option></select>
