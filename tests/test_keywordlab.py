@@ -108,6 +108,9 @@ class KeywordLabTest(unittest.TestCase):
         llm, mock, error = K._engine('timely|gpt-test')
         self.assertEqual((llm.provider,cfg.text_model,mock,error),('timely','gpt-test',False,''))
         self.assertIsNone(K._engine('unknown|gpt-test')[0])
+        with patch.object(E, '_llm', return_value=(None, False, '')) as direct:
+            K._engine('solar|solar-pro4-260806')
+            direct.assert_called_once_with('solar-pro4-260806')
 
     def test_gold_write_guard_prevents_stale_finalization(self):
         run = self.run_case(1); cell = next(iter(run['cells'].values())); b = self.final(run,cell)

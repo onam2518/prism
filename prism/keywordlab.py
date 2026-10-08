@@ -72,7 +72,7 @@ def _engine(model):
     if '|' not in model or getattr(getattr(_SV, 'Handler', None), 'server_mock', False):
         return ER._llm(model)
     provider, mid = model.split('|', 1)
-    if provider == 'upstage':
+    if provider in ('solar', 'upstage'):
         return ER._llm(mid)
     if not _SV.IMG.is_router(provider) or not _SV.IMG.router_key(provider):
         return None, False, '선택한 제공자의 연결 키가 없습니다: ' + provider
