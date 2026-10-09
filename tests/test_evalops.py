@@ -178,6 +178,54 @@ class TestEvalRunFlow(unittest.TestCase):
         self.assertEqual(len(st.eval_result_hashes(rid)), 4)
         self.assertEqual(run["metrics"]["n"], 4)          # 카운터가 기존 2건 위에 누적
 
+    def test_launch_registers_once_under_double_click(self):
+        """재개 더블클릭: 생존 확인·등록·시작이 한 임계구역 → 같은 런 스레드는 하나만."""
+        import threading
+        from unittest.mock import patch
+        from prism import evalops
+        gate, started = threading.Event(), []
+        def fake_loop(run_id, *a):
+            started.append(run_id)
+            gate.wait(5)
+            with evalops._LOCK:
+                evalops._ACTIVE.pop(run_id, None)
+        barrier, res = threading.Barrier(4), []
+        def click():
+            barrier.wait()
+            res.append(evalops._launch(987654, [], None, None, {}))
+        with patch.object(evalops, "_run_loop", fake_loop):
+            ths = [threading.Thread(target=click) for _ in range(4)]
+            [t.start() for t in ths]
+            [t.join(5) for t in ths]
+            gate.set()
+        self.assertEqual(sorted(res), [False, False, False, True])
+        self.assertEqual(started, [987654])
+
+    def test_resume_reruns_chunk_saved_without_metrics(self):
+        """결과 저장 뒤 메트릭 저장 전에 죽은 런: 메트릭에 없는 저장 건까지 다시 돌려 n 이 결과 수와 맞는다."""
+        serve, evalops, st = self._with_serve()
+        _seed_golden(st, 4)
+        from prism import execution as EX
+        from prism.config import Config
+        from prism.store import golden_hash
+        rows = st.get_golden(None)
+        _, frozen = EX.capture(serve.make_text_llm(Config.load(), True), rows)
+        snapshot = {"rows": rows, "execution": frozen, "model": "", "scope": "all"}
+        rid = st.eval_run_create("", "", "all", 4)
+        st.save_report("eval_snapshot_" + str(rid), snapshot)
+        # 앞 3건 결과는 저장됐지만 메트릭엔 앞 2건만(3번째 청크 메트릭 저장 직전 재시작)
+        st.eval_results_add(rid, [{"hash": golden_hash(r), "title": "", "expected": r["expected"],
+                                   "got": None, "passed": False, "error": ""} for r in rows[:3]])
+        m = evalops._zero_metrics()
+        m.update(n=2, basis_fingerprint=EX.digest(snapshot))
+        st.eval_run_update(rid, cursor=2, metrics=m)
+        rr = serve.eval_run_resume(rid, None)
+        self.assertTrue(rr.get("ok"), rr)
+        self.assertEqual(rr["remain"], 2)                 # 메트릭에 없는 3번째 + 미실행 4번째
+        run = self._wait_done(st, rid)
+        self.assertEqual(run["metrics"]["n"], 4)
+        self.assertEqual(len(st.eval_result_hashes(rid)), 4)
+
     def test_cancel_without_thread_marks_cancelled(self):
         serve, evalops, st = self._with_serve()
         rid = st.eval_run_create("", "", "all", 3)
@@ -499,6 +547,30 @@ class TestAutopilot(unittest.TestCase):
         self.assertEqual(run["status"], "stopped")
         self.assertIn("수동 중지", run["stop_reason"])
         self.assertTrue(serve.autopilot_status(None)["ok"])
+
+
+
+class TestScopeGoldenError(unittest.TestCase):
+    """용도(purpose_map) 조회 실패를 빈 맵으로 삼켜 'all'(학습 노출분 포함)로 조용히 되돌아가지 않는다."""
+
+    def test_purpose_map_failure_is_visible(self):
+        from unittest.mock import patch
+        from prism import learnops as L, evalops, serve
+        st = _mk_store()
+        _seed_golden(st, 2)
+        def boom(team=None):
+            raise OSError("postgrest down")
+        st.purpose_map = boom
+        with self.assertRaises(RuntimeError):
+            L._scope_golden(st.get_golden(None), "eval", st)
+        self.assertEqual(len(L._scope_golden(st.get_golden(None), "all", st)), 2)   # all 은 용도 조회 불필요
+        with patch.object(serve, "_STORE", st):
+            with self.assertRaises(RuntimeError):
+                L._holdout_scope()
+            rows, _, _, err = evalops._prepare(None, "", "eval", resolve_model=False)
+            self.assertIsNone(rows)
+            self.assertIn("용도", err)
+            self.assertFalse(L.eval_golden(None, scope="eval")["ok"])
 
 
 if __name__ == "__main__":

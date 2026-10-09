@@ -14,6 +14,7 @@ Atelier(구 PromptForge)의 eval_runs/eval_run_results 체계에서 가져온 �
 HTTP 디스패치는 serve 가 유지.
 """
 from __future__ import annotations
+import copy
 import json
 import threading
 import time
@@ -127,7 +128,10 @@ def _prepare(team, model: str, scope: str, resolve_model=True):
     rows = st.get_golden(team)
     if not rows:
         return None, None, "", "등록된 골든셋이 없습니다 · 팀 관리에서 등록하세요"
-    rows = LO._scope_golden(rows, scope, st, team)
+    try:
+        rows = LO._scope_golden(rows, scope, st, team)
+    except RuntimeError as e:
+        return None, None, "", str(e)
     if not rows:
         return None, None, "", "평가용으로 지정된 콘텐츠의 정답이 없습니다 · 콘텐츠 관리 STEP 1에서 용도를 지정하세요"
     if not resolve_model:
@@ -245,11 +249,21 @@ def eval_run_resume(run_id: int, team=None) -> dict:
         return {"ok": False, "error": str(exc)[:250]}
     from .store import golden_hash
     done = st.eval_result_hashes(run_id, team)
-    remain = [r for r in rows if golden_hash(r) not in done]
     base = run.get("metrics") or _zero_metrics()
-    st.eval_run_update(run_id, team=team, status="running", error="",
-                       total=len(done) + len(remain))
-    _launch(run_id, remain, llm, team, base)
+    # 결과 저장(eval_results_add) 뒤 메트릭 저장 전에 죽으면 그 청크는 '완료'로 보이지만
+    # 메트릭에는 없다. 실행은 스냅샷 순서대로라 메트릭에 든 건 = 앞 n건(접두) → 그 뒤를 다시 돈다.
+    # 저장 결과로 메트릭을 재계산하지 않는 이유: 건별 행엔 비용·지연·yellow 가 없어 정확히 복원 불가.
+    n = int(base.get("n") or 0)
+    if n <= len(rows) and {golden_hash(r) for r in rows[:n]} <= done:
+        remain, total = rows[n:], len(rows)
+    else:                                        # 접두 불변식이 깨진 구 런 → 저장 결과 기준(종전 동작)
+        remain = [r for r in rows if golden_hash(r) not in done]
+        total = len(done) + len(remain)
+    # 상태 갱신은 스레드 시작 전(시작 후면 빠른 완주의 done 을 running 으로 덮을 수 있다).
+    # 중복 클릭으로 거절돼도 이미 도는 런이라 running 표기는 그대로 맞다.
+    st.eval_run_update(run_id, team=team, status="running", error="", total=total)
+    if not _launch(run_id, remain, llm, team, base):
+        return {"ok": False, "error": "이미 실행 중입니다"}
     return {"ok": True, "id": run_id, "remain": len(remain)}
 
 
@@ -268,12 +282,18 @@ def eval_run_cancel(run_id: int, team=None) -> dict:
     return {"ok": True, "id": run_id}
 
 
-def _launch(run_id: int, rows: list, llm, team, base_metrics: dict):
+def _launch(run_id: int, rows: list, llm, team, base_metrics: dict) -> bool:
+    """생존 확인·등록·시작을 한 임계구역에서(재개 더블클릭이 같은 런 스레드를 둘 띄우지 않게).
+    시작 전 스레드는 is_alive()=False 라 등록과 start 사이 틈도 막아야 한다."""
     th = threading.Thread(target=_run_loop, args=(run_id, rows, llm, team, base_metrics),
                           name=f"prism-eval-run-{run_id}", daemon=True)
     with _LOCK:
+        cur = _ACTIVE.get(run_id)
+        if cur is not None and cur.is_alive():
+            return False
         _ACTIVE[run_id] = th
-    th.start()
+        th.start()
+    return True
 
 
 def _run_loop(run_id: int, rows: list, llm, team, m: dict):
@@ -291,13 +311,15 @@ def _run_loop(run_id: int, rows: list, llm, team, m: dict):
                 return
             chunk = rows[i:i + CHUNK]
             outs = abtest.run_methodology(chunk, meth, llm, concurrency=8)
+            nm = copy.deepcopy(m)                # 결과 저장 성공 전엔 m 을 건드리지 않는다(실패 시 메트릭 = 앞 n건 접두 유지)
             results = []
             for row, out in zip(chunk, outs):
-                r = _tally(m, row, out)
+                r = _tally(nm, row, out)
                 c = row.get("content") or {}
                 r.update({"hash": golden_hash(row), "title": (c.get("title") or "")[:60]})
                 results.append(r)
             st.eval_results_add(run_id, results, team)
+            m = nm
             st.eval_run_update(run_id, team=team, cursor=m["n"], metrics=m)
         st.eval_run_update(run_id, team=team, status="done", cursor=m["n"],
                            metrics=m, finished=time.time())

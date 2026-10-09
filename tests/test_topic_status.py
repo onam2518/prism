@@ -74,8 +74,10 @@ class TestFeedAndSource(unittest.TestCase):
         self.assertEqual(pv["neg_blocked"], 1)
 
     def test_row_stats_signal(self):
+        from datetime import datetime, timedelta, timezone
         from prism.topicops import _row_stats
-        now = time.time()
+        # 'today' 는 KST 자정 기준 → now-3600 이 어제가 되는 00~01시(KST)에도 깨지지 않게 KST 정오로 고정
+        now = datetime.now(timezone(timedelta(hours=9))).replace(hour=12, minute=0, second=0, microsecond=0).timestamp()
         rows = [_row("a", ts=now - 4 * 86400), _row("b", ts=now - 5 * 86400)]
         st = _row_stats([0, 1], rows, now)
         self.assertEqual((st["today"], st["d7"], st["signal"]), (0, 2, "정체 4일"))
