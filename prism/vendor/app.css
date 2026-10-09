@@ -1764,6 +1764,7 @@ button.tbchip:disabled{cursor:default;opacity:.8}
   .kwl-table .kwl-act{width:calc(var(--ds-space-10) * 2.5)}
   .kwl-row{cursor:pointer}
   .kwl-cell{cursor:pointer}
+  .kwl-metrics > summary{margin-bottom:var(--ds-space-2)}
   .kwl-done{cursor:pointer;white-space:nowrap}
   .kwl-cell:hover .kwl-kw{color:var(--ds-primary)}
   .kwl-kw{margin:var(--ds-space-1) 0 0;font-size:12.5px;color:var(--ds-body)}
