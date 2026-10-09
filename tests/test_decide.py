@@ -86,6 +86,8 @@ class DecideTest(unittest.TestCase):
         s = DC.status(r["id"])
         self.assertEqual(s["done"], 3); self.assertEqual(s["report"]["n"], 3); self.assertFalse(s["defs"])
         self.assertNotIn("ent_f1", s["report"]); self.assertEqual(s["report"]["selective"]["grade"]["n"], 3)
+        self.assertFalse(DC.status(r["id"], "other-team")["ok"])           # 다른 팀은 진척·결과를 볼 수 없다
+        self.assertNotIn("team", s)
 
 
 if __name__ == "__main__":

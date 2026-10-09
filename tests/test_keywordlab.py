@@ -136,6 +136,21 @@ class KeywordLabTest(unittest.TestCase):
         self.assertEqual(rows[1]['검수 상태'], '미검수')
         with self.assertRaises(ValueError): K.export_csv(rid, 'b')
 
+    def test_restart_orphaned_running_run_is_interrupted_and_still_usable(self):
+        run = self.run_case(count=2)
+        key = K._key('run', run['id'])
+        for cell in run['cells'].values(): self.final(run, cell)
+        def orphan(r):                                   # 재시작: running 기록만 남고 스레드 없음 · B 칸은 생성 전 중단
+            r['status'] = 'running'; r['cells'].pop(next(c for c in r['cells'] if c.endswith(':B')))
+        K._update(key, 'a', orphan)
+        self.assertNotIn(('a', run['id']), K.ACTIVE)
+        K.reveal({'run_id': run['id']}, 'a')
+        saved = K._get(key, 'a')
+        self.assertEqual((saved['status'], saved['revealed']), ('interrupted', True))
+        a, b = ({s['label']: s['version']['id'] for s in saved['slots']}[x] for x in 'AB')
+        with self.assertRaisesRegex(ValueError, '최종 확정'): K.adopt({'run_id': run['id'], 'version_id': b}, 'a')
+        self.assertTrue(K.adopt({'run_id': run['id'], 'version_id': a}, 'a')['ok'])
+
     def test_delete_run_blocks_gold_adopted_running_and_clears(self):
         run = self.run_case(count=1)
         cell = next(iter(run['cells'].values()))

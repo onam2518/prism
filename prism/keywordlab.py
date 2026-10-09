@@ -288,11 +288,11 @@ def start(body, team, actor):
            'gold_snapshot': {it['key']: copy.deepcopy(c['gold'][it['key']]) for it in items if it['key'] in c['gold']},
            'blind': body.get('blind', True) is not False, 'revealed': body.get('blind', True) is False,
            'dataset_id': _digest(items), 'source_run': body.get('source_run') or ''}
+    with LOCK:
+        ACTIVE.add((team, rid))                    # 기록 저장보다 먼저: 갓 시작한 실행을 _settle 이 중단으로 오인하지 않게
     _update(_key('run', rid), team, lambda target: target.update(run), {})
     _update(CATALOG, team, lambda cat: cat['runs'].append({'id': rid, 'target': target, 'created_at': run['created_at'],
                 'n': len(items), 'slots': len(slots), 'dataset_id': run['dataset_id']}), c)
-    with LOCK:
-        ACTIVE.add((team, rid))
     threading.Thread(target=_run, args=(rid, team), daemon=True).start()
     return {'ok': True, 'id': rid}
 
@@ -340,6 +340,18 @@ def _run(rid, team):
             ACTIVE.discard((team, rid))
 
 
+def _settle(rid, team):
+    """running 인데 이 프로세스에 실행 스레드가 없으면(재시작 등) interrupted 로 저장 · 완료 결과는 보존."""
+    key = _key('run', rid)
+    run = _get(key, team)
+    if run and run['status'] == 'running' and (team, rid) not in ACTIVE:
+        def change(r):
+            if r['status'] == 'running':
+                r.update(status='interrupted', error='실험 응답이 중단되었습니다 · 완료된 결과는 보존되었습니다')
+        run = _update(key, team, change)
+    return run
+
+
 def _metrics(run):
     rows = []
     for slot in run['slots']:
@@ -383,15 +395,12 @@ def _source_urls(items, team):
 
 
 def run_detail(rid, team):
-    run = _get(_key('run', rid), team)
+    run = _settle(rid, team)
     if not run:
         raise ValueError('이 팀에 해당 실험이 없습니다')
     out = copy.deepcopy(run)
     out['metrics'] = _metrics(run)
     out['sources'] = _source_urls(out['items'], team)
-    if out['status'] == 'running' and time.time() - out['updated_at'] > 300:
-        out['status'] = 'interrupted'
-        out['error'] = '실험 응답이 중단되었습니다 · 완료된 결과는 보존되었습니다'
     if not out['revealed']:
         for slot in out['slots']:
             slot['version'] = {'title': '판정 후 공개'}
@@ -547,6 +556,7 @@ def confirm_gold(body, team, actor, can_final):
 
 
 def reveal(body, team):
+    _settle(body.get('run_id'), team)
     def change(run):
         if not run:
             raise ValueError('실험이 없습니다')
@@ -617,14 +627,14 @@ def compile_proposal(body, team, actor):
 
 def adopt(body, team):
     v = _version(body.get('version_id'), team)
-    run = _get(_key('run', body.get('run_id')), team)
-    if not run or run['status'] != 'done' or not run['revealed']:
+    run = _settle(body.get('run_id'), team)
+    if not run or run['status'] not in ('done', 'interrupted') or not run['revealed']:
         raise ValueError('완료 후 공개된 비교 실험을 선택하세요')
     slot = next((s for s in run['slots'] if s['version']['id'] == v['id']), None)
     if not slot:
         raise ValueError('이 실험에서 평가한 버전이 아닙니다')
     cells = [c for c in run['cells'].values() if c['slot'] == slot['label']]
-    if not cells or any(c['status'] != 'done' or not c.get('final') for c in cells):
+    if len(cells) != len(run['items']) or any(c['status'] != 'done' or not c.get('final') for c in cells):   # 중단 실험은 생성 안 된 칸이 있으면 거절
         raise ValueError('해당 버전의 모든 결과를 최종 확정한 뒤 채택하세요')
     def change(c):
         c['active'][('sentence|' if _target(v) == 'sentence' else '') + v['model']] = {'version_id': v['id'], 'run_id': run['id'], 'at': time.time()}
