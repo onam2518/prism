@@ -75,22 +75,20 @@ window.PRISM_APP_PARTS.push(() => ({
   kwState(run) { return ({running:'실행 중',done:'완료',interrupted:'중단'})[run.status] || run.status; },
   kwChooseMode(mode) {
     this.kwMode=mode; this.kwCount=mode==='single' ? 1 : 2;
-    if(mode==='single') { this.kwSample=1; if(!this.kwReusableRuns().some(r=>r.id===this.kwReuse)) this.kwReuse=''; }
     this.kwError='';
   },
-  kwReusableRuns() {return ((this.kwCatalog || {}).runs || []).filter(r=>(this.kwTarget==='sentence' || (r.target || 'keyword')==='keyword') && (this.kwMode!=='single' || r.n===1));},
+  kwReusableRuns() {return ((this.kwCatalog || {}).runs || []).filter(r=>(this.kwTarget==='sentence' || (r.target || 'keyword')==='keyword'));},
   kwInputIssue() {
     if(!['single','compare'].includes(this.kwMode)) return '테스트 방식을 먼저 선택하세요';
     if((this.kwMode==='single' && this.kwCount!==1) || (this.kwMode==='compare' && ![2,3].includes(this.kwCount))) return '비교 조합 수를 확인하세요';
     const slots=this.kwSlots.slice(0,this.kwCount);
-    if(slots.some(s=>!s.model || !s.version_id)) return '각 조합의 모델과 프롬프트 버전을 선택하세요';
+    if(slots.some(s=>!s.model || !s.version_id)) return this.kwMode==='single' ? '모델과 프롬프트 버전을 선택하세요' : '각 조합의 모델과 프롬프트 버전을 선택하세요';
     if(new Set(slots.map(s=>s.version_id)).size!==slots.length) return '서로 다른 모델·프롬프트 조합을 선택하세요';
     if(this.kwSource==='direct' && (!this.kwLead.trim() || (this.kwTarget==='keyword' && !this.kwSplit(this.kwEntities).length))) return this.kwTarget==='sentence' ? '리드문을 입력하세요' : '리드문과 엔티티를 입력하세요';
-    if(this.kwSource==='sample' && this.kwMode==='compare' && (!Number.isInteger(this.kwSample) || this.kwSample<1 || this.kwSample>30)) return '샘플 수는 1~30건으로 입력하세요';
+    if(this.kwSource==='sample' && (!Number.isInteger(this.kwSample) || this.kwSample<1 || this.kwSample>30)) return '샘플 수는 1~30건으로 입력하세요';
     if(this.kwSource==='hash') {
       const hashes=this.kwHashes.split(/[\s,]+/).filter(Boolean);
       if(!hashes.length || hashes.length>30 || new Set(hashes).size!==hashes.length) return '중복 없이 콘텐츠 해시를 1~30개 입력하세요';
-      if(this.kwMode==='single' && hashes.length!==1) return '단건 테스트에는 콘텐츠 해시 1개만 입력하세요';
     }
     if(this.kwSource==='reuse' && !this.kwReusableRuns().some(r=>r.id===this.kwReuse)) return '입력을 재사용할 실험을 선택하세요';
     if(this.kwTarget==='sentence') {
@@ -115,7 +113,7 @@ window.PRISM_APP_PARTS.push(() => ({
       const data={action:'start',target:this.kwTarget, slots:this.kwSlots.slice(0,this.kwCount).map(s=>({...s})),blind:this.kwMode==='compare' && this.kwBlind};
       if(this.kwTarget==='sentence') Object.assign(data,{keyword_source:this.kwKeywordSource,keyword_slot:this.kwKeywordSlot,keywords:this.kwSplit(this.kwSentenceKeywords)});
       if(this.kwSource==='reuse') data.source_run=this.kwReuse;
-      else if(this.kwSource==='sample') data.sample=this.kwMode==='single' ? 1 : Number(this.kwSample);
+      else if(this.kwSource==='sample') data.sample=Number(this.kwSample);
       else if(this.kwSource==='hash') data.hashes=this.kwHashes.split(/[\s,]+/).filter(Boolean);
       else Object.assign(data,{title:this.kwTitle,meta:{summary:this.kwLead,entities:this.kwSplit(this.kwEntities),
         intent:this.kwSplit(this.kwIntents),content_category:this.kwSplit(this.kwCategories)}});
