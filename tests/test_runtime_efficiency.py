@@ -3,7 +3,6 @@ import copy
 import json
 from pathlib import Path
 import tempfile
-import threading
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
@@ -110,7 +109,7 @@ class TestRuntimeBoundaries(unittest.TestCase):
 
     def test_writes_are_not_replayed_after_lost_response(self):
         for method in ('POST', 'PATCH', 'DELETE', 'GET'):
-            with self.subTest(method=method), patch.object(SupabaseStore, '_TLS', threading.local()):
+            with self.subTest(method=method), patch.object(SupabaseStore, '_POOL', {}):
                 conn = Mock(); conn.getresponse.side_effect = ConnectionResetError('response lost after commit')
                 st = object.__new__(SupabaseStore); st.url = 'https://unused.invalid'
                 with patch('prism.supastore.http.client.HTTPSConnection', return_value=conn):

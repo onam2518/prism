@@ -23,6 +23,50 @@ _SV = None                      # serve 모듈 객체(컴포지션 루트) · se
 _COST_LOCK = threading.Lock()
 
 
+# ── 롤업 원장 메모리 사본(단일 서버 프로세스 전제) ─────────────────────────────
+# 종전엔 갱신마다 90일 원장을 GET → 수정 → POST 하는 동안 전역 락을 쥐어, 인입·배치 워커와
+# 판정이 원격 왕복 2회씩 줄을 섰다. 첫 사용 때만 읽고 이후엔 메모리 사본을 고친다.
+# 저장은 락 밖에서 하고, 저장 중 들어온 갱신은 dirty 로 표시해 저장 중인 스레드가 이어 저장한다
+# (뒤늦은 옛 스냅샷이 새 저장을 덮지 않게 저장은 한 번에 한 스레드). 저장 실패(_report_save 는
+# 예외를 삼킨다)여도 메모리 증분은 남아 다음 저장에 함께 실린다.
+# ponytail: 다중 프로세스·외부 수정은 반영 못 함(원장 writer 는 이 모듈뿐) · 다중 워커로 가면 서버측 증분 RPC
+_LEDGER = {}                    # (kind, team) -> {"st", "doc", "saving", "dirty"}
+
+
+def _ledger_doc(kind, team):
+    """원장 메모리 사본(호출측이 해당 원장 락을 쥔 상태). 스토어가 바뀌면(테스트·백엔드 전환) 다시 읽는다.
+    첫 읽기 실패는 예외로 올린다 — 빈 원장으로 90일치를 덮어쓰지 않게(이번 증분만 버린다)."""
+    st = _SV.get_store()
+    ent = _LEDGER.get((kind, team))
+    if ent is None or ent["st"] is not st:
+        doc = st.get_report(kind, team=team) if (st and hasattr(st, "get_report")) else None
+        ent = _LEDGER[(kind, team)] = {"st": st, "doc": doc if isinstance(doc, dict) else {},
+                                       "saving": False, "dirty": False}
+    return ent["doc"]
+
+
+def _ledger_flush(kind, team, lock):
+    """메모리 사본을 락 밖에서 저장. 다른 스레드가 저장 중이면 표시만 하고 즉시 반환."""
+    ent = _LEDGER[(kind, team)]
+    with lock:
+        if ent["saving"]:
+            ent["dirty"] = True
+            return
+        ent["saving"] = True
+    try:
+        while True:
+            with lock:
+                ent["dirty"] = False
+                snap = json.loads(json.dumps(ent["doc"]))     # 저장 중 동시 수정과 분리
+            _SV._report_save(kind, snap, team)
+            with lock:
+                if not ent["dirty"]:
+                    return
+    finally:
+        with lock:
+            ent["saving"] = False
+
+
 # 롤업 신규 키(2026-08-09 · 프롬프트 캐시 관측). 기존 키(cost·n·in·out)는 그대로 두고 추가만 한다.
 # 구 리포트에는 이 키들이 아예 없으므로 읽을 때도 쓸 때도 `get(...) or 0` 로 시작해야 한다
 # (기존 원장을 마이그레이션하지 않고 그대로 이어 쓴다 = 그날부터 쌓이고 과거는 0).
@@ -42,7 +86,7 @@ def _log_cost_rollup(trace: dict, team=None):
         lat = trace.get("latency_ms") or {}
         model = (trace.get("model") or "").strip() or "(미기록)"
         with _COST_LOCK:
-            rep = _SV._report_get("cost_rollup", team, {}) or {}
+            rep = _ledger_doc("cost_rollup", team)
             days = rep.setdefault("days", {})
             d = days.setdefault(day, {"cost": 0.0, "n": 0, "in": 0, "out": 0,
                                       "models": {}, "calls": {}})
@@ -74,8 +118,8 @@ def _log_cost_rollup(trace: dict, team=None):
             if len(days) > 90:                       # 90일 초과분 정리(리포트 무한 성장 방지)
                 for k in sorted(days)[:-90]:
                     days.pop(k, None)
-            _SV._report_save("cost_rollup", rep, team)
             day_total = d["cost"]
+        _ledger_flush("cost_rollup", team, _COST_LOCK)
         # 당일 임계 초과 통지(웹훅 미설정 시 무동작) · 누적이 팀 스코프이므로 팀도 함께 넘긴다
         # — 안 넘기면 그날 임계를 먼저 넘은 팀 하나만 알림을 받는다.
         AL.on_cost(day, day_total, team=team)
@@ -104,18 +148,20 @@ def _log_fail_rollup(trace: dict, service: str = "", team=None,
         if not fails:
             if ch:                                   # 성공 실행 → 해소된 콘텐츠는 목록에서 제거
                 with _FAIL_LOCK:
-                    rep = _SV._report_get("fail_rollup", team, {}) or {}
+                    rep = _ledger_doc("fail_rollup", team)
                     rec = rep.get("recent") or []
                     kept = [e for e in rec if (e or {}).get("hash") != ch]
-                    if len(kept) != len(rec):
+                    changed = len(kept) != len(rec)
+                    if changed:
                         rep["recent"] = kept
-                        _SV._report_save("fail_rollup", rep, team)
+                if changed:
+                    _ledger_flush("fail_rollup", team, _FAIL_LOCK)
             return
         day = day_key()
         model = (trace.get("model") or "").strip() or "(미기록)"
         svc = (service or "").strip() or "(미기록)"
         with _FAIL_LOCK:
-            rep = _SV._report_get("fail_rollup", team, {}) or {}
+            rep = _ledger_doc("fail_rollup", team)
             days = rep.setdefault("days", {})
             d = days.setdefault(day, {})
             for f in fails:
@@ -138,7 +184,7 @@ def _log_fail_rollup(trace: dict, service: str = "", team=None,
                                "service": svc, "model": model, "kinds": kinds,
                                "calls": calls, "details": details, "day": day})
                 rep["recent"] = rec[:_RECENT_FAIL_CAP]
-            _SV._report_save("fail_rollup", rep, team)
+        _ledger_flush("fail_rollup", team, _FAIL_LOCK)
         first = (fails[0] or {}) if fails else {}
         AL.on_fail(len(fails), kind=str(first.get("kind") or ""), model=model)   # 급증 통지
     except Exception:
@@ -230,7 +276,7 @@ def _log_activity_rollup(team=None, reviews=0, corrections=0, gold_n=0, gold_cor
     """검수 활동 1건(판정·골드 응답)을 append-only 일별 롤업에 누적. 실패해도 검수는 계속."""
     try:
         with _ACT_LOCK:
-            rep = _SV._report_get("activity_rollup", team, {}) or {}
+            rep = _ledger_doc("activity_rollup", team)
             days = rep.setdefault("days", {})
             d = days.setdefault(day_key(), {"reviews": 0, "corrections": 0,
                                             "gold_n": 0, "gold_correct": 0})
@@ -241,7 +287,7 @@ def _log_activity_rollup(team=None, reviews=0, corrections=0, gold_n=0, gold_cor
             if len(days) > 90:                       # 90일 초과분 정리
                 for k in sorted(days)[:-90]:
                     days.pop(k, None)
-            _SV._report_save("activity_rollup", rep, team)
+        _ledger_flush("activity_rollup", team, _ACT_LOCK)
     except Exception:
         pass
 
@@ -376,7 +422,7 @@ def build_results_csv(team=None) -> bytes:
     """적재된 추출 결과(콘텐츠 현황)를 CSV(엑셀)로 내보냄. team 스코프 강제(전 팀 유출 방지).
 
     행 수가 CSV_MAX_ROWS 를 넘으면 최신분만 담고 **첫 줄에 잘렸다고 적는다**."""
-    rows = _SV.results_rows(limit=CSV_MAX_ROWS + 1, team=team)
+    rows = _SV.results_rows(limit=CSV_MAX_ROWS + 1, team=team, cache=False)   # 일회성 대량 → 캐시 우회
     truncated = len(rows) > CSV_MAX_ROWS
     if truncated:
         rows = rows[-CSV_MAX_ROWS:]                 # recent 는 오래된 것부터 나열 → 최신분을 남긴다

@@ -24,7 +24,7 @@ class TestCsvFormulaInjection(unittest.TestCase):
                "quality_meta": {"finalGrade": "G", "reasons": ["-1+1"]},
                "content_ref": {"title": "+cmd", "displayServiceName": "뉴스"}}
         orig = SV.results_rows
-        SV.results_rows = lambda limit=5000, team=None: [row]
+        SV.results_rows = lambda limit=5000, team=None, cache=True: [row]
         self.addCleanup(lambda: setattr(SV, "results_rows", orig))
         csv = SV.build_results_csv().decode("utf-8")
         self.assertIn('"\'=HYPERLINK', csv)          # 선행 ' 로 수식 무력화
