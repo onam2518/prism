@@ -16,7 +16,7 @@
         </div>
           <div class="panel-bd">
             <template x-for="j in filteredJobs" x-bind:key="j.id">
-              <div class="w-run" x-bind:style="(j.hashes||[]).length ? 'cursor:pointer' : ''" x-on:click="jobContents(j)" x-bind:data-tip="(j.hashes||[]).length ? '해당 작업의 콘텐츠 보기' : null" data-tip-pos="top"><span class="w-run__av"><img src="/vendor/daesik-batter.svg" alt=""></span><div style="flex:1;min-width:0">
+              <div class="w-run" x-bind:style="j.hashes_n ? 'cursor:pointer' : ''" x-on:click="jobContents(j)" x-bind:data-tip="j.hashes_n ? '해당 작업의 콘텐츠 보기' : null" data-tip-pos="top"><span class="w-run__av"><img src="/vendor/daesik-batter.svg" alt=""></span><div style="flex:1;min-width:0">
                 <div class="w-run__t"><b class="text-ink" x-text="j.name"></b> · <span x-text="(j.kind || '자동 인입') + (j.running ? ' 중' : ' 완료')"></span> <span class="ds-badge" x-bind:class="j.trigger==='auto' ? 'ds-badge--intent' : 'ds-badge--entity'" style="cursor:help" data-tip="트리거 · 자동=스케줄 폴링, 수동=관리자 실행" data-tip-pos="top" x-text="j.trigger==='auto' ? '자동' : '수동'"></span>
                   <span class="text-xs text-muted tnum" x-show="j.total" x-text="j.done + ' / ' + j.total + '건' + (j.total ? (' · ' + Math.round((j.done/j.total)*100) + '%') : '')"></span>
                   <span class="text-xs text-muted tnum" x-show="j.running && j.eta_s != null" x-text="'· 남은 예상 ' + fmtEta(j.eta_s) + ' (건당 ' + ((j.per_item_ms||0)/1000).toFixed(1) + '초)'"></span>

@@ -1353,7 +1353,7 @@ def content_services(team=None) -> dict:
     """{hash: 서비스명(displayServiceName)} · 담당 규칙의 재료(content_categories 관례)."""
     def _calc():
         out = {}
-        for r in _SV.results_rows(team=team) or []:
+        for r in _SV.results_rows(team=team, body=False) or []:   # 서비스명·분류만(본문 불필요)
             ref = r.get("content_ref") or {}
             ch = _row_key(ref)
             if ch:
@@ -1376,7 +1376,7 @@ def content_categories(team=None) -> dict:
     콘텐츠마다 get_item_meta 를 부르면 왕복이 폭발하므로 결과 뷰에서 한 번에 만든다."""
     def _calc():
         out = {}
-        for r in _SV.results_rows(team=team) or []:
+        for r in _SV.results_rows(team=team, body=False) or []:   # 서비스명·분류만(본문 불필요)
             ch = _row_key(r.get("content_ref") or {})
             cats = dict.fromkeys(c.split("/")[0].strip()
                                  for c in MC.category_paths((r.get("item_meta") or {}).get("content_category")))

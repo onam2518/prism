@@ -502,7 +502,7 @@ def apply_feedback(data: dict) -> dict:
         # 생성자·관리자도 예외 없음(직접 검수하려면 콘텐츠 관리에서 배정을 수정) ·
         # 미지정 콘텐츠는 종전대로 전원 가능 · 판정 취소(위 분기)는 배정과 무관하게 허용.
         try:
-            asg1 = ((st.assignees(team=data.get("_team")) or {}).get(ch)
+            asg1 = ((st.assignees(team=data.get("_team"), hashes=[ch]) or {}).get(ch)   # 이 건만(배정 전량 왕복 제거)
                     if hasattr(st, "assignees") else None)
         except Exception:
             asg1 = None
@@ -595,9 +595,14 @@ def mission_progress(reviewer, team=None) -> list:
     if not (st and reviewer and hasattr(st, "feedback_today")):
         return []
     try:
-        done = {"daily5": st.feedback_today(reviewer, team=team),
+        if hasattr(st, "feedback_today_hashes"):       # 오늘 판정 해시 1회 조회를 daily5·split1 이 나눠 쓴다
+            today = st.feedback_today_hashes(reviewer, team=team)
+            daily, split = len(today), st.split_reviewed_today(reviewer, team=team, today=today)
+        else:
+            daily, split = st.feedback_today(reviewer, team=team), st.split_reviewed_today(reviewer, team=team)
+        done = {"daily5": daily,
                 "gold1": st.gold_today(reviewer, team=team).get("correct", 0),
-                "split1": st.split_reviewed_today(reviewer, team=team),
+                "split1": split,
                 "fill1": (st.patches_today(reviewer, team=team) if hasattr(st, "patches_today") else 0)}
         ms = list(MISSIONS)
         if reviewer in reviewer_roles(team):
@@ -618,13 +623,27 @@ def _check_missions(reviewer, team=None) -> list:
     if not (st and reviewer and hasattr(st, "log_event_once")):
         return []
     day = int(time.time() // 86400)
+    # 오늘 이미 지급 확인된 미션(프로세스 메모리 · 스토어 객체에 매달아 스토어 교체 시 함께 사라진다).
+    # 미션 달성 후엔 판정마다 log_event_once(전역 락 아래 GET)를 미션 수만큼 반복하던 것을 건너뛴다.
+    # 놓쳐도 log_event_once 가 멱등이라 중복 지급은 없다(이 집합은 왕복 절감용일 뿐).
+    memo = getattr(st, "_mission_awarded", None)
+    if not memo or memo.get("day") != day or len(memo["keys"]) > 20000:
+        memo = {"day": day, "keys": set()}
+        try:
+            st._mission_awarded = memo
+        except Exception:
+            pass
     fresh = []
     for m in mission_progress(reviewer, team):
         if not m["completed"]:
             continue
+        key = (team, reviewer, m["id"])
+        if key in memo["keys"]:
+            continue
         try:
             if st.log_event_once(reviewer, "mission:" + m["id"], day, m["bonus"], team=team):
                 fresh.append({"id": m["id"], "label": m["label"], "bonus": m["bonus"]})
+            memo["keys"].add(key)                      # 방금 지급했거나 이미 있던 것 → 오늘 다시 볼 필요 없음
         except Exception:
             pass
     return fresh
@@ -1004,19 +1023,14 @@ def _lack_classes(team=None) -> set:
 def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
     """검수 대상 콘텐츠: 판정 결과 전체를 한 표로(모델·버전·필터 · 빠른 검수).
     검수 대기(YELLOW)·불일치도 포함되며, 검수자 식별 시 골드 문항을 섞는다."""
-    rows = _SV.results_rows(team=team)
-    st = _SV.get_store()
+    rows = _SV.results_rows(team=team, body=False)   # 목록은 메타만(본문은 /raw-detail 단건)
     lack = _lack_classes(team)                     # 부족 분류(정답셋 커버리지) 배지 원천
     try:
         fmap = _SV.feedback_map_cached(team)       # 원격 30s 캐시(화면 전환·판정마다 전량 재조회 방지)
     except Exception:
         fmap = {}
-    try:                                           # 평가용 홀드아웃은 검수 대상에서 제외(학습 오염 방지)
-        pmap = st.purpose_map(team=team) if (st and hasattr(st, "purpose_map")) else {}
-    except Exception:
-        pmap = {}
-    try:                                           # 콘텐츠별 검수 담당 배정(있으면 표에 표시)
-        asg = st.assignees(team=team) if (st and hasattr(st, "assignees")) else {}
+    try:                                           # 콘텐츠별 검수 담당 배정(있으면 표에 표시) · 원격 30s 캐시
+        asg = _SV.assignees_cached(team)
     except Exception:
         asg = {}
     try:                                           # 리드 최종판정(의견 갈림 해소 배지)
@@ -1036,7 +1050,7 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
         qm = r.get("quality_meta") or {}
         tr = r.get("trace") or {}
         ch = _row_key(ref)
-        if pmap.get(ch) == "eval":
+        if r.get("purpose") == "eval":             # 평가용 홀드아웃은 검수 대상에서 제외(학습 오염 방지 · 행에 실려 온다)
             continue
         if _SV._is_pending_row(r):                     # 미실행(STEP 1 추가만) 콘텐츠는 검수 대상 아님
             continue
@@ -1132,7 +1146,7 @@ def raw_detail(content_hash: str, team=None) -> dict:
 def model_stats(team=None) -> dict:
     """결과 비교 · 요소 단위 모델별 현황: 모델별로 유통 G%·처리 건수·평균 리드문·
     인텐트/카테고리/품질 사유 상위를 집계(같은 정보요소를 모델 축으로 비교)."""
-    rows = _SV.results_rows(team=team)
+    rows = _SV.results_rows(team=team, body=False)   # 메타만 집계(본문 불필요)
     by = {}
     for r in rows:
         tr = r.get("trace") or {}
@@ -1190,7 +1204,7 @@ def content_history(content_hash: str, team=None) -> dict:
     masked = ch in rewrite_items(team)
     items = []
     try:
-        fb = (st.feedback_map(team=team) or {}).get(ch) or {}
+        fb = (_SV.feedback_map_cached(team) or {}).get(ch) or {}   # 원격 30s 캐시(판정 쓰기가 무효화)
         for v in (fb.get("verdicts") or []):
             verdict = v.get("verdict") or ""
             items.append({"kind": "verdict", "who": v.get("reviewer") or "",

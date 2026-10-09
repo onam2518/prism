@@ -315,7 +315,7 @@ def dashboard_data(team=None) -> dict:
 
 def _dashboard_compute(team=None) -> dict:
     """적재 결과 집계(유통 G/R · 인텐트 · 카테고리 · 품질 사유) + 콘텐츠별 피드백."""
-    rows = _SV.results_rows(team=team)
+    rows = _SV.results_rows(team=team, body=False)    # 메타 집계만(본문 불필요)
     n = len(rows)
     g = sum(1 for r in rows if (r.get("quality_meta") or {}).get("finalGrade") == "G")
     intent_c, cat_c, reason_c = {}, {}, {}

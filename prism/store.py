@@ -664,9 +664,9 @@ class Store:
             c.commit()
         return {"inserted": ins, "updated": upd, "skipped": skip}
 
-    def recent(self, limit: int = 5000, team=None) -> list:
+    def recent(self, limit: int = 5000, team=None, body: bool = True) -> list:
         """최근 적재 결과(payload)를 시간순(오래된→최신)으로. content_id = 리스트 인덱스.
-        team 은 supabase 와 시그니처 통일용(sqlite 단일팀이라 미사용).
+        team·body 는 supabase 와 시그니처 통일용(sqlite 단일팀 · payload 한 덩어리라 항상 전체 행).
 
         content_ref.body_hash 에는 저장 키(content_hash 컬럼 · 16자)를 실어 내린다 —
         supastore.recent 와 같은 계약이다(_row_key 가 16자면 그대로 쓴다). 종전에는 payload
@@ -676,14 +676,16 @@ class Store:
         대신 새 행을 만들었다(2026-07-29 로컬 재현 · 운영 supabase 는 해당 없음)."""
         c = self._conn()
         rows = []
-        for ch, payload, cat in c.execute(
-                "SELECT content_hash,payload,created_at FROM results ORDER BY created_at DESC LIMIT ?",
-                (int(limit),)):
+        for ch, payload, cat, purpose in c.execute(
+                "SELECT r.content_hash,r.payload,r.created_at,p.purpose FROM results r "
+                "LEFT JOIN content_purpose p ON p.content_hash=r.content_hash "
+                "ORDER BY r.created_at DESC LIMIT ?", (int(limit),)):
             r = json.loads(payload)
             if isinstance(r, dict) and isinstance(r.get("content_ref"), dict) and ch:
                 r["content_ref"]["body_hash"] = ch
             if isinstance(r, dict):
                 r["_ts"] = float(cat or 0)                 # 적재 시각 · 토픽 오늘/7일 집계(supastore 와 같은 계약)
+                r["purpose"] = purpose or "review"         # 용도 · /raw 홀드아웃 제외(supastore 와 같은 계약)
             rows.append(r)
         rows.reverse()
         return rows
@@ -911,6 +913,13 @@ class Store:
         return int(c.execute("SELECT COUNT(*) FROM feedback WHERE reviewer=? AND ts>=?",
                              (reviewer or "(익명)", day_start)).fetchone()[0])
 
+    def feedback_today_hashes(self, reviewer, team=None) -> list:
+        """검수자의 오늘 판정 해시 목록(supastore 와 같은 계약 · 미션 확인 1회 조회 공유)."""
+        day_start = (int(time.time() // 86400)) * 86400.0
+        c = self._conn()
+        return [h for (h,) in c.execute("SELECT content_hash FROM feedback WHERE reviewer=? AND ts>=?",
+                                        (reviewer or "(익명)", day_start))]
+
     def gold_today(self, reviewer, team=None) -> dict:
         """검수자의 오늘 골드 문항 {n, correct}(미션 판정용)."""
         day_start = (int(time.time() // 86400)) * 86400.0
@@ -919,8 +928,9 @@ class Store:
                             (reviewer or "(익명)", day_start)).fetchone()
         return {"n": int(n or 0), "correct": int(corr or 0)}
 
-    def split_reviewed_today(self, reviewer, team=None) -> int:
-        """검수자가 오늘 의견 갈린(split) 콘텐츠에 판정한 건수(불일치 재검토 미션 판정용)."""
+    def split_reviewed_today(self, reviewer, team=None, today=None) -> int:
+        """검수자가 오늘 의견 갈린(split) 콘텐츠에 판정한 건수(불일치 재검토 미션 판정용).
+        today 는 supastore 와 시그니처 통일용(로컬은 단일 SQL 이라 미사용)."""
         day_start = (int(time.time() // 86400)) * 86400.0
         c = self._conn()
         return int(c.execute("""
@@ -1607,7 +1617,8 @@ class Store:
               int(bool(r.get("passed"))), r.get("error") or "", now) for r in rows])
         c.commit()
 
-    def eval_results_list(self, run_id, team=None, only_fail=False, limit=2000) -> list:
+    def eval_results_list(self, run_id, team=None, only_fail=False, limit=2000, checked=False) -> list:
+        # checked 는 supastore 와 시그니처 통일용(로컬은 팀 게이트 없음)
         c = self._conn()
         q = ("SELECT content_hash,title,expected,got,passed,error,rubric FROM eval_results "
              "WHERE run_id=?" + (" AND passed=0" if only_fail else "") + " LIMIT ?")
@@ -1702,7 +1713,8 @@ class Store:
                                  (int(run_id),)).fetchone()
         return self._pilot_row(r) if r else None
 
-    def autopilot_latest(self, team=None):
+    def autopilot_latest(self, team=None, with_hashes=True):
+        # with_hashes 는 supastore 와 시그니처 통일용(로컬은 항상 전체 행 · 호출부는 키 유무로 판단)
         c = self._conn()
         r = c.execute(f"SELECT {self._PILOT_COLS} FROM autopilot_runs "
                       "ORDER BY id DESC LIMIT 1").fetchone()

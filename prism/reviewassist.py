@@ -271,11 +271,10 @@ def _golden(team):
 
 
 def _feedback(team) -> dict:
-    st = _SV.get_store() if _SV else None
-    if not (st and hasattr(st, "feedback_map")):
+    if not _SV:
         return {}
-    try:
-        return st.feedback_map(team=team) or {}
+    try:                                           # 원격 30s 캐시(판정 쓰기가 무효화) · 읽기 전용 공유본
+        return _SV.feedback_map_cached(team) or {}
     except Exception:
         return {}
 

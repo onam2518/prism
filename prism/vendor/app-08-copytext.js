@@ -193,9 +193,12 @@ window.PRISM_APP_PARTS.push(() => ({
       ingestBusy: {}, ingestRunMsg: {}, ingestJobs: [], _ingestPoll: null,
       delArm: '', _delArmT: null,                  // 콘텐츠 개별 삭제 2단계 확인
       jobFilter: null,                              // 실행 큐 작업 클릭 -> 해당 콘텐츠만 보기 {name, hashes}
-      jobContents(j) {
-        if (!(j.hashes || []).length) return;
-        this.jobFilter = { name: j.name, kind: j.kind || '', hashes: j.hashes };
+      async jobContents(j) {
+        if (!j.hashes_n) return;                    // 폴링 응답엔 건수만 · 목록은 클릭 시 1회 조회
+        let hs = [];
+        try { hs = ((await (await fetch('/ingest-status?job=' + encodeURIComponent(j.id), { headers: this._authHeaders() })).json()) || {}).hashes || []; } catch (e) { return; }
+        if (!hs.length) return;
+        this.jobFilter = { name: j.name, kind: j.kind || '', hashes: hs };
         this.$nextTick(() => { const el = document.getElementById('added-contents'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
       },
       // 모델 필터: 빈 값=전체 · PENDING 상수=아직 초안이 없는(미실행) 건만
