@@ -21,7 +21,7 @@ class ReviewTimeTest(unittest.TestCase):
     def test_retry_after_reload_is_idempotent_and_account_scoped(self):
         script = r'''
 const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
-const saved=new Map(),calls=[];let now=10000,fail=true;
+const saved=new Map(),calls=[];let now=Date.now(),fail=true;
 const window={addEventListener(){},crypto:require('crypto')};
 const localStorage={get length(){return saved.size},key:i=>[...saved.keys()][i],getItem:k=>saved.get(k),setItem:(k,v)=>saved.set(k,v),removeItem:k=>saved.delete(k)};
 vm.runInNewContext(fs.readFileSync('prism/vendor/app-22-reviewtime.js','utf8'),{window,localStorage,Date:{now:()=>now},setInterval(){},clearInterval(){},document:{hidden:false},
@@ -49,7 +49,7 @@ function app(reviewer){return Object.assign(window.PRISM_APP_PARTS[0](),{reviewe
     def test_axis_save_flows_into_time_statistics(self):
         script = r'''
 const fs=require('fs'), vm=require('vm'), assert=require('assert/strict');
-const window={addEventListener(){},crypto:require('crypto')};let now=10000;const sent=[];
+const window={addEventListener(){},crypto:require('crypto')};let now=Date.now();const sent=[];
 const context={window,Date:{now:()=>now},document:{hidden:false},setInterval(){},clearInterval(){},
  fetch:async(url,opt)=>{sent.push(JSON.parse(opt.body));return {ok:true,json:async()=>({ok:true})}}};
 for(const f of ['app-20-operations.js','app-22-reviewtime.js'])vm.runInNewContext(fs.readFileSync('prism/vendor/'+f,'utf8'),context);
@@ -101,6 +101,15 @@ app.opsRequest=async()=>({hash:app.detail.hash,basis:{token:'v1'},review:{axes},
             with self.assertRaises(ValueError):
                 RT.clean(bad)
         self.assertEqual(RT.clean(_rec(outcome="abandoned", verdict_wall_ms=None))["outcome"], "abandoned")
+
+    def test_recorded_at_bounds(self):
+        import time
+        now = time.time()
+        self.assertAlmostEqual(RT.clean(_rec(recorded_at=now - 3600))["recorded_at"], now - 3600)
+        self.assertLessEqual(RT.clean(_rec(recorded_at=now + 60))["recorded_at"], time.time())   # 작은 시계 오차는 지금으로
+        for bad in (0, 1700000000, now - 8 * 86400, now + 3600, "nan", "x"):   # 7일 밖 과거·먼 미래·비숫자
+            with self.assertRaises(ValueError):
+                RT.clean(_rec(recorded_at=bad))
 
     def test_parse_and_stats(self):
         ev = lambda rv, kind, meta, ts: {"reviewer": rv, "kind": kind, "meta": json.dumps(meta), "ts": ts}

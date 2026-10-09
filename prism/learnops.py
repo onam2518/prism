@@ -72,8 +72,10 @@ def _scope_golden(rows, scope, st, team=None, hashes=None):
         return rows
     try:
         pm = st.purpose_map(team) if hasattr(st, "purpose_map") else {}
-    except Exception:
-        pm = {}
+    except Exception as e:
+        # 빈 맵으로 삼키면 평가셋이 비고 _holdout_scope 가 조용히 'all'(학습 노출분 포함)로 되돌아간다 → 드러낸다
+        raise RuntimeError("평가용 지정(용도) 조회에 실패해 홀드아웃을 확인할 수 없습니다 · 잠시 후 다시 시도하세요: "
+                           + str(e)[:120]) from e
     return [r for r in rows if pm.get(golden_hash(r), "review") == "eval"]
 
 def _holdout_scope(team=None, hashes=None) -> str:
@@ -99,7 +101,10 @@ def eval_golden(team=None, model: str = "", scope: str = "all", hashes=None, pro
     rows = st.get_golden(team)
     if not rows:
         return {"ok": False, "error": "등록된 골든셋이 없습니다 · 팀 관리에서 등록하세요"}
-    rows = _scope_golden(rows, scope, st, team, hashes)
+    try:
+        rows = _scope_golden(rows, scope, st, team, hashes)
+    except RuntimeError as e:
+        return {"ok": False, "error": str(e)}
     if not rows:
         return {"ok": False, "error": "평가용으로 지정된 콘텐츠의 정답이 없습니다 · 콘텐츠 관리 STEP 1에서 용도를 지정하세요"}
     from . import abtest
@@ -667,7 +672,10 @@ def _compare_prepare(models, team, scope: str):
     rows = st.get_golden(team)
     if not rows:
         return None, {"ok": False, "error": "골든셋이 비어 있습니다 · 검수로 '정확' 확정분을 쌓으세요"}
-    rows = _scope_golden(rows, scope, st, team)
+    try:
+        rows = _scope_golden(rows, scope, st, team)
+    except RuntimeError as e:
+        return None, {"ok": False, "error": str(e)}
     if not rows:
         return None, {"ok": False, "error": "평가용으로 지정된 콘텐츠의 정답이 없습니다 · 콘텐츠 관리 STEP 1에서 용도를 지정하세요"}
     cfg = Config.load()
@@ -1146,7 +1154,10 @@ def learning_batch(team=None, models=None, model: str = "", golden_hashes=None, 
         popt = (lambda ph: {"progress": lambda d, t: step(ph, d, t)}) if progress else (lambda ph: {})
         prev_learned = dict(PR.LEARNED)
         prev_by_model = {m: dict(v) for m, v in (PR.LEARNED_BY_MODEL or {}).items()}
-        scope = _holdout_scope(team, golden_hashes)          # 전/후를 개선이 못 본 홀드아웃으로 잰다(없으면 전체 · 고정 셋 안에서 판정)
+        try:
+            scope = _holdout_scope(team, golden_hashes)      # 전/후를 개선이 못 본 홀드아웃으로 잰다(없으면 전체 · 고정 셋 안에서 판정)
+        except RuntimeError as e:                            # 용도 조회 실패 → 'all' 로 조용히 섞지 않고 반영 중단
+            return {"ok": False, "error": str(e) + " · 학습 미반영", "golden": golden}
         step("pre")
         eval_pre = eval_golden(team, model=model, scope=scope, **gopt, **popt("pre"))            # 개선 전(현행 프롬프트) 점수 · model 비면 기본 텍스트 슬롯
         if not eval_pre.get("ok"):

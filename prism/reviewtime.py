@@ -22,6 +22,8 @@ import statistics
 
 IDLE_MS = 120_000                # 입력 없는 구간을 작업 시간에서 빼는 기준(브라우저와 같은 값)
 MAX_MS = 4 * 3600 * 1000         # 한 번 진입의 상한 · 넘는 값은 잘라 저장(탭을 켜 둔 채 퇴근 등)
+RECORDED_MAX_AGE = 7 * 86400     # recorded_at 허용 과거 범위(초)
+RECORDED_SKEW = 300              # recorded_at 허용 미래 오차(초 · 브라우저 시계)
 OUTCOMES = ("verdict", "abandoned", "revisit")
 _MS_FIELDS = ("wall_ms", "active_ms", "verdict_wall_ms", "verdict_active_ms", "note_wall_ms", "note_active_ms")
 
@@ -56,10 +58,11 @@ def clean(data: dict) -> dict:
     if data.get("recorded_at") is not None:
         import time, math
         try:
-            recorded = float(data["recorded_at"])
-            if not math.isfinite(recorded) or recorded < 0:
+            recorded, now = float(data["recorded_at"]), time.time()
+            # 대기열 재전송까지 7일 · 시계 오차 5분까지만 받는다(그 밖은 과거·미래 일자 집계를 오염)
+            if not math.isfinite(recorded) or not now - RECORDED_MAX_AGE <= recorded <= now + RECORDED_SKEW:
                 raise ValueError()
-            meta["recorded_at"] = min(recorded, time.time())
+            meta["recorded_at"] = min(recorded, now)
         except (TypeError, ValueError):
             raise ValueError("기록 시각이 올바르지 않습니다") from None
     for k in _MS_FIELDS:

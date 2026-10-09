@@ -78,7 +78,7 @@
     <button class="ds-btn ds-btn--ghost ds-btn--s-sm" x-on:click="kwLoad()">새로고침</button><button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-show="kwTab==='run'" x-bind:disabled="!kwRunData || kwRunData.status==='running'" x-on:click="kwDownloadCsv()" data-tip="콘텐츠 × 조합 한 행 · 제목·본문·엔티티·핵심 키워드·핵심 문장·검수 결과" data-tip-pos="bottom">CSV 받기</button><button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" x-show="kwTab==='run' && kwCatalog?.can_manage" x-bind:disabled="!kwRunData || kwRunData.status==='running' || kwBusy" x-on:click="kwDeleteRun()" data-tip="정답셋 반영·버전 채택에 쓰인 실험은 삭제할 수 없습니다" data-tip-pos="bottom">기록 삭제</button>
   </div>
   <section class="panel" x-show="kwRunData && kwTab==='run'">
-    <div class="panel-hd"><b>실행 결과</b><span class="meta" x-text="kwRunData ? kwState(kwRunData) : ''"></span><button class="ds-btn ds-btn--outline ds-btn--s-sm ml-auto" x-show="kwRunData && !kwRunData.revealed" x-on:click="kwReveal()">모델·버전 공개</button></div>
+    <div class="panel-hd"><b>실행 결과</b><span class="meta" x-text="kwRunData ? kwState(kwRunData) : ''"></span><button class="ds-btn ds-btn--outline ds-btn--s-sm ml-auto" x-show="kwRunData && !kwRunData.revealed && kwCatalog?.can_manage" x-on:click="kwReveal()">모델·버전 공개</button></div>
     <div class="panel-bd dc-body"><p role="status" x-show="kwRunData?.error" x-text="kwRunData?.error || ''"></p>
       <!-- 결과 목록(콘텐츠 검수 목록과 같은 결) · 행 = 콘텐츠 · 행 클릭 = 다음 판정할 조합으로 상세 검수 · 조합 셀 클릭 = 그 조합 -->
       <div class="overflow-auto kwl-wrap"><table class="ds-table kwl-table"><thead><tr><th class="kwl-state">상태</th><th>콘텐츠</th>
@@ -97,7 +97,7 @@
         <tr x-show="!(kwRunData?.items || []).length"><td x-bind:colspan="(kwRunData?.slots.length || 1)+3" class="text-xs text-muted">결과가 없습니다</td></tr>
       </tbody></table></div>
       <details class="dve__fold kwl-metrics"><summary>평가 항목 · 조합별 지표</summary><div class="overflow-auto"><table class="ds-table model-compare-table" x-bind:style="'--compare-model-count:'+(kwRunData?.slots.length || 1)"><thead><tr><th class="model-compare-label">평가 항목</th><template x-for="m in (kwRunData?.metrics || [])" x-bind:key="m.slot"><th x-text="m.slot"></th></template></tr></thead><tbody>
-        <template x-for="row in [['완료 / 실패', m=>m.completed+' / '+m.failed],['적합 / 수정 / 제외',m=>kwRate(m,'accept')+' / '+kwRate(m,'edit')+' / '+kwRate(m,'exclude')],['평가 정답 일치 / 전체',m=>m.gold_matches+' / '+m.gold_total],['빈 결과',m=>m.empty],['평균 소요 시간',m=>m.avg_ms==null ? '대기' : (m.avg_ms/1000).toFixed(1)+'초'],['토큰 / 비용',m=>m.tokens+' / '+kwMoney(m.cost_usd)]]" x-bind:key="row[0]"><tr><th x-text="row[0]"></th><template x-for="m in (kwRunData?.metrics || [])" x-bind:key="m.slot"><td x-text="row[1](m)"></td></template></tr></template>
+        <template x-for="row in [['완료 / 실패', m=>m.completed+' / '+m.failed],['적합 / 수정 / 제외',m=>kwRate(m,'accept')+' / '+kwRate(m,'edit')+' / '+kwRate(m,'exclude')],['평가 정답 일치 / 전체',m=>m.gold_matches+' / '+m.gold_total],['빈 결과',m=>m.empty],['평균 소요 시간',m=>!kwRunData.revealed ? '판정 후 공개' : m.avg_ms==null ? '대기' : (m.avg_ms/1000).toFixed(1)+'초'],['토큰 / 비용',m=>!kwRunData.revealed ? '판정 후 공개' : m.tokens+' / '+kwMoney(m.cost_usd)]]" x-bind:key="row[0]"><tr><th x-text="row[0]"></th><template x-for="m in (kwRunData?.metrics || [])" x-bind:key="m.slot"><td x-text="row[1](m)"></td></template></tr></template>
       </tbody></table></div><ul class="ds-bullets"><li>적합·수정·제외 비율은 최종 확정한 판단 기준입니다. 평가 정답 일치는 실행 당시 평가용 정답의 표기 일치 수이며, 전체 품질 점수는 아닙니다.</li></ul></details>
     </div>
   </section>

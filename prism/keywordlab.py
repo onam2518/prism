@@ -73,12 +73,14 @@ def _get(key, team):
 
 
 def _update(key, team, change, default=None, guard=None):
-    for _ in range(15):
-        before = _get(key, team)
-        after = copy.deepcopy(before if before is not None else default)
-        change(after)
-        if _store().compare_report(key, before, after, team=team, guard=guard):
-            return after
+    with ER.cas_lock(key, team):                 # 실험 작업자 3개가 같은 문서를 번갈아 저장 → 프로세스 안에선 줄 세움
+        for i in range(15):
+            before = _get(key, team)
+            after = copy.deepcopy(before if before is not None else default)
+            change(after)
+            if _store().compare_report(key, before, after, team=team, guard=guard):
+                return after
+            ER.cas_backoff(i)
     raise ValueError('동시에 다른 변경이 저장되었습니다 · 새로고침 후 다시 시도하세요')
 
 
@@ -300,6 +302,7 @@ def start(body, team, actor):
 def _run(rid, team):
     key = _key('run', rid)
     run = _get(key, team)
+    engines, elock = {}, threading.Lock()        # 실험 한 번 동안 모델별 엔진 1개(라우터는 칸마다 새 LLM → _FAST 캐시 무효화 반복)
     def one(pair):
         item, slot = pair
         cid = item['key'] + ':' + slot['label']
@@ -308,7 +311,10 @@ def _run(rid, team):
         result = {'id': cid, 'item_key': item['key'], 'slot': slot['label'], 'review_revision': 0,
                   'reviews': [], 'final': None}
         try:
-            llm, mock, error = _engine(v['model'])
+            with elock:
+                if v['model'] not in engines:
+                    engines[v['model']] = _engine(v['model'])
+                llm, mock, error = engines[v['model']]
             if error:
                 raise ValueError(error)
             if _target(run) == 'sentence':
@@ -417,8 +423,14 @@ def run_detail(rid, team):
     if not out['revealed']:
         for slot in out['slots']:
             slot['version'] = {'title': '판정 후 공개'}
+        # 비용·지연·토큰은 모델을 추정하게 한다 → 공개 전엔 가린다(완료·판정 건수는 유지)
+        for m in out['metrics']:
+            m.update(avg_ms=None, tokens=None, cost_usd=None)
         for cell in out['cells'].values():
-            cell.pop('actual_model', None)
+            for k in ('actual_model', 'tokens', 'latency_ms', 'elapsed_ms'):
+                cell.pop(k, None)
+            for k in ('tokens', 'latency_ms'):
+                (cell.get('sentence') or {}).pop(k, None)
     else:
         for slot in out['slots']:
             slot['version'] = {k: v for k, v in slot['version'].items() if k not in ('system', 'rules', 'guide', 'review_system')}
@@ -703,7 +715,7 @@ def action(body, team=None, actor='', can_manage=False, can_final=False):
         return {'ok': False, 'error': '요청 형식을 확인하세요'}
     try:
         op = body.get('action')
-        if op in ('version', 'delete', 'delete_run', 'start', 'compile', 'adopt') and not can_manage:
+        if op in ('version', 'delete', 'delete_run', 'start', 'compile', 'adopt', 'reveal') and not can_manage:
             raise ValueError('실험 관리 권한이 필요합니다')
         if op == 'version': return create_version(body, team, actor)
         if op == 'delete': return delete_version(body, team)

@@ -493,6 +493,19 @@ def _model_id(model: str) -> str:
 FAST_EFFORT = "minimal"                      # 메타 다듬기는 깊은 추론이 필요 없다
 FAST_TIMEOUT = 120                           # 60초 기본은 추론 모델 한 호출에도 모자라 끊고 재시도했다
 _FAST: dict = {}
+_FAST_LOCK = threading.Lock()
+# 문서 전체 CAS 를 같은 프로세스 작업자끼리는 줄 세운다(경쟁 재시도 소진 → 유료 결과 유실 방지).
+# CAS 는 그대로 둬 다른 프로세스와의 충돌은 계속 막는다. 고정 줄무늬라 키가 늘어도 커지지 않는다.
+_CAS_LOCKS = [threading.RLock() for _ in range(32)]
+
+
+def cas_lock(key, team=None):
+    return _CAS_LOCKS[hash((key, team or "")) % len(_CAS_LOCKS)]
+
+
+def cas_backoff(attempt):
+    """CAS 재시도 사이 짧은 무작위 대기(다른 프로세스와 같은 박자로 재충돌하지 않게)."""
+    time.sleep(random.uniform(0, 0.02) * (attempt + 1))
 
 
 def _fast(llm):
@@ -502,15 +515,16 @@ def _fast(llm):
     # ponytail: Solar 만 적용 · 다른 제공자는 reasoning_effort 거절 시 자동 회피가 없어 기본 유지(필요하면 모델별로 확인 후 추가)"""
     if not str(getattr(llm, "model", "") or "").startswith("solar"):
         return llm
-    hit = _FAST.get(llm.model)
-    if hit is None or hit[0] is not llm:
-        from .llm import LLMClient
-        cfg = copy.deepcopy(llm.cfg)
-        cfg.timeout = max(int(getattr(cfg, "timeout", 0) or 0), FAST_TIMEOUT)
-        client = LLMClient(config=cfg, model=llm.model, reasoning_effort=FAST_EFFORT,
-                           api_key=getattr(llm, "api_key", None), limiter=getattr(llm, "limiter", None))
-        hit = _FAST[llm.model] = (llm, client)
-    return hit[1]
+    with _FAST_LOCK:                         # 작업자 스레드 여럿이 동시에 부른다
+        hit = _FAST.get(llm.model)
+        if hit is None or hit[0] is not llm:
+            from .llm import LLMClient
+            cfg = copy.deepcopy(llm.cfg)
+            cfg.timeout = max(int(getattr(cfg, "timeout", 0) or 0), FAST_TIMEOUT)
+            client = LLMClient(config=cfg, model=llm.model, reasoning_effort=FAST_EFFORT,
+                               api_key=getattr(llm, "api_key", None), limiter=getattr(llm, "limiter", None))
+            hit = _FAST[llm.model] = (llm, client)
+        return hit[1]
 
 
 def _llm(model: str):
@@ -727,12 +741,14 @@ def _keyword_update(change, team=None):
     st = _SV.get_store() if _SV else None
     if not st or not hasattr(st, "compare_report"):
         raise RuntimeError("키워드 결과 저장소를 사용할 수 없습니다")
-    for _ in range(12):
-        before = st.get_report(KEYWORD_HISTORY_KIND, team=team)
-        after = copy.deepcopy(before or {"items": []})
-        change(after)
-        if st.compare_report(KEYWORD_HISTORY_KIND, before, after, team=team):
-            return after
+    with cas_lock(KEYWORD_HISTORY_KIND, team):
+        for i in range(12):
+            before = st.get_report(KEYWORD_HISTORY_KIND, team=team)
+            after = copy.deepcopy(before or {"items": []})
+            change(after)
+            if st.compare_report(KEYWORD_HISTORY_KIND, before, after, team=team):
+                return after
+            cas_backoff(i)
     raise RuntimeError("다른 저장 작업과 충돌했습니다 · 다시 시도하세요")
 
 

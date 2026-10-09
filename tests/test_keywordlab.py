@@ -317,3 +317,51 @@ class SentenceLabTest(unittest.TestCase):
         b.update(expected_revision=1,partition='evaluation',expected_gold_id=g['id'])
         K.review(b,'a','tester',True)
         with self.assertRaisesRegex(ValueError,'개선에 사용'):K.confirm_gold(b,'a','tester',True)
+
+    def test_blind_reveal_needs_manage_and_hides_cost_signals(self):
+        run = self.run_case()
+        for cell in run['cells'].values():
+            self.final(run, cell)
+        hidden = K.run_detail(run['id'], 'a')['run']
+        for m in hidden['metrics']:                        # 비용·지연·토큰은 모델 추정 단서 → 공개 전엔 가림
+            self.assertEqual((m['avg_ms'], m['tokens'], m['cost_usd']), (None, None, None))
+            self.assertEqual(m['completed'], 1)            # 건수·판정은 유지
+        for cell in hidden['cells'].values():
+            self.assertFalse({'tokens', 'elapsed_ms', 'latency_ms', 'actual_model'} & set(cell))
+        denied = K.action({'action': 'reveal', 'run_id': run['id']}, 'a', 'tester', can_manage=False)
+        self.assertFalse(denied['ok'])
+        self.assertFalse(K.run_detail(run['id'], 'a')['run']['revealed'])
+        self.assertTrue(K.action({'action': 'reveal', 'run_id': run['id']}, 'a', 'tester', can_manage=True)['ok'])
+        shown = K.run_detail(run['id'], 'a')['run']
+        self.assertIsNotNone(shown['metrics'][0]['avg_ms'])
+        self.assertIn('elapsed_ms', next(iter(shown['cells'].values())))
+
+    def test_engine_built_once_per_model_per_run(self):
+        with patch.object(K, '_engine', wraps=K._engine) as eng:
+            run = self.run_case(count=3)                   # 3조합 · 같은 모델
+        self.assertEqual(len(run['cells']), 3)
+        self.assertEqual(eng.call_count, 1)
+
+    def test_concurrent_workers_save_every_cell(self):
+        """작업자 여럿이 같은 실험 문서를 저장해도 프로세스 안에선 줄 서서 CAS 충돌·유실이 없다."""
+        import threading, time as _t
+        key = K._key('run', K._id())
+        K._update(key, 'a', lambda r: r.update(cells={}), {})
+        real_get, real_cas, misses = self.store.get_report, self.store.compare_report, []
+        def slow_get(*a, **kw):
+            v = real_get(*a, **kw)
+            _t.sleep(0.002)                                # 읽기~CAS 사이 틈을 넓혀 경쟁을 드러낸다
+            return v
+        def cas(*a, **kw):
+            ok = real_cas(*a, **kw)
+            if not ok: misses.append(1)
+            return ok
+        def worker(w):
+            for i in range(8):
+                K._update(key, 'a', lambda r, c='%d-%d' % (w, i): r['cells'].update({c: 1}))
+        with patch.object(self.store, 'get_report', slow_get), patch.object(self.store, 'compare_report', cas):
+            ths = [threading.Thread(target=worker, args=(w,)) for w in range(4)]
+            [t.start() for t in ths]
+            [t.join(30) for t in ths]
+        self.assertEqual(len(K._get(key, 'a')['cells']), 32)
+        self.assertEqual(misses, [])
