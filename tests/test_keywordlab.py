@@ -108,7 +108,7 @@ class KeywordLabTest(unittest.TestCase):
 
     def test_export_csv_rows_body_blind_and_formula_guard(self):
         import csv, io
-        self.store.upsert_golden('g1', {'title': '=HYPERLINK("x")', 'body': '본문 원문\n둘째 줄'},
+        self.store.upsert_golden('g1', {'title': '=HYPERLINK("x")', 'body': '본문 원문\n둘째 줄', 'source_url': 'https://example.com/a'},
                                  {'summary': '한국은행이 기준금리를 인하했다', 'entities': ['한국은행', '이창용'], 'intent': ['속보'], 'content_category': ['경제']})
         versions = [self.version(str(i)) for i in range(2)]
         with patch.object(K.threading, 'Thread'):
@@ -126,6 +126,8 @@ class KeywordLabTest(unittest.TestCase):
         first = rows[0]
         self.assertEqual(first['제목'], "'=HYPERLINK(\"x\")")          # 수식 인젝션 중화
         self.assertEqual(first['본문'], '본문 원문\n둘째 줄')
+        self.assertEqual(first['원문 URL'], 'https://example.com/a')               # 콘텐츠 행이 없으면 정답셋 원문의 링크
+        self.assertEqual(K.run_detail(rid, 'a')['run']['sources'][run['items'][0]['hash']], 'https://example.com/a')
         self.assertEqual(first['엔티티'], '한국은행 | 이창용')
         self.assertEqual(first['모델·버전'], '비공개')
         self.assertEqual(first['핵심 키워드'], ' | '.join(k['text'] for k in kws))

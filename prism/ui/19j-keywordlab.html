@@ -115,12 +115,18 @@
       </div>
       <div class="detailview__body">
         <div class="detailview__content">
-          <div class="dvc__viewtabs"><span class="srcfilter kwd-chips">
-            <button type="button" class="srcfilter__chip" x-bind:class="kwReviewView!=='json' ? 'sel' : ''" x-on:click="kwReviewView='meta'">입력 메타</button>
-            <button type="button" class="srcfilter__chip" x-bind:class="kwReviewView==='json' ? 'sel' : ''" x-on:click="kwReviewView='json'">모델 입력 원문</button>
-          </span></div>
+          <!-- 원문 링크가 있으면 '입력 메타 ↔ 원문 페이지' 탭(콘텐츠 상세와 같은 구성 · 배율은 dvcZoom 공유) -->
+          <div class="dvc__viewtabs" x-show="kwSourceUrl()"><span class="srcfilter kwd-chips">
+            <button type="button" class="srcfilter__chip" x-bind:class="kwReviewView!=='web' ? 'sel' : ''" x-on:click="kwReviewView='meta'">입력 메타</button>
+            <button type="button" class="srcfilter__chip" x-bind:class="kwReviewView==='web' ? 'sel' : ''" x-on:click="kwReviewView='web'">원문 페이지</button>
+          </span>
+          <span class="srcfilter kwd-chips ml-auto" x-show="kwReviewView==='web'"><template x-for="o in [{z:50,t:'작게'},{z:75,t:'보통'},{z:100,t:'크게'}]" x-bind:key="'kz'+o.z"><button type="button" class="srcfilter__chip" x-bind:class="dvcZoom===o.z?'sel':''" x-on:click="setDvcZoom(o.z)" x-text="o.t"></button></template></span></div>
           <h2 class="dvc__title" x-text="kwReview.item.title"></h2>
-          <div x-show="kwReviewView!=='json'">
+          <template x-if="kwReviewView==='web' && kwSourceUrl()"><div class="dvc__webwrap">
+            <div class="dvc__webbox"><iframe class="dvc__web" x-bind:src="kwSourceUrl()" x-bind:style="'transform:scale('+(dvcZoom/100)+');width:'+(10000/dvcZoom)+'%;height:'+(10000/dvcZoom)+'%'" sandbox="allow-scripts allow-popups allow-forms" referrerpolicy="no-referrer" title="원문 페이지"></iframe></div>
+            <ul class="ds-bullets hintbox kwd-gap-sm"><li>화면이 비어 보이면 이 사이트가 내장 표시를 차단한 것입니다</li><li><a x-bind:href="kwSourceUrl()" target="_blank" rel="noopener noreferrer" style="color:var(--ds-primary);font-weight:600">원문 바로가기 ↗</a>로 새 탭에서 확인하세요</li></ul>
+          </div></template>
+          <div x-show="kwReviewView!=='web' || !kwSourceUrl()">
             <div class="dve__lbl kwd-gap">리드문</div><div class="dvc__bodytext kwd-flush" x-text="kwReview.item.meta.summary || '·'"></div>
             <div class="dve__lbl kwd-gap">엔티티 · 발행 순서</div>
             <div class="flex flex-wrap gap-1"><template x-for="e in kwMetaList(kwReview.item.meta.entities)" x-bind:key="'ke'+e"><span class="ds-badge ds-badge--entity" x-text="e"></span></template></div>
@@ -132,7 +138,6 @@
               <div class="flex flex-wrap gap-1"><template x-for="k in (kwReview.item.keywords || [])" x-bind:key="'kk'+k.text"><span class="ds-badge ds-badge--neutral" x-text="k.text"></span></template><span class="text-xs text-muted" x-show="!(kwReview.item.keywords || []).length">없음 · 메타만 사용</span></div></div></template>
             <div class="dvc__note">모델에는 제목·본문을 전달하지 않습니다 · 제목은 검수자 식별용입니다</div>
           </div>
-          <pre class="ds-code kwd-gap" x-show="kwReviewView==='json'" x-text="kwInputText(kwReview.item)"></pre>
         </div>
         <div class="detailview__eval">
           <div>
@@ -191,8 +196,7 @@
             </div>
             <label class="chk-inline text-xs kwd-gap-sm"><input type="checkbox" x-model="kwReview.no_keywords"><span x-text="' 이 콘텐츠에 적합한 '+kwTargetLabel(kwReview.target)+'이 없음'"></span></label>
             <div class="dve__form kwd-gap-sm">
-              <label class="dve__field"><span class="dve__lbl">정답셋 용도</span><select class="field field--compact" x-model="kwReview.partition"><option value="development">개선용 · 프롬프트 개선에 사용</option><option value="evaluation">평가용 · 개선 입력에서 제외</option></select></label>
-              <label class="dve__field"><span class="dve__lbl">검수 메모</span><input class="field field--compact" maxlength="1000" x-model="kwReview.note" placeholder="선택"></label>
+              <label class="dve__field dve__field--wide"><span class="dve__lbl">검수 메모</span><input class="field field--compact" maxlength="1000" x-model="kwReview.note" placeholder="선택"></label>
             </div>
             <p role="status" class="dve__hint kwd-gap-sm" x-show="kwError || kwMessage" x-text="kwError || kwMessage"></p>
             <div class="control-row control-row--compact dve__actions kwd-gap-sm">

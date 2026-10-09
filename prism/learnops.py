@@ -459,7 +459,9 @@ def build_golden_from_reviews(team=None) -> dict:
         ref = r.get("content_ref") or {}
         content = {"displayServiceName": ref.get("displayServiceName", ""), "title": ref.get("title", ""),
                    "subtitle": ref.get("subtitle", ""), "body": ref.get("body", "")}
-        ch = content_hash(content)
+        ch = content_hash(content)                     # 해시는 위 4필드만 · 원문 링크는 해시 밖 부속 정보
+        if ref.get("source_url"):
+            content["source_url"] = ref["source_url"]
         fb = fmap.get(ch) or {}
         if not fb and ch not in finals:
             continue

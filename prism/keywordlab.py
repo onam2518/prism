@@ -166,7 +166,10 @@ def create_version(body, team, actor):
 def _item(content, meta, hash_=''):
     frozen = copy.deepcopy(meta)
     identity = hash_ or _digest(frozen)
-    return {'hash': identity, 'key': _digest([identity, frozen]), 'title': str(content.get('title') or '직접 입력'), 'meta': frozen}
+    item = {'hash': identity, 'key': _digest([identity, frozen]), 'title': str(content.get('title') or '직접 입력'), 'meta': frozen}
+    if content.get('source_url'):                       # 정답셋 원문 링크를 함께 고정(콘텐츠 행이 정리돼도 원문 보기 유지)
+        item['source_url'] = str(content['source_url'])
+    return item
 
 
 def _items(body, team):
@@ -370,12 +373,22 @@ def _metrics(run):
     return rows
 
 
+def _source_urls(items, team):
+    """해시 → 원문 URL · 실험에 고정한 정답셋 링크 우선, 없으면 콘텐츠 행(origin_meta_for · 골드 문항과 같은 조회)."""
+    try:
+        found = _store().origin_meta_for([it['hash'] for it in items], team) or {}
+    except Exception:
+        found = {}
+    return {it['hash']: it.get('source_url') or (found.get(it['hash']) or {}).get('url') or '' for it in items}
+
+
 def run_detail(rid, team):
     run = _get(_key('run', rid), team)
     if not run:
         raise ValueError('이 팀에 해당 실험이 없습니다')
     out = copy.deepcopy(run)
     out['metrics'] = _metrics(run)
+    out['sources'] = _source_urls(out['items'], team)
     if out['status'] == 'running' and time.time() - out['updated_at'] > 300:
         out['status'] = 'interrupted'
         out['error'] = '실험 응답이 중단되었습니다 · 완료된 결과는 보존되었습니다'
@@ -390,7 +403,7 @@ def run_detail(rid, team):
     return {'ok': True, 'run': out}
 
 
-CSV_COLUMNS = ('실험ID', '실험 대상', '조합', '모델·버전', '콘텐츠 해시', '제목', '본문', '리드문', '엔티티', '인텐트', '카테고리',
+CSV_COLUMNS = ('실험ID', '실험 대상', '조합', '모델·버전', '콘텐츠 해시', '제목', '원문 URL', '본문', '리드문', '엔티티', '인텐트', '카테고리',
                '핵심 키워드', '키워드 형태', '핵심 문장', '생성 상태', '검수 상태', '확정 결과', '판정 사유')
 
 
@@ -401,7 +414,7 @@ def export_csv(rid, team):
     from .store import golden_hash
     run = run_detail(rid, team)['run']
     target = _target(run)
-    bodies = {golden_hash(r): (r.get('content') or {}).get('body') or '' for r in _store().get_golden(team) or []}
+    golden = {golden_hash(r): r.get('content') or {} for r in _store().get_golden(team) or []}
     join = lambda xs: ' | '.join(str(x) for x in xs)
     lines = [','.join(csv_cell(c) for c in CSV_COLUMNS)]
     for item in run['items']:
@@ -420,7 +433,8 @@ def export_csv(rid, team):
                        for j in (final or (cell.get('reviews') or [{}])[-1]).get('judgments', []) if j['verdict'] != 'accept']
             row = [run['id'], '문장' if target == 'sentence' else '키워드', slot['label'],
                    (v.get('model', '') + ' · ' + 'v' + str(v.get('number', '')) + ' ' + v.get('title', '')) if run['revealed'] else '비공개',
-                   item['hash'], item['title'], bodies.get(item['hash'], ''), meta.get('summary', ''),
+                   item['hash'], item['title'], run['sources'].get(item['hash']) or golden.get(item['hash'], {}).get('source_url', ''),
+                   golden.get(item['hash'], {}).get('body', ''), meta.get('summary', ''),
                    join(ER.MC.entity_names(meta.get('entities'))), join(meta.get('intent') or []), join(meta.get('content_category') or []),
                    join(k['text'] for k in keywords), join('조합형' if k.get('kind') == 'combo' else '단일형' for k in keywords), sentence,
                    {'done': '완료', 'failed': '실패'}.get(cell.get('status'), '대기') + (' · ' + cell['error'] if cell.get('error') else ''),
