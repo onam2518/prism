@@ -348,6 +348,7 @@ _PILOT_STOP: set = set()
 class PilotStop(Exception):
     """수동 중지 요청 · 학습 배치의 진척 콜백(청크 경계)에서 던져 라운드를 안에서 끊는다."""
 # ponytail: 라운드 안 진척은 프로세스 메모리 · 재시작하면 런도 같이 죽으므로 영속 불필요
+_PILOT_GOLDEN_N: dict = {}      # run_id → 고정 정답셋 건수(상태 폴링이 해시 목록을 매번 받지 않게 · 런 수명 내 불변)
 _PILOT_PROG: dict = {}          # run_id → {round, phase, done, total, seen, ts}
 PILOT_ROUNDS_CAP = 10           # 폭주 방지 상한(Atelier max_versions cap 상응)
 PILOT_STALL_ROUNDS = 2          # 연속 무향상 허용 라운드(초과 시 정체 종료)
@@ -421,22 +422,30 @@ def autopilot_status(team=None) -> dict:
     st = _SV.get_store()
     if not (st and hasattr(st, "autopilot_latest")):
         return {"ok": True, "run": None}
-    run = st.autopilot_latest(team)
+    run = st.autopilot_latest(team, with_hashes=False)   # 5초 폴링 · 고정 정답셋 해시 목록은 받지 않는다
     if run:
         with _LOCK:
             run["stalled"] = bool(run.get("status") == "running"
                                   and not (run["id"] in _PILOT_ACTIVE
                                            and _PILOT_ACTIVE[run["id"]].is_alive()))
+        need_full = "golden_hashes" not in run and (run["stalled"] or run["id"] not in _PILOT_GOLDEN_N)
+        full = (st.autopilot_get(run["id"], team) or run) if need_full else run   # 재개·건수 산정 때만 전체 행
+        if need_full:
+            if len(_PILOT_GOLDEN_N) > 256:
+                _PILOT_GOLDEN_N.clear()
+            _PILOT_GOLDEN_N[run["id"]] = len(full.get("golden_hashes") or [])
         if run["stalled"]:                        # 스레드가 없는 running = 서버 재시작(배포)으로 끊긴 런 → 끊긴 라운드부터 재개
             try:
-                res = _pilot_resume(dict(run, team=team))
+                res = _pilot_resume(dict(full, team=team))
                 run["status"], run["stop_reason"] = res["status"], res["stop_reason"]
                 run["stalled"] = res["status"] != "running"
             except Exception:
                 pass
         if run.get("status") == "running":
             run["progress"] = _PILOT_PROG.get(run["id"])
-        run["golden_n"] = len(run.pop("golden_hashes", None) or [])   # 화면엔 건수만(해시 목록은 응답에서 뺀다)
+        # 화면엔 건수만(해시 목록은 응답에서 뺀다) · 고정 정답셋은 런 수명 내 불변이라 런별로 기억
+        run["golden_n"] = (len(run.pop("golden_hashes") or []) if "golden_hashes" in run
+                           else _PILOT_GOLDEN_N.get(run["id"], 0))
     return {"ok": True, "run": run}
 
 
@@ -879,9 +888,20 @@ def eval_run_report(run_id: int, team=None) -> dict:
     prompt = _SV._report_get("eval_prompts_" + str(run_id), team) or {}
     out["basis"] = {"model": run.get("model") or "", "version": prompt.get("version"),
                     "scope": run.get("scope") or "all"}
+    if getattr(st, "REMOTE", False):             # 2.5초 폴링 · 진행(cursor·rubric_cursor)이 그대로면 불일치 상세 재사용
+        key = ("evaldetail", team, run_id, out["cursor"], out["rubric_cursor"],
+               out["status"], out["rubric_status"])
+        out["detail"] = _SV._agg_cached_store(key, st, lambda: _eval_run_detail(st, run_id, team))
+    else:
+        out["detail"] = _eval_run_detail(st, run_id, team)
+    return out
+
+
+def _eval_run_detail(st, run_id, team) -> list:
+    """런 불일치(등급) 상세 · 판정 수(eval_check_counts) 병합. 런 소유는 호출자가 확인했다."""
     detail = []                                  # 불일치(등급) 건만 · 즉시 평가 detail 과 동일 형태
     try:
-        fails = st.eval_results_list(run_id, team, only_fail=True, limit=500)
+        fails = st.eval_results_list(run_id, team, only_fail=True, limit=500, checked=True)
     except Exception:
         fails = []
     try:
@@ -898,8 +918,7 @@ def eval_run_report(run_id: int, team=None) -> dict:
                        "expected": exp, "got": got,
                        "rubric_note": (rb.get("note") or "") if not rb.get("skipped") else "",
                        "judge": jm.get(r.get("hash")) or {"adopt": 0, "reject": 0, "reviewers": {}}})
-    out["detail"] = detail
-    return out
+    return detail
 
 
 def _history_expected(items, legacy=False, recovery=None):

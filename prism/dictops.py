@@ -148,8 +148,11 @@ def entdict_data(q: str = "", type_: str = "", status: str = "", limit: int = 30
             st.ent_mark_unlisted()
         except Exception:
             pass
+    # 통계는 30s 캐시(보강 중 1.5초 폴링 · 사전 쓰기는 entdict_action 이 _agg_bump) · 스토어 교체 시 미스
+    stats = (_SV._agg_cached_store(("entstats",), st, st.ent_stats, ttl=30.0)
+             if getattr(st, "REMOTE", False) else st.ent_stats())
     return {"items": st.ent_list(q=q, type_=type_, status=status, limit=limit),
-            "stats": st.ent_stats(), "meta": meta, "enrich": enrich_view()}
+            "stats": stats, "meta": meta, "enrich": enrich_view()}
 
 
 def entdict_action(data: dict, team=None, mock: bool = False) -> dict:

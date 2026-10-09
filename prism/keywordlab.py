@@ -385,13 +385,26 @@ def _metrics(run):
     return rows
 
 
-def _source_urls(items, team):
-    """해시 → 원문 URL · 실험에 고정한 정답셋 링크 우선, 없으면 콘텐츠 행(origin_meta_for · 골드 문항과 같은 조회)."""
+_SOURCE_MEMO = {}                    # (팀, 실험, 해시 묶음) → 원문 URL · 실험 문항은 고정이라 폴링(1.8초)마다 재조회 불필요
+_SOURCE_MEMO_MAX = 64
+
+
+def _source_urls(items, team, rid=None):
+    """해시 → 원문 URL · 실험에 고정한 정답셋 링크 우선, 없으면 콘텐츠 행(origin_meta_for · 골드 문항과 같은 조회).
+    rid 를 주면 실험별로 기억한다(조회 실패 결과는 기억하지 않는다)."""
+    key = (team, rid, tuple((it['hash'], it.get('source_url') or '') for it in items)) if rid is not None else None
+    if key in _SOURCE_MEMO:
+        return dict(_SOURCE_MEMO[key])
     try:
         found = _store().origin_meta_for([it['hash'] for it in items], team) or {}
     except Exception:
-        found = {}
-    return {it['hash']: it.get('source_url') or (found.get(it['hash']) or {}).get('url') or '' for it in items}
+        found, key = {}, None
+    out = {it['hash']: it.get('source_url') or (found.get(it['hash']) or {}).get('url') or '' for it in items}
+    if key is not None:
+        if len(_SOURCE_MEMO) >= _SOURCE_MEMO_MAX:
+            _SOURCE_MEMO.pop(next(iter(_SOURCE_MEMO)))     # 가장 오래된 것부터(삽입 순서)
+        _SOURCE_MEMO[key] = out
+    return dict(out)
 
 
 def run_detail(rid, team):
@@ -400,7 +413,7 @@ def run_detail(rid, team):
         raise ValueError('이 팀에 해당 실험이 없습니다')
     out = copy.deepcopy(run)
     out['metrics'] = _metrics(run)
-    out['sources'] = _source_urls(out['items'], team)
+    out['sources'] = _source_urls(out['items'], team, rid)
     if not out['revealed']:
         for slot in out['slots']:
             slot['version'] = {'title': '판정 후 공개'}

@@ -94,7 +94,7 @@ class TestExposure(unittest.TestCase):
                 return {}
 
         orig = (SV.results_rows, SV.get_store, SV._inject_gold)
-        SV.results_rows = lambda limit=5000, team=None: [row]
+        SV.results_rows = lambda limit=5000, team=None, **_: [row]
         SV.get_store = lambda: FakeStore()
         SV._inject_gold = lambda items, reviewer, team=None: []
         self.addCleanup(lambda: (setattr(SV, "results_rows", orig[0]),

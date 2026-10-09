@@ -290,7 +290,7 @@ def get_store():
     return _STORE or None
 
 
-def results_rows(limit: int = 5000, team=None, cache: bool = True) -> list:
+def results_rows(limit: int = 5000, team=None, cache: bool = True, body: bool = True) -> list:
     """집계용 결과 행 · 영속 저장소 우선(누적) · 메모리(_LAST_RESULTS) 폴백은 저장소 부재·오류 시만.
     저장소의 빈 결과는 그대로 신뢰한다 — 전체 삭제 직후 메모리 잔상이 폴백으로 되살아나
     화면에 유령 콘텐츠가 남는 문제 방지.
@@ -299,14 +299,19 @@ def results_rows(limit: int = 5000, team=None, cache: bool = True) -> list:
     호출하므로 스테일 없음. sqlite(로컬·테스트)는 무캐시 유지 — 테스트가 스토어에 직접 쓰고
     바로 읽는 계약(몽키패치 관례)과 충돌하지 않고, 로컬 조회는 원래 저렴하다.
     호출측 정렬·절단이 캐시를 오염시키지 않게 리스트는 복사해 반환.
-    cache=False: 일회성 대량 조회(CSV 내보내기 20,001행)가 30초간 큰 사본을 붙들지 않게 우회."""
+    cache=False: 일회성 대량 조회(CSV 내보내기 20,001행)가 30초간 큰 사본을 붙들지 않게 우회.
+    body=False: 메타만 쓰는 집계(대시보드·/raw 목록·모델 비교·검수운영 분류)용 · 원격은 본문·부제·
+    원천 필드를 받지 않는다(행당 수 KB → 수백 B · 캐시 키 분리). 로컬(sqlite)은 원래 저렴해 전체 행."""
     st = get_store()
     if st:
         try:
-            if getattr(st, "REMOTE", False) and cache:
-                return list(_agg_cached_store(("rows", team, limit), st,
-                                              lambda: st.recent(limit, team=team), content=True))
-            return st.recent(limit, team=team)
+            remote = getattr(st, "REMOTE", False)
+            fetch = ((lambda: st.recent(limit, team=team, body=False)) if (remote and not body)
+                     else (lambda: st.recent(limit, team=team)))
+            if remote and cache:
+                return list(_agg_cached_store(("rows", team, limit) + (() if body else ("meta",)), st,
+                                              fetch, content=True))
+            return fetch()
         except Exception:
             if getattr(st, "REMOTE", False):
                 raise RuntimeError("콘텐츠 조회 실패 · 잠시 후 다시 시도하세요") from None
@@ -401,6 +406,19 @@ def _batch_seq_cached(team) -> int:
         stv = get_store()
         return stv.batch_seq(team) if (stv and hasattr(stv, "batch_seq")) else 0
     return _agg_cached(("batchseq", team), _get, content=True)
+
+
+def assignees_cached(team=None) -> dict:
+    """팀 배정 전량 {hash: {"reviewers", "min"}} · 원격 스토어만 30s 캐시(feedback_map_cached 와 대칭).
+    /raw 는 SSE 방송마다 검수자 탭이 일제히 다시 읽는다 — 매번 배정 표 전량(수천 행·수 왕복)을
+    받지 않게. 배정 쓰기 경로(개별·일괄·분배·검수운영 나눔·넘김·한 명 더)는 전부 _agg_bump 를
+    호출하므로 스테일 없음. sqlite 는 무캐시. 반환 dict 는 공유본이므로 수정 금지."""
+    st = get_store()
+    if not (st and hasattr(st, "assignees")):
+        return {}
+    if getattr(st, "REMOTE", False):
+        return _agg_cached_store(("asg", team), st, lambda: st.assignees(team=team))
+    return st.assignees(team=team)
 
 
 def feedback_map_cached(team=None) -> dict:
@@ -1834,7 +1852,7 @@ def _g_events(h, q):
 
 @_get_route("/ingest-status")
 def _g_ingest_status(h, q):
-    return ingest_status()
+    return ingest_status((q.get("job") or [""])[0][:64])
 
 
 @_get_route("/prompt-preview", admin=True)           # 프롬프트 스튜디오: 콜별×모델별 최종 합성 프롬프트(관리자)
@@ -2135,7 +2153,7 @@ def _g_golden_status(h, q):
     # 쌓이고 있음을 현황에 표시(전부 0 + 안내 없음 = "표시가 안 된다" 혼란 방지)
     reviewed_n = good_n = 0
     try:
-        for e in (st.feedback_map(team=h._req_team()) or {}).values():
+        for e in (feedback_map_cached(h._req_team()) or {}).values():   # 원격 30s 캐시(판정 쓰기가 무효화)
             reviewed_n += 1
             if e.get("consensus") == "good":
                 good_n += 1
@@ -2152,12 +2170,15 @@ def _g_golden_status(h, q):
         stale_days = max(0, int((time.time() - float(_ts)) // 86400)) if _ts else None
     except (TypeError, ValueError):
         stale_days = None
+    # 출처별 건수 1회 조회로 총계도 낸다(golden_count 왕복 생략 · 둘 다 팀 골든 전량 기준이라 합 = 총계)
+    src_counts = (st.golden_source_counts(h._req_team())
+                  if (st and hasattr(st, "golden_source_counts")) else None)
     return {
         "ok": True,
-        "batch_seq": (st.batch_seq(h._req_team()) if (st and hasattr(st, "batch_seq")) else 0),
-        "total": (st.golden_count(h._req_team()) if (st and hasattr(st, "golden_count")) else 0),
-        "source_counts": (st.golden_source_counts(h._req_team())
-                          if (st and hasattr(st, "golden_source_counts")) else {}),
+        "batch_seq": _batch_seq_cached(h._req_team()) if st else 0,
+        "total": (sum(src_counts.values()) if src_counts is not None
+                  else st.golden_count(h._req_team()) if (st and hasattr(st, "golden_count")) else 0),
+        "source_counts": src_counts or {},
         "reviewed": {"contents": reviewed_n, "good": good_n},
         "pending": pending,
         "stale_days": stale_days,

@@ -159,7 +159,7 @@ def action(st, data, team=None, who='', privileged=False, final=False):
         new.setdefault('bases', {})[b['token']] = b
         basis_ref = {k: v for k, v in b.items() if k not in ('snapshot', 'body')}
         if cmd in ('review', 'undo'):
-            asg = (st.assignees(team=team) or {}).get(ch) or {}
+            asg = (st.assignees(team=team, hashes=[ch]) or {}).get(ch) or {}
             if asg.get('reviewers') and who not in asg['reviewers']:
                 raise ValueError('다른 검수자에게 배정된 콘텐츠입니다')
             axes = data.get('axes') or {}

@@ -68,7 +68,10 @@ class TestSingleRerunQueued(RerunQueueBase):
         self.assertEqual((j["total"], j["done"]), (1, 1))
         self.assertTrue(j["last_ok"])
         self.assertFalse(j["running"])                      # 끝난 잡은 진행 중으로 남지 않는다
-        self.assertEqual(j["hashes"], [h])                  # 작업 클릭 -> 이 콘텐츠 보기
+        # 폴링 응답엔 건수만 · 목록은 작업 클릭 시 job=<id> 로 1회 조회(작업 클릭 -> 이 콘텐츠 보기)
+        self.assertNotIn("hashes", j)
+        self.assertEqual(j["hashes_n"], 1)
+        self.assertEqual(serve.ingest_status(job=j["id"]), {"id": j["id"], "hashes": [h]})
 
     def test_failure_is_recorded_not_silent(self):
         serve = self._serve()

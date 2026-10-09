@@ -443,14 +443,22 @@ def _jobs_restore():
         pass
 
 
-def ingest_status() -> dict:
-    """실행 큐 상태(자동 인입 + 일괄 작업 · 진행률·예상 잔여시간) + 스케줄러 동작 여부."""
+def ingest_status(job: str = "") -> dict:
+    """실행 큐 상태(자동 인입 + 일괄 작업 · 진행률·예상 잔여시간) + 스케줄러 동작 여부.
+    폴링(1.5초) 응답엔 잡별 콘텐츠 해시 목록 대신 건수(hashes_n)만 싣는다 — 목록은 작업을
+    클릭할 때만 job=<id> 로 받는다({"id", "hashes"})."""
+    if job:
+        with _INGEST_LOCK:
+            s = _INGEST_STATE.get(job)
+            return {"id": job, "hashes": list((s or {}).get("hashes") or [])}
     jobs = []
     now = time.time()
     with _INGEST_LOCK:                        # 잡 등록(키 삽입) 스레드와의 순회 레이스 차단
         snapshot = list(_INGEST_STATE.items())
     for sid, s in snapshot:
         j = {"id": sid, **s}
+        if "hashes" in j:
+            j["hashes_n"] = len(j.pop("hashes") or [])
         if s.get("running") and s.get("started"):
             j["elapsed_s"] = int(now - s["started"])
             if s.get("done") and s.get("total"):

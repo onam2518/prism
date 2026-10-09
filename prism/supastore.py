@@ -857,11 +857,16 @@ class SupabaseStore:
         return len(self._get("events", f"select=id&kind=eq.learn_batch{tq}&limit=10000"))
 
     def feedback_today(self, reviewer, team=None) -> int:
+        return len(self.feedback_today_hashes(reviewer, team=team))
+
+    def feedback_today_hashes(self, reviewer, team=None) -> list:
+        """검수자의 오늘 판정 해시 목록(행 단위) · 미션 확인이 feedback_today·split_reviewed_today
+        두 번 같은 조회를 하지 않게 한 번 받아 나눠 쓴다."""
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
         rows = self._get("feedback", "select=content_hash"
                          f"&reviewer_id=eq.{urllib.parse.quote(reviewer or '')}"
                          f"&ts=gte.{self._today_iso()}{tq}")
-        return len(rows)
+        return [r.get("content_hash") or "" for r in rows]
 
     def patches_today(self, reviewer, team=None) -> int:
         """검수자의 오늘 구조화 교정 건수(분류 채우기 미션 판정용).
@@ -874,14 +879,14 @@ class SupabaseStore:
                          f"&created_at=gte.{self._today_iso()}{tq}")
         return len(rows)
 
-    def split_reviewed_today(self, reviewer, team=None) -> int:
+    def split_reviewed_today(self, reviewer, team=None, today=None) -> int:
         """검수자가 오늘 의견 갈린(split) 콘텐츠에 판정한 건수(불일치 재검토 미션 판정용).
-        오늘 내가 판정한 해시 집합에 한정해 조회한다(과거: feedback 전량 스캔 → 미션 확인마다 5만행 페이징)."""
+        오늘 내가 판정한 해시 집합에 한정해 조회한다(과거: feedback 전량 스캔 → 미션 확인마다 5만행 페이징).
+        today: 호출자가 이미 받은 feedback_today_hashes 결과(있으면 같은 조회를 다시 하지 않는다)."""
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
-        mine = self._get("feedback", "select=content_hash"
-                         f"&reviewer_id=eq.{urllib.parse.quote(reviewer or '')}"
-                         f"&ts=gte.{self._today_iso()}{tq}")
-        hashes = sorted({r["content_hash"] for r in mine if _HASH_RE.match(r.get("content_hash") or "")})
+        if today is None:
+            today = self.feedback_today_hashes(reviewer, team=team)
+        hashes = sorted({h for h in today if _HASH_RE.match(h or "")})
         if not hashes:
             return 0
         by_c = {}
@@ -1664,12 +1669,12 @@ class SupabaseStore:
             qs.append("or=(" + ",".join(ors) + ")")
         rows = [self._ent_norm(r) for r in self._get("entities", "&".join(qs))]
         if rows:
-            ids = ",".join(urllib.parse.quote(e["entity_id"]) for e in rows)
-            links = self._get("content_entities",
-                              f"select=entity_id,content_hash&entity_id=in.({ids})&limit=10000")
             counts = {}
-            for l in links:
-                counts.setdefault(l["entity_id"], set()).add(l["content_hash"])
+            # in.() 100개 청크(URL 길이 상한 · 목록 300건 = 3왕복) · 청크별 상한도 유지
+            for enc in self._ent_id_chunks([e["entity_id"] for e in rows]):
+                for l in self._get("content_entities",
+                                   f"select=entity_id,content_hash&entity_id=in.({enc})&limit=10000"):
+                    counts.setdefault(l["entity_id"], set()).add(l["content_hash"])
             for e in rows:
                 e["n_contents"] = len(counts.get(e["entity_id"], ()))
             if status == "unlisted":
@@ -1707,22 +1712,31 @@ class SupabaseStore:
         return out[:max(1, int(limit))]
 
     def ent_stats(self) -> dict:
-        rows = self._get("entities", "select=type,status,external_ids&limit=20000")
+        """개체·링크 건수 · 전부 _count(Content-Range · 1왕복·0행). 종전엔 개체 2만 행 +
+        링크 2만 행을 받아 len() 했다 — 보강 중 1.5초 폴링마다 수십 왕복(2026-10 감사)."""
+        from . import entdict as ED
+        sel = "select=entity_id"
+        total = self._count("entities", sel)
         by_type = {}
-        pending = unlisted = enriched = 0
-        for r in rows:
-            t = r.get("type") or "(보류)"
-            by_type[t] = by_type.get(t, 0) + 1
-            if (r.get("status") or "") == "pending":
-                pending += 1
-            if (r.get("status") or "") == "unlisted":
-                unlisted += 1
-            ext = r.get("external_ids")
-            if isinstance(ext, dict) and (ext.get("wikidata") or ext.get("namuwiki")):
-                enriched += 1
-        n_links = len(self._get("content_entities", "select=entity_id&limit=20000"))
-        return {"total": len(rows), "byType": by_type, "pending": pending, "unlisted": unlisted,
-                "enriched": enriched, "links": n_links}
+        for t in ED.ENTITY_TYPES:
+            n = self._count("entities", f"{sel}&type=eq.{urllib.parse.quote(t)}")
+            if n:
+                by_type[t] = n
+        # ponytail: 정의 밖 타입은 '(보류)'로 합산(sqlite 는 타입별) · 타입이 늘면 ENTITY_TYPES 에 추가
+        rest = total - sum(by_type.values())
+        if rest > 0:
+            by_type["(보류)"] = rest
+        try:
+            enriched = self._count("entities", f"{sel}&or=(external_ids->>wikidata.not.is.null,"
+                                               "external_ids->>namuwiki.not.is.null)")
+        except Exception:                                 # JSON 경로 필터 미지원 등 → 종전 행 스캔
+            enriched = sum(1 for r in self._get("entities", "select=external_ids&limit=20000")
+                           if isinstance(r.get("external_ids"), dict)
+                           and (r["external_ids"].get("wikidata") or r["external_ids"].get("namuwiki")))
+        return {"total": total, "byType": by_type,
+                "pending": self._count("entities", f"{sel}&status=eq.pending"),
+                "unlisted": self._count("entities", f"{sel}&status=eq.unlisted"),
+                "enriched": enriched, "links": self._count("content_entities", sel)}
 
     @staticmethod
     def _ent_id_chunks(ids, size: int = 100):
@@ -2163,10 +2177,11 @@ class SupabaseStore:
                     "error": r.get("error") or ""} for r in rows]
         self._upsert("eval_results", payload)
 
-    def eval_results_list(self, run_id, team=None, only_fail=False, limit=2000) -> list:
+    def eval_results_list(self, run_id, team=None, only_fail=False, limit=2000, checked=False) -> list:
         # eval_results 엔 team_id 컬럼이 없다 → 런 소유 확인(eval_runs id+team)으로 팀 스코프 강제.
         # run_id 는 클라이언트 입력이라 이 게이트가 없으면 타 팀 평가 결과가 통째로 열린다.
-        if not self.eval_run_get(run_id, team):
+        # checked=True: 호출자가 같은 (run_id, team) 으로 eval_run_get 을 이미 통과(중복 왕복 생략).
+        if not checked and not self.eval_run_get(run_id, team):
             return []
         q = (f"select=content_hash,title,expected,got,passed,error,rubric&run_id=eq.{int(run_id)}"
              + ("&passed=is.false" if only_fail else "") + f"&limit={int(limit)}")
@@ -2239,10 +2254,22 @@ class SupabaseStore:
         rows = self._get("autopilot_runs", f"select=*&{self._team_q(team)}&id=eq.{int(run_id)}&limit=1")
         return self._pilot_row(rows[0]) if rows else None
 
-    def autopilot_latest(self, team=None):
+    # 상태 폴링(5초)용 열 목록 · 고정 정답셋 해시(golden_hashes · 수천 개)는 뺀다
+    _PILOT_LIGHT_SEL = ("id,status,target,meta_target,max_rounds,round,start_accuracy,best_accuracy,"
+                        "last_accuracy,history,stop_reason,error,created_by,created_at,heartbeat_at,"
+                        "finished_at,model,resumes,team_id")
+
+    def autopilot_latest(self, team=None, with_hashes=True):
+        """with_hashes=False: golden_hashes 없이(행에 그 키가 빠진다 · 상태 폴링용)."""
+        sel = "*" if with_hashes else self._PILOT_LIGHT_SEL
         rows = self._get("autopilot_runs",
-                         f"select=*&{self._team_q(team)}&order=id.desc&limit=1")
-        return self._pilot_row(rows[0]) if rows else None
+                         f"select={sel}&{self._team_q(team)}&order=id.desc&limit=1")
+        if not rows:
+            return None
+        out = self._pilot_row(rows[0])
+        if not with_hashes:
+            out.pop("golden_hashes", None)
+        return out
 
     def autopilot_list(self, team=None, limit=10) -> list:
         rows = self._get("autopilot_runs",
@@ -2372,14 +2399,33 @@ class SupabaseStore:
         rows = self._get("contents", "select=hash,purpose" + tq)
         return {r["hash"]: (r.get("purpose") or "review") for r in rows}
 
-    def recent(self, limit: int = 5000, team=None) -> list:
+    _RECENT_META_SEL = "hash,service,title,source_url,image_urls,item_meta,quality_meta,model,version,created_at,purpose"
+
+    def recent(self, limit: int = 5000, team=None, body: bool = True) -> list:
+        """body=False: 본문·부제·원천 필드 없이 메타만(집계·목록용 · 행당 수 KB 절감).
+        그 행의 content_ref 엔 subtitle·body·source_fields 키가 없다 — 본문이 필요한 경로
+        (재실행·CSV·상세·골든 생성)는 기본값(body=True)을 쓴다. purpose 는 둘 다 싣는다(/raw 홀드아웃 제외)."""
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
-        rows = self._get("contents", "select=hash,service,title,subtitle,body,source_url,image_urls,source_fields,item_meta,quality_meta,model,version,created_at"
+        sel = (self._RECENT_META_SEL.replace(",source_url,", ",subtitle,body,source_url,")
+               .replace(",item_meta,", ",source_fields,item_meta,") if body else self._RECENT_META_SEL)
+        rows = self._get("contents", f"select={sel}"
                          f"{tq}&order=created_at.desc,hash&limit={int(limit)}")   # 벌크 인입 동률 대비 PK 타이브레이크(contents_by_hash 와 동일)
+        if not body:
+            out = [{"item_meta": r.get("item_meta") or {}, "quality_meta": r.get("quality_meta") or {},
+                    "_ts": _iso_epoch(r.get("created_at")), "purpose": r.get("purpose") or "review",
+                    "trace": {"model": r.get("model") or "", "version": int(r.get("version") or 1)},
+                    "content_ref": {"title": r.get("title", ""), "displayServiceName": r.get("service", ""),
+                                    "source_url": r.get("source_url", ""),
+                                    "image_urls": r.get("image_urls") or [],
+                                    "source_status": (r.get("quality_meta") or {}).get("source_status") or {},
+                                    "body_hash": r.get("hash", "")}} for r in rows]
+            out.reverse()
+            return out
         # subtitle 보존: 재구성 콘텐츠의 해시가 저장 해시와 일치해야 재실행 upsert·골든 매칭이
         # 같은 행을 가리킨다(과거엔 subtitle 소실로 부제 있는 콘텐츠가 유령 행을 만들었음).
         out = [{"item_meta": r.get("item_meta") or {}, "quality_meta": r.get("quality_meta") or {},
                 "_ts": _iso_epoch(r.get("created_at")),     # 적재 시각 · 토픽 오늘/7일 집계(store.recent 와 같은 계약)
+                "purpose": r.get("purpose") or "review",     # 용도(review|eval) · /raw 홀드아웃 제외(purpose_map 전량 조회 대체)
                 "trace": {"model": r.get("model") or "", "version": int(r.get("version") or 1)},
                 "content_ref": {"title": r.get("title", ""), "displayServiceName": r.get("service", ""),
                                 "subtitle": r.get("subtitle", "") or "", "body": r.get("body", ""),
