@@ -7,7 +7,7 @@ window.PRISM_APP_PARTS.push(() => ({
   kwMode: '', kwCount: 1, kwDraftSlot: null, kwSlots: [{model:'',version_id:''},{model:'',version_id:''},{model:'',version_id:''}],
   kwSource: 'direct', kwSample: 3, kwHashes: '', kwReuse: '', kwTitle: '', kwLead: '', kwEntities: '', kwIntents: '', kwCategories: '', kwBlind: true,
   kwDraft: {model:'',title:'',rules:'',note:'',parent_id:'',proposal_id:''}, kwVersion: null,
-  kwReview: null, kwCompiler: '', kwLoopVersion: '', kwTraining: [], kwProposal: null, kwAdoptVersion: '',
+  kwReview: null, kwReviewView: 'meta', kwSideOpen: {ents:false,rej:false}, kwAutoNext: true, kwCompiler: '', kwLoopVersion: '', kwTraining: [], kwProposal: null, kwAdoptVersion: '',
   async kwRequest(query='', data=null) {
     const r = await (await this._afetch('/lab-keywords' + query, data ? {
       method:'POST', headers:this._authHeaders(), body:JSON.stringify({...data,reviewer:this.reviewer || ''})
@@ -153,6 +153,21 @@ window.PRISM_APP_PARTS.push(() => ({
     this.kwDraft={target:v.target || 'keyword',model:v.model,title:v.title+' 개선',rules:v.rules,note:'',parent_id:v.id,proposal_id:''};
     this.kwMessage='복제했습니다 · 변경 후 새 버전으로 저장하세요';
   },
+  kwAdopted(v) {return Object.values(this.kwCatalog?.active || {}).some(a=>a.version_id===v?.id);},
+  async kwDeleteVersion() {
+    const v=this.kwVersion;
+    if(!v || this.kwBusy || !window.confirm(v.model+' · '+this.kwVersionLabel(v)+' 버전을 삭제합니다.\n실행한 실험 기록·정답셋은 유지되며 되돌릴 수 없습니다.')) return;
+    this.kwBusy=true;this.kwError='';
+    try {
+      await this.kwRequest('',{action:'delete',version_id:v.id});
+      // 삭제한 버전을 가리키던 선택값을 비운다(다음 요청이 '버전 없음'으로 실패하지 않게).
+      this.kwSlots.forEach(s=>{if(s.version_id===v.id) s.version_id='';});
+      if(this.kwDraft.parent_id===v.id) this.kwDraft.parent_id='';
+      if(this.kwLoopVersion===v.id) {this.kwLoopVersion='';this.kwProposal=null;}
+      if(this.kwAdoptVersion===v.id) this.kwAdoptVersion='';
+      this.kwVersion=null; await this.kwLoad(); this.kwMessage=this.kwVersionLabel(v)+' 삭제 완료';
+    } catch(e){this.kwError=e.message;} finally{this.kwBusy=false;}
+  },
   async kwSaveVersion() {
     if(this.kwBusy) return;
     this.kwBusy=true;this.kwError='';
@@ -177,9 +192,41 @@ window.PRISM_APP_PARTS.push(() => ({
       additions:latest ? JSON.parse(JSON.stringify(latest.additions)) : [],
       no_keywords:latest ? latest.no_keywords : false, note:latest ? latest.note : '',
       partition:(cell.final || {}).partition || 'development',final:cell.final || null};
-    this.kwChangeTab('run');
-    if(this.$nextTick) this.$nextTick(()=>this.$refs.kwReviewEditor?.scrollIntoView({behavior:'smooth',block:'start'}));
+    this.kwChangeTab('run'); this.kwSideOpen={ents:false,rej:false};
   },
+  // 상세 검수(detailview) 보조: 현재 셀 · 콘텐츠 이동 · 조합 상태 · 단축키
+  kwReviewCell() {return this.kwReview && this.kwRunData ? this.kwRunData.cells[this.kwReview.cell_id] || null : null;},
+  kwReviewIndex() {return this.kwReview ? (this.kwRunData?.items || []).findIndex(it=>it.key===this.kwReview.item.key) : -1;},
+  kwReviewGo(step) {
+    const items=this.kwRunData?.items || [], slots=this.kwRunData?.slots || [];
+    for(let i=this.kwReviewIndex()+step;i>=0 && i<items.length;i+=step) {
+      const same=slots.find(s=>s.label===this.kwReview.slot);
+      const slot=[same,...slots].find(s=>s && this.kwReviewable(this.kwCell(items[i],s)));
+      if(slot) {this.kwOpenReview(items[i],slot);return true;}
+    }
+    return false;
+  },
+  kwNextPending() {
+    const items=this.kwRunData?.items || [], slots=this.kwRunData?.slots || [];
+    const pairs=items.flatMap(it=>slots.map(s=>[it,s]));
+    const at=pairs.findIndex(([it,s])=>it.key===this.kwReview.item.key && s.label===this.kwReview.slot);
+    const next=[...pairs.slice(at+1),...pairs.slice(0,at)].find(([it,s])=>{const c=this.kwCell(it,s);return this.kwReviewable(c) && !(c.reviews || []).length;});
+    if(next) this.kwOpenReview(next[0],next[1]);
+    return Boolean(next);
+  },
+  kwReviewKey(e) {
+    if(!this.kwReview || this.kwTab!=='run' || ['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
+    if(e.key==='Escape') this.kwReview=null;
+    else if(e.key==='ArrowRight') this.kwReviewGo(1);
+    else if(e.key==='ArrowLeft') this.kwReviewGo(-1);
+  },
+  kwSlotState(cell) {
+    if(!cell) return '대기';
+    if(!this.kwReviewable(cell)) return '실패';
+    return cell.final ? '확정' : (cell.reviews || []).length ? '판정됨' : '미검수';
+  },
+  kwMetaList(v) {return Array.isArray(v) ? v.map(x=>typeof x==='string' ? x : (x && x.name) || '').filter(Boolean) : [];},
+  kwInKeywords(name) {return this.kwCandidates(this.kwReviewCell()).some(k=>k.text.includes(name));},
   async kwSaveReview(finalize=false) {
     if(this.kwBusy || !this.kwReview) return;
     this.kwBusy=true;this.kwError='';
@@ -191,6 +238,7 @@ window.PRISM_APP_PARTS.push(() => ({
       await this.kwOpenRun(this.kwRunId);
       const cell=this.kwRunData.cells[q.cell_id];q.expected_revision=cell.review_revision;q.final=cell.final;
       this.kwMessage=finalize ? '최종 확정했습니다 · 정답셋 반영 여부를 선택하세요' : '판단을 저장했습니다';
+      if(!finalize && this.kwAutoNext && this.kwNextPending()) this.kwMessage='판단을 저장했습니다 · 다음 미검수 결과입니다';
     }catch(e){this.kwError=e.message;}finally{this.kwBusy=false;}
   },
   kwCurrentGold() {return ((this.kwCatalog || {}).gold || []).find(g=>this.kwReview && g.item_key===this.kwReview.item.key);},

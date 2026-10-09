@@ -37,6 +37,19 @@ async function main(){
  await b.kwStart();assert.equal(sent.target,'sentence');assert.equal(sent.keyword_source,'manual');assert.equal(sent.keywords[0],'한국은행');
  b.kwRunData={target:'sentence',cells:{'s:A':{id:'s:A',status:'failed',review_revision:0,sentence:{draft:'긴 문장 초안'},reviews:[]}}};
  b.kwOpenReview({key:'s'},{label:'A'});assert.equal(b.kwReview.target,'sentence');assert.equal(b.kwReview.judgments[0].original,'긴 문장 초안');assert.equal(b.kwTab,'run');
+ // 상세 검수: 다음 콘텐츠는 같은 조합 우선 · 실패 셀 건너뜀 · 저장 후 다음 미검수 · 삭제 시 선택값 정리
+ const d=window.PRISM_APP_PARTS[0]();d.kwCatalog={versions:[],gold:[]};
+ const cell=(id,status,reviews)=>({id,status,review_revision:0,refined:{keywords:[{text:'한국은행 금리',kind:'combo'}]},reviews,final:null});
+ const it=[{key:'i1'},{key:'i2'},{key:'i3'}],sl=[{label:'A'},{label:'B'}];
+ d.kwRunData={items:it,slots:sl,cells:{'i1:A':cell('i1:A','done',[]),'i1:B':cell('i1:B','done',[]),'i2:A':cell('i2:A','failed',[]),'i2:B':cell('i2:B','done',[{judgments:[{verdict:'accept',reason:'',corrected:'한국은행 금리'}],additions:[],no_keywords:false,note:''}]),'i3:B':cell('i3:B','done',[])}};
+ d.kwOpenReview(it[0],sl[1]);assert.equal(d.kwReviewGo(1),true);assert.equal(d.kwReview.cell_id,'i2:B');
+ d.kwOpenReview(it[0],sl[0]);d.kwReviewGo(1);assert.equal(d.kwReview.cell_id,'i2:B');assert.equal(d.kwReviewGo(-1),true);assert.equal(d.kwReview.cell_id,'i1:B');
+ assert.equal(d.kwNextPending(),true);assert.equal(d.kwReview.cell_id,'i3:B');d.kwNextPending();assert.equal(d.kwReview.cell_id,'i1:A');
+ assert.equal(d.kwSlotState(d.kwRunData.cells['i2:A']),'실패');assert.equal(d.kwInKeywords('한국은행'),true);assert.equal(d.kwInKeywords('물가'),false);
+ d.kwVersion={id:'v9',model:'solar',number:2,title:'t'};d.kwSlots[0].version_id='v9';d.kwLoopVersion='v9';d.kwCatalog.active={};
+ d.kwRequest=async(q,data)=>{sent=data;return{ok:true}};d.kwLoad=async()=>{};const confirm0=window.confirm;window.confirm=()=>true;
+ await d.kwDeleteVersion();window.confirm=confirm0;assert.equal(sent.action,'delete');assert.equal(d.kwSlots[0].version_id,'');assert.equal(d.kwLoopVersion,'');assert.equal(d.kwVersion,null);
+ d.kwCatalog.active={m:{version_id:'v1'}};assert.equal(d.kwAdopted({id:'v1'}),true);
  console.log('Keyword workspace client: required selection, review identity, revision and failures passed');
 }
 main().catch(e=>{console.error(e);process.exitCode=1});
