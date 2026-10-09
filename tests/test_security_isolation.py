@@ -101,7 +101,7 @@ class TestExportTeamScope(unittest.TestCase):
         from prism import serve as SV
         seen = []
         orig = SV.results_rows
-        SV.results_rows = lambda limit=5000, team=None: (seen.append(team) or [])
+        SV.results_rows = lambda limit=5000, team=None, cache=True: (seen.append(team) or [])
         self.addCleanup(lambda: setattr(SV, "results_rows", orig))
         SV.build_results_csv(team="teamA")
         SV.build_report_html(team="teamB")

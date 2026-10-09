@@ -2306,10 +2306,10 @@ class Store:
                 expected=excluded.expected, ts=excluded.ts, source=excluded.source""", vals)
         return len(vals)
 
-    def get_golden(self, team=None, limit=1000):
+    def get_golden(self, team=None, limit=None):
         c = self._conn()
         out = []
-        for content, expected in c.execute("SELECT content,expected FROM golden LIMIT ?", (int(limit),)):
+        for content, expected in c.execute("SELECT content,expected FROM golden LIMIT ?", (int(limit or -1),)):
             try:
                 out.append({"content": json.loads(content), "expected": json.loads(expected)})
             except Exception:
@@ -2339,12 +2339,12 @@ class Store:
                         "source": src or "review", "ts": ts})
         return out
 
-    def golden_entries(self, team=None, limit=5000) -> list:
+    def golden_entries(self, team=None, limit=None) -> list:
         """정답 전체 항목(해시·내용·기대값·출처) · 인텐트 재확정 이관·확정용."""
         c = self._conn()
         out = []
         for ch, content, expected, src in c.execute(
-                "SELECT content_hash,content,expected,source FROM golden ORDER BY ts DESC LIMIT ?", (int(limit),)):
+                "SELECT content_hash,content,expected,source FROM golden ORDER BY ts DESC LIMIT ?", (int(limit or -1),)):
             try:
                 out.append({"hash": ch, "content": json.loads(content or "{}"), "expected": json.loads(expected or "{}"),
                             "source": src or "review"})

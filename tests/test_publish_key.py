@@ -153,7 +153,7 @@ class TestIngestRoundtrip(unittest.TestCase):
             self.assertEqual(rows[0]["content_ref"]["item_unique_key"], self.KEY)
 
             class FakeSV:
-                results_rows = staticmethod(lambda limit=5000, team=None: rows)
+                results_rows = staticmethod(lambda limit=5000, team=None, cache=True: rows)
             orig = DO._SV
             DO._SV = FakeSV
             try:

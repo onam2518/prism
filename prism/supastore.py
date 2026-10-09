@@ -87,33 +87,74 @@ class SupabaseStore:
             raise RuntimeError(f"supabase {method} {table} 실패(HTTP{status})")
         return json.loads(raw) if raw.strip() else []
 
-    _TLS = threading.local()                             # 스레드별 keep-alive 연결(ThreadingHTTPServer 대응)
+    # 프로세스 공용 keep-alive 연결 풀. ThreadingHTTPServer(HTTP/1.0)는 요청마다 새 스레드라
+    # 스레드별(threading.local) 연결은 요청이 끝나면 버려져 매 API 호출이 TCP+TLS 핸드셰이크를 다시 했다.
+    _POOL = {}                                           # host → [(conn, last_used_monotonic)] (LIFO)
+    _POOL_LOCK = threading.Lock()
+    _POOL_MAX = 8                                        # host 당 유휴 연결 상한(초과분은 닫는다)
+    _POOL_IDLE = 30.0                                    # 초 · 오래 쉰 소켓은 서버가 닫았을 수 있다(쓰기는 재시도 안 함)
+
+    @classmethod
+    def _take_conn(cls, host):
+        now = time.monotonic()
+        stale = []
+        with cls._POOL_LOCK:
+            idle = cls._POOL.get(host) or []
+            c = None
+            while idle:
+                cand, ts = idle.pop()
+                if now - ts <= cls._POOL_IDLE:
+                    c = cand
+                    break
+                stale.append(cand)                       # 더 아래 것은 더 오래됐다 → 계속 버림
+        for x in stale:
+            try:
+                x.close()
+            except Exception:
+                pass
+        return c if c is not None else http.client.HTTPSConnection(host, timeout=20)
+
+    @classmethod
+    def _give_conn(cls, host, c):
+        with cls._POOL_LOCK:
+            idle = cls._POOL.setdefault(host, [])
+            if len(idle) < cls._POOL_MAX:
+                idle.append((c, time.monotonic()))
+                return
+        try:
+            c.close()
+        except Exception:
+            pass
 
     def _http(self, method, path, data, headers):
         """PostgREST 호출을 keep-alive 연결로 실행. 매 호출 새 TLS 핸드셰이크(urllib)가
-        도쿄(Fly)→서울(supabase) 왕복을 요청마다 추가하던 비용 제거(2026-07-08 실측 API 400~860ms)."""
+        도쿄(Fly)→서울(supabase) 왕복을 요청마다 추가하던 비용 제거(2026-07-08 실측 API 400~860ms).
+        응답을 끝까지 읽은 연결만 풀에 돌려주고, 오류난 연결은 버린다."""
         host = self.url.split("://", 1)[1]
         attempts = 2 if method in ("GET", "HEAD") else 1
         # 쓰기는 응답 유실 전에 커밋됐을 수 있다. 자동 재전송으로 새 행을 중복 생성하지 않는다.
         for attempt in range(attempts):
-            conns = getattr(self._TLS, "conns", None)
-            if conns is None:
-                conns = self._TLS.conns = {}
-            c = conns.get(host)
-            if c is None:
-                c = conns[host] = http.client.HTTPSConnection(host, timeout=20)
+            c = self._take_conn(host)
             try:
                 c.request(method, path, body=data, headers=headers)
                 resp = c.getresponse()
-                return resp.status, resp.read().decode("utf-8", "replace"), dict(resp.getheaders())
+                out = resp.status, resp.read().decode("utf-8", "replace"), dict(resp.getheaders())
             except (http.client.HTTPException, ConnectionError, OSError):
                 try:
                     c.close()
                 except Exception:
                     pass
-                conns.pop(host, None)
                 if attempt + 1 == attempts:
                     raise
+                continue
+            except BaseException:                        # 그 밖의 오류도 연결 상태 불명 → 풀에 넣지 않음
+                c.close()
+                raise
+            if resp.will_close:                          # 서버가 Connection: close → 재사용 불가
+                c.close()
+            else:
+                self._give_conn(host, c)
+            return out
 
     _PAGE = 1000                                     # PostgREST 서버 max-rows(기본 1000)와 동일한 페이지 크기
     _PAGE_ORDER = {                                  # offset 페이징의 안정 정렬(PK) · order 없인 중복/누락 가능
@@ -587,12 +628,14 @@ class SupabaseStore:
         return int(self._req("POST", "rpc/prism_write_golden", body={
             "p_team_id": team, "p_rows": payload, "p_replace": bool(replace), "p_source": source or "manual"}))
 
-    def get_golden(self, team, limit=1000):
-        rows = self._get("golden", f"select=content,expected&{self._team_q(team)}&limit={int(limit)}")
+    def get_golden(self, team, limit=None):
+        # limit=None = 전량(_get 이 1000행 페이지로 끝까지 모은다) · 종전 1000 기본은 id 순 오래된 1000건만 돌려줬다
+        lim = f"&limit={int(limit)}" if limit else ""
+        rows = self._get("golden", f"select=content,expected&{self._team_q(team)}{lim}")
         return [{"content": r["content"], "expected": r["expected"]} for r in rows]
 
     def golden_hashes(self, team=None) -> set:
-        rows = self._get("golden", f"select=content_hash&{self._team_q(team)}&limit=10000")
+        rows = self._get("golden", f"select=content_hash&{self._team_q(team)}")
         return {r["content_hash"] for r in rows if r.get("content_hash")}
 
     def golden_rows(self, team=None, limit=300) -> list:
@@ -610,14 +653,15 @@ class SupabaseStore:
                         "source": r.get("source") or "review", "ts": _epoch(r.get("created_at"))})
         return out
 
-    def golden_entries(self, team=None, limit=5000) -> list:
-        """정답 전체 항목(해시·내용·기대값·출처) · Store 동일 계약."""
-        rows = self._get("golden", f"select=content_hash,content,expected,source&{self._team_q(team)}&limit={int(limit)}")
+    def golden_entries(self, team=None, limit=None) -> list:
+        """정답 전체 항목(해시·내용·기대값·출처) · Store 동일 계약(limit=None = 전량)."""
+        lim = f"&limit={int(limit)}" if limit else ""
+        rows = self._get("golden", f"select=content_hash,content,expected,source&{self._team_q(team)}{lim}")
         return [{"hash": r.get("content_hash") or "", "content": r.get("content") or {},
                  "expected": r.get("expected") or {}, "source": r.get("source") or "review"} for r in rows]
 
     def golden_source_counts(self, team=None) -> dict:
-        rows = self._get("golden", f"select=source&{self._team_q(team)}&limit=10000")
+        rows = self._get("golden", f"select=source&{self._team_q(team)}")
         out = {}
         for r in rows:
             k = r.get("source") or "review"

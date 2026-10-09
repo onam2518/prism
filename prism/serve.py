@@ -290,7 +290,7 @@ def get_store():
     return _STORE or None
 
 
-def results_rows(limit: int = 5000, team=None) -> list:
+def results_rows(limit: int = 5000, team=None, cache: bool = True) -> list:
     """집계용 결과 행 · 영속 저장소 우선(누적) · 메모리(_LAST_RESULTS) 폴백은 저장소 부재·오류 시만.
     저장소의 빈 결과는 그대로 신뢰한다 — 전체 삭제 직후 메모리 잔상이 폴백으로 되살아나
     화면에 유령 콘텐츠가 남는 문제 방지.
@@ -298,11 +298,12 @@ def results_rows(limit: int = 5000, team=None) -> list:
     팀 콘텐츠 전량(최대 5왕복·수 MB)을 재조회하지 않게. HTTP 쓰기 경로는 전부 _agg_bump 를
     호출하므로 스테일 없음. sqlite(로컬·테스트)는 무캐시 유지 — 테스트가 스토어에 직접 쓰고
     바로 읽는 계약(몽키패치 관례)과 충돌하지 않고, 로컬 조회는 원래 저렴하다.
-    호출측 정렬·절단이 캐시를 오염시키지 않게 리스트는 복사해 반환."""
+    호출측 정렬·절단이 캐시를 오염시키지 않게 리스트는 복사해 반환.
+    cache=False: 일회성 대량 조회(CSV 내보내기 20,001행)가 30초간 큰 사본을 붙들지 않게 우회."""
     st = get_store()
     if st:
         try:
-            if getattr(st, "REMOTE", False):
+            if getattr(st, "REMOTE", False) and cache:
                 return list(_agg_cached_store(("rows", team, limit), st,
                                               lambda: st.recent(limit, team=team), content=True))
             return st.recent(limit, team=team)
@@ -314,7 +315,7 @@ def results_rows(limit: int = 5000, team=None) -> list:
 
 # ── 집계 캐시(B-4): 대시보드·아레나는 매 로드마다 최대 5000행 재스캔 → 짧은 TTL 메모 ──
 # 쓰기(추출·인입·피드백·동기화) 시 _agg_bump() 로 무효화. ThreadingHTTPServer 다중스레드는
-# GIL 하 dict 원자성으로 충분(중복 계산은 무해). TTL 은 안전망(무효화 누락 대비).
+# GIL 하 dict 원자성 + 키별 락(같은 키 동시 미스는 한 번만 계산). TTL 은 안전망(무효화 누락 대비).
 _AGG_CACHE = {}                      # key -> (expiry_ts, version, value)
 _AGG_VERSION = 0                     # 전역 버전(대시보드·아레나·크루·fmap·토픽 등 모든 캐시)
 _CONTENT_VERSION = 0                 # 콘텐츠 캐시(rows·golden·goldorigin·batchseq) 전용 버전 ·
@@ -339,39 +340,57 @@ def _agg_sweep(now: float):
     """만료 항목 회수. TTL 은 '읽을 때 무시' 판정일 뿐이라 이 정리가 없으면 값(전체 스냅샷)이
     영구 적재된다 — 키에 사용자 식별자가 들어가는 항목(('crew', team, uid))이 있어 항목 수가
     사용자 수에 비례한다. 버전 스테일 항목은 읽을 때 덮이므로 여기선 만료만 본다(콘텐츠·전역
-    두 버전이 갈려 한 버전으로 스테일을 판정할 수 없다). _RL_HITS·_TEAM_CACHE 와 같은 관례."""
-    if len(_AGG_CACHE) <= 256:
-        return
+    두 버전이 갈려 한 버전으로 스테일을 판정할 수 없다). _RL_HITS·_TEAM_CACHE 와 같은 관례.
+    쓰기(미스)마다 돈다 — 항목이 수백 개라 싸고, 크기와 무관하게 만료된 큰 값(본문 포함 행
+    목록·골든)이 다음 정리까지 남지 않는다."""
     for k, v in list(_AGG_CACHE.items()):
         if v[0] <= now:
             _AGG_CACHE.pop(k, None)
 
 
-def _agg_cached(key, fn, ttl: float = _AGG_TTL, content: bool = False):
-    now = time.time()
-    ver = _CONTENT_VERSION if content else _AGG_VERSION
+_AGG_KEY_LOCKS = {}                  # key -> Lock · 같은 키의 동시 미스를 한 번만 계산(single-flight)
+_AGG_KEY_LOCKS_GUARD = threading.Lock()
+# ponytail: 키별 락은 지우지 않는다(키 종류 = 팀·사용자 수 수준, Lock 은 수십 바이트) · 커지면 sweep 때 함께 정리
+
+
+def _agg_get(key, ver, now, st=None):
     hit = _AGG_CACHE.get(key)
-    if hit and hit[0] > now and hit[1] == ver:
-        return hit[2]
-    val = fn()
-    _agg_sweep(now)
-    _AGG_CACHE[key] = (now + ttl, ver, val)
+    if hit and hit[0] > now and hit[1] == ver and (st is None or (len(hit) == 4 and hit[3]() is st)):
+        return True, hit[2]
+    return False, None
+
+
+def _agg_compute(key, fn, ttl, content, st=None):
+    """캐시 조회 → 미스면 키별 락 안에서 재확인 후 한 스레드만 fn() 계산.
+    SSE 방송 직후 검수자 탭이 일제히 다시 읽을 때 같은 전량 스캔이 N번 돌던 것을 막는다.
+    fn() 예외는 락을 풀고 그대로 올린다(캐시하지 않음 · 대기 스레드는 각자 재시도)."""
+    ver = _CONTENT_VERSION if content else _AGG_VERSION
+    ok, val = _agg_get(key, ver, time.time(), st)
+    if ok:
+        return val
+    with _AGG_KEY_LOCKS_GUARD:
+        lk = _AGG_KEY_LOCKS.setdefault(key, threading.Lock())
+    with lk:
+        ver = _CONTENT_VERSION if content else _AGG_VERSION
+        ok, val = _agg_get(key, ver, time.time(), st)   # 앞 스레드가 방금 채웠으면 재사용
+        if ok:
+            return val
+        val = fn()
+        now = time.time()
+        _agg_sweep(now)
+        _AGG_CACHE[key] = (now + ttl, ver, val) if st is None else (now + ttl, ver, val, weakref.ref(st))
     return val
+
+
+def _agg_cached(key, fn, ttl: float = _AGG_TTL, content: bool = False):
+    return _agg_compute(key, fn, ttl, content)
 
 
 def _agg_cached_store(key, st, fn, ttl: float = _AGG_TTL, content: bool = False):
     """_agg_cached + 스토어 동일성 검증(약참조). 원본 행처럼 '어느 스토어에서 읽었는지'가
     정합의 전제인 캐시에 쓴다 — 테스트의 _STORE 교체·백엔드 전환 시 즉시 미스가 되어
     이전 스토어의 행이 유령처럼 남지 않는다. content=True 는 콘텐츠 버전으로 검증한다."""
-    now = time.time()
-    ver = _CONTENT_VERSION if content else _AGG_VERSION
-    hit = _AGG_CACHE.get(key)
-    if hit and hit[0] > now and hit[1] == ver and len(hit) == 4 and hit[3]() is st:
-        return hit[2]
-    val = fn()
-    _agg_sweep(now)
-    _AGG_CACHE[key] = (now + ttl, ver, val, weakref.ref(st))
-    return val
+    return _agg_compute(key, fn, ttl, content, st)
 
 
 def _batch_seq_cached(team) -> int:
