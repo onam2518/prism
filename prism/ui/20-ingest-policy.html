@@ -46,7 +46,7 @@
   </footer>
 
   <!-- ✎ 편집 팝업 · 편집 버튼 클릭 시 바로 수정(사전·정책 등) -->
-  <div class="ds-dialog-backdrop" x-show="editT" x-cloak x-on:mousedown.self="cancelEdit()" style="z-index:75">
+  <div class="ds-dialog-backdrop" x-show="editT" x-cloak x-on:mousedown.self="cancelEdit()" x-on:keydown.escape.window="editT && _escTop($event, $el) && cancelEdit()" x-effect="_dlgFocus($el, !!editT)" style="z-index:75">
     <div class="ds-dialog" role="dialog" aria-modal="true" aria-label="편집" style="max-width:520px">
       <h2 class="ds-dialog__title" x-text="'편집 · ' + editTitle"></h2>
       <div class="ds-dialog__body" style="display:flex;flex-direction:column;gap:12px">
@@ -76,7 +76,7 @@
   </div>
 
   <!-- 엔티티 사전 편집 팝업: 타입·속성 수동 확정(사람 결정 우선 · 재보강이 덮어쓰지 않음) -->
-  <div class="ds-dialog-backdrop" x-show="entEdit" x-cloak x-on:mousedown.self="entEdit=null" x-on:keydown.escape.window="entEdit && (entEdit=null)" style="z-index:76">
+  <div class="ds-dialog-backdrop" x-show="entEdit" x-cloak x-on:mousedown.self="entEdit=null" x-on:keydown.escape.window="entEdit && _escTop($event, $el) && (entEdit=null)" style="z-index:76">
     <div class="ds-dialog" role="dialog" aria-modal="true" aria-label="개체 편집" style="max-width:560px;display:flex;flex-direction:column;max-height:88vh">
       <h2 class="ds-dialog__title" style="display:flex;align-items:baseline;gap:10px"><span x-text="'개체 편집 · ' + (entEdit ? entEdit.name : '')"></span>
         <span class="text-xs text-muted" style="font-weight:400" x-text="entEdit ? entEdit.entity_id : ''"></span></h2>
@@ -131,7 +131,7 @@
 
 
   <!-- 대시보드 드릴다운: 분포 항목 → 판정된 콘텐츠 목록 -->
-  <div class="ds-dialog-backdrop" x-show="drillOpen" x-cloak x-on:mousedown.self="drillOpen=false" style="z-index:72">
+  <div class="ds-dialog-backdrop" x-show="drillOpen" x-cloak x-on:mousedown.self="drillOpen=false" x-on:keydown.escape.window="drillOpen && _escTop($event, $el) && (drillOpen=false)" x-effect="_dlgFocus($el, !!drillOpen)" style="z-index:72">
     <div class="ds-dialog" role="dialog" aria-modal="true" aria-label="콘텐츠 목록" style="max-width:620px">
       <h2 class="ds-dialog__title" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span x-text="drillData ? (drillKindKr(drillData.kind) + ' · ' + drillData.value) : ''"></span><span class="ds-badge ds-badge--neutral" x-text="drillData ? (drillData.n + '건') : ''"></span><span class="ds-badge ds-badge--intent" style="cursor:help" x-show="drillData && (drillData.personas||[]).length" data-tip="이 토픽 콘텐츠의 엔티티를 사용자 행동 로그의 페르소나 친화도와 조인한 추정 · 사용자 메타 데이터가 원천" data-tip-pos="bottom" x-text="'타겟 · ' + ((drillData&&drillData.personas)||[]).map(p => p.persona + ' ' + Math.round(p.share*100) + '%').join(' · ')"></span></h2>
       <div class="ds-dialog__body" style="max-height:64vh;overflow:auto;margin-top:6px">
@@ -157,7 +157,7 @@
     <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-on:click="location.reload()">새로고침</button>
   </div>
   <!-- 확인 모달(공통): 네이티브 confirm 대체 · 자동화(CDP) 렌더러 블로킹 방지 + DS 일관 -->
-  <div class="ds-dialog-backdrop" x-show="confirmOpen" x-cloak x-on:mousedown.self="confirmAnswer(false)" x-on:keydown.escape.window="confirmOpen && confirmAnswer(false)" style="z-index:80">
+  <div class="ds-dialog-backdrop" x-show="confirmOpen" x-cloak x-on:mousedown.self="confirmAnswer(false)" x-on:keydown.escape.window="confirmOpen && _escTop($event, $el) && confirmAnswer(false)" style="z-index:80">
     <div class="ds-dialog" role="alertdialog" aria-modal="true" aria-label="확인" style="max-width:440px">
       <h2 class="ds-dialog__title" x-text="confirmTitle"></h2>
       <div class="ds-dialog__body"><p style="margin:0;white-space:pre-line" x-text="confirmMsg"></p></div>

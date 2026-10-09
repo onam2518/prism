@@ -55,15 +55,28 @@ window.mreview = () => ({
       if (this.authToken) h['Authorization'] = 'Bearer ' + this.authToken;
       return fetch(url, Object.assign({}, opts, { headers: h }));
     };
+    const sent = this.authToken;
     let r = await call();
-    if (r.status === 401 && this.rtoken && await this.refresh()) r = await call();
+    if (r.status === 401 && this.rtoken && (this.authToken !== sent || await this.refresh())) r = await call();
     if (r.status === 401 && this.backend === 'supabase') { this.err = '로그인이 만료됐습니다 · 다시 로그인해 주세요'; this.view = 'login'; }
     return r;
   },
-  async refresh() {
+  // 단일 비행 + 다른 탭이 회전한 토큰 채택(refresh_token 1회용 · already_used 방지) · 앱 authRefresh 와 같은 규칙
+  adoptStored() {
+    let t = '', rt = '';
+    try { t = localStorage.getItem('prism_token') || ''; rt = localStorage.getItem('prism_rtoken') || ''; } catch (e) {}
+    if (!t || !rt || rt === this.rtoken) return false;
+    this.authToken = t; this.rtoken = rt; return true;
+  },
+  refresh() {
+    if (!this._refreshBusy) this._refreshBusy = this._refresh().finally(() => { this._refreshBusy = null; });
+    return this._refreshBusy;
+  },
+  async _refresh() {
     try {
+      if (this.adoptStored()) return true;
       const r = await (await fetch('/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'refresh', refresh_token: this.rtoken }) })).json();
-      if (!(r && r.ok && r.access_token)) return false;
+      if (!(r && r.ok && r.access_token)) return this.adoptStored();
       this.authToken = r.access_token;
       if (r.refresh_token) this.rtoken = r.refresh_token;
       try { localStorage.setItem('prism_token', this.authToken); localStorage.setItem('prism_rtoken', this.rtoken); } catch (e) {}

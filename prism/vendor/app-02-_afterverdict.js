@@ -188,6 +188,10 @@ window.PRISM_APP_PARTS.push(() => ({
           this.rtoken ? this.authRefresh().then(kick, kick) : kick();   // 부팅 선갱신: 만료 토큰 새로고침 케이스
         }
         setInterval(() => { if (this.rtoken && this.authToken) this.authRefresh(); }, 45 * 60 * 1000);   // 1h 만료 전 주기 연장
+        // 다른 탭의 갱신·로그인 토큰을 바로 반영(옛 refresh_token 재사용 = already_used 방지) · prism_token 이 먼저 기록된다
+        window.addEventListener('storage', (e) => {
+          if (e.key === 'prism_rtoken' && this.rtoken && e.newValue && e.newValue !== this.rtoken && this._adoptStoredToken()) this.startLive();
+        });
         this.refreshConfig();
         this.startLive();                              // 실시간 SSE 구독
         // 장기 폴백: 탭 복귀 시에도 판정이 비어 있으면 재시도(일시 실패로 사용자 메뉴만 굳는 것 방지)
@@ -221,7 +225,7 @@ window.PRISM_APP_PARTS.push(() => ({
           else if (e.code === 'KeyS') { e.preventDefault(); if (this.finalMode) this.finalDecide(this.finalCtx, 'bad'); else if(this.opsDetail){this._err('해당 메타의 수정 필요와 원문 근거를 입력하세요');} else { this.openEditVerdict(); this.pendingBad = true; } }
           else if (e.code === 'ArrowRight') { e.preventDefault(); this.detailGo(1); }
           else if (e.code === 'ArrowLeft') { e.preventDefault(); this.detailGo(-1); }
-          else if (e.code === 'Escape') { this.detailOpen = false; }
+          else if (e.code === 'Escape') { if (this._escTop(e, document.querySelector('.detailview[aria-label="콘텐츠 상세"]'))) this.detailOpen = false; }   // 위에 겹친 모달(정답 확정 등)이 있으면 그것만 닫힘
         });
         // 검수 목록 단축키: J/K=행 이동 · Enter=상세 열기 (콘텐츠 검수 목록에서 · 상세 닫힘 · 입력 중 무시)
         window.addEventListener('keydown', (e) => {

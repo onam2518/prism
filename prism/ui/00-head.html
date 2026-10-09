@@ -98,7 +98,7 @@
   </template>
 
   <!-- 배지 전체 보기 모달(목록 + 달성 여부·진행도) -->
-  <div class="ds-dialog-backdrop" x-show="badgeModalOpen" x-cloak x-transition.opacity x-on:mousedown.self="badgeModalOpen=false" style="z-index:74">
+  <div class="ds-dialog-backdrop" x-show="badgeModalOpen" x-cloak x-transition.opacity x-on:mousedown.self="badgeModalOpen=false" x-on:keydown.escape.window="badgeModalOpen && _escTop($event, $el) && (badgeModalOpen=false)" x-effect="_dlgFocus($el, !!badgeModalOpen)" style="z-index:74">
     <div class="badgemodal" x-show="badgeModalOpen" x-transition>
       <div class="badgemodal__hd">
         <div class="badgemodal__ttl">배지 컬렉션</div>
