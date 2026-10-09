@@ -1759,4 +1759,14 @@ button.tbchip:disabled{cursor:default;opacity:.8}
   .kwd-name > span,.kwd-ellipsis{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .kwd-val{text-align:right}
   .kwd-wide{grid-column:2/-1;min-width:0}
+  .kwl-table td,.kwl-table th{vertical-align:middle}
+  .kwl-table .kwl-state{width:calc(var(--ds-space-10) * 2)}
+  .kwl-table .kwl-act{width:calc(var(--ds-space-10) * 2.5)}
+  .kwl-row{cursor:pointer}
+  .kwl-cell{cursor:pointer}
+  .kwl-done{cursor:pointer;white-space:nowrap}
+  .kwl-cell:hover .kwl-kw{color:var(--ds-primary)}
+  .kwl-kw{margin:var(--ds-space-1) 0 0;font-size:12.5px;color:var(--ds-body)}
+  .kwl-table .meta{margin:2px 0 0;font-size:11.5px;color:var(--ds-muted);font-weight:400}
+  .kwl-ellipsis{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:calc(var(--ds-space-10) * 7)}
   @media (max-width:900px){.kwd-split{grid-template-columns:minmax(0,1fr)}.kwd-side{padding-left:0;border-left:0}}
