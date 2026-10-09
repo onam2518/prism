@@ -2238,7 +2238,7 @@ def _g_lab_entrefine_votes(h, q):
 
 @_get_route("/lab-decide-status", admin=True)        # 솔라 디사이드 골든셋 시험 진척·결과 폴링
 def _g_lab_decide_status(h, q):
-    return DC.status(q.get("id", [""])[0])
+    return DC.status(q.get("id", [""])[0], h._req_team())
 
 
 @_get_route("/metaquery", admin=True)                # 콘텐츠 조회(메타베이스) 설정·연결 상태

@@ -192,9 +192,10 @@ def final_review_queue(team=None, reviewer: str = "", offset=0, limit=200, reaso
         ref = r.get("content_ref") or {}
         ch = _row_key(ref)                         # 스토어 키 지름길(본문 SHA 재계산 생략 · 내용 동일)
         fb = fmap.get(ch) or {}
-        from .learnops import _current_review_votes
-        fb, current_final = _current_review_votes(st, ch, team, fb, finals.get(ch))
-        if ch in rewrite and ch not in golden:     # 다시 생성한 수정 필요 건 · 기초 합의와 무관하게 최종 결정 대상
+        if ch in golden or (not fb and ch not in finals and ch not in rewrite):
+            continue                               # 대상 아님을 먼저 거른다(행마다 ops_review 원격 조회 N+1 방지)
+        fb, current_final = LO._current_review_votes(st, ch, team, fb, finals.get(ch))
+        if ch in rewrite:     # 다시 생성한 수정 필요 건 · 기초 합의와 무관하게 최종 결정 대상
             d = _SV._detail_row(r)
             d["version"] = int((r.get("trace") or {}).get("version") or 0) or None
             d["model"] = ""                        # 출처 비표시(원장에만 기록)

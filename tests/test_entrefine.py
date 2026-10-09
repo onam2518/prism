@@ -129,6 +129,25 @@ class EntRefineTest(unittest.TestCase):
             self.assertEqual(ER.keyword_history("team-a")["items"][0]["base"], [{"name": "기존"}])
             self.assertEqual(st.get_report(ER.KEYWORD_HISTORY_KIND, "team-a")["items"][0]["prompt"], "original rules")
 
+    def test_voted_keyword_results_survive_history_limit(self):
+        from prism.store import Store
+        with tempfile.TemporaryDirectory() as directory:
+            st = Store(os.path.join(directory, "t.db"))
+            ER._SV = types.SimpleNamespace(get_store=lambda: st)
+            self.addCleanup(lambda: setattr(ER, "_SV", None))
+            eng = {"keyword": (None, True, "rules", "m")}
+            def rec():
+                out = {"hash": "h", "title": "t", "base": [], "refined": {"keywords": [], "verification": "checked"}}
+                ER._record_keywords(out, {"summary": "s"}, eng, "a")
+                return out["result_id"]
+            voted = rec()
+            self.assertTrue(ER.vote({"result_id": voted, "pick": "base"}, "qa", "a")["ok"])
+            for _ in range(ER.KEYWORD_HISTORY_LIMIT + 5): rec()           # 배치 실행이 한도를 넘겨도
+            items = st.get_report(ER.KEYWORD_HISTORY_KIND, "a")["items"]
+            self.assertIn(voted, [r["result_id"] for r in items])         # 투표 라벨은 남는다
+            self.assertEqual(len(items), ER.KEYWORD_HISTORY_LIMIT + 1)
+            self.assertEqual(ER.votes("a")["n"], 1)
+
     def test_metas_only_input(self):
         im = {"summary": "리드문", "entities": ["가"], "intent": ["속보·단신"], "content_category": [{"tier1": "Sports", "tier2": "Golf"}]}
         payload = json.loads(ER._payload(im, {}))

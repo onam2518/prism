@@ -746,7 +746,11 @@ def _record_keywords(out, item_meta, eng, team=None):
                   prompt=system, review_prompt=KEYWORD_REVIEW_RULES,
                   prompt_id=hashlib.sha256((system + KEYWORD_REVIEW_RULES).encode()).hexdigest()[:16], votes={})
     def append(history):
-        history["items"] = sorted(history["items"] + [record], key=lambda x: x["created_at"])[-KEYWORD_HISTORY_LIMIT:]
+        # 보관 한도는 투표 없는 결과에만 적용 · 투표(키워드 정답 라벨)가 달린 결과는 배치 실행에 밀려 지워지지 않는다.
+        # ponytail: 투표 결과는 무기한 누적(사람 속도라 소량) · 커지면 투표를 별도 report 로 분리
+        items = sorted(history["items"] + [record], key=lambda x: x["created_at"])
+        keep = {r["result_id"] for r in [r for r in items if not r.get("votes")][-KEYWORD_HISTORY_LIMIT:]}
+        history["items"] = [r for r in items if r.get("votes") or r["result_id"] in keep]
     try:
         _keyword_update(append, team)
         out.update(result_id=record["result_id"], keyword_model=record["model"],

@@ -236,6 +236,16 @@ class OperationsTests(unittest.TestCase):
             serve._agg_bump()
             self.assertEqual(serve.final_review_queue()['n'],0)
 
+    def test_final_queue_skips_vote_lookup_for_unreviewed_rows(self):
+        from prism import serve, learnops as LO
+        with patch.object(serve,'_STORE',self.st), patch.object(LO,'_current_review_votes',wraps=LO._current_review_votes) as cur:
+            self.addCleanup(serve._agg_bump)
+            serve.final_review_queue()
+            self.assertEqual(cur.call_count,0)             # 검수·최종·재생성 없는 행은 ops_review 조회 생략(N+1 방지)
+            self.request('review',axes=self.axes()); serve._agg_bump()
+            serve.final_review_queue()
+            self.assertEqual(cur.call_count,1)
+
     def test_holdout_routes_do_not_reenter_learning(self):
         self.st.set_purpose([self.ch],'eval')
         self.st.save_routes(self.ch,'me',[{'stage':'analyze','directive':'평가용 공통 보정'}])

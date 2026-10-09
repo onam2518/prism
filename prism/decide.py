@@ -301,7 +301,7 @@ def start(team=None, n: int = 100, scope: str = "all", gate: float = GATE, defs:
         _SEQ += 1
         rid = _SEQ
         _RUNS[rid] = {"running": True, "total": len(rows), "done": 0, "fails": 0, "started": time.time(),
-                      "report": None, "error": "", "gate": gate, "defs": defs}
+                      "report": None, "error": "", "gate": gate, "defs": defs, "team": team}
         for k in [k for k, v in _RUNS.items() if not v["running"] and k < rid - 10]:
             _RUNS.pop(k, None)
     threading.Thread(target=_run, args=(rid, rows, gate, post, key, defs), daemon=True).start()
@@ -343,13 +343,13 @@ def _run(rid, rows, gate, post, key, defs=True):
             run["elapsed_s"] = round(time.time() - run["started"], 1)
 
 
-def status(run_id) -> dict:
+def status(run_id, team=None) -> dict:
     try:
         rid = int(run_id)
     except (TypeError, ValueError):
         return {"ok": False, "error": "잘못된 id"}
     with _LOCK:
         run = _RUNS.get(rid)
-        if not run:
+        if not run or run.get("team") != team:     # 다른 팀 실행은 없는 것과 같다(entrefine.status 와 동일)
             return {"ok": False, "error": "만료된 실행입니다 · 다시 실행하세요"}
-        return {"ok": True, "id": rid, **{k: v for k, v in run.items() if k != "started"}}
+        return {"ok": True, "id": rid, **{k: v for k, v in run.items() if k not in ("started", "team")}}
