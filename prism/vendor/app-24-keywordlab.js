@@ -223,6 +223,15 @@ window.PRISM_APP_PARTS.push(() => ({
     if(!this.kwReviewable(cell)) return '실패';
     return cell.final ? '확정' : (cell.reviews || []).length ? '판정됨' : '미검수';
   },
+  // 실행 결과 CSV: 인증 GET 이라 fetch+Blob(exportDash 와 같은 이유) · 오류면 JSON 이 오므로 형식으로 구분
+  async kwDownloadCsv() {
+    try {
+      const r=await this._afetch('/lab-keywords?csv=1&run='+encodeURIComponent(this.kwRunId),{headers:this._authHeaders()});
+      if(!(r.headers.get('content-type') || '').includes('text/csv')) throw new Error((await r.json()).error || 'CSV를 만들지 못했습니다');
+      const u=URL.createObjectURL(await r.blob()), a=document.createElement('a');
+      a.href=u; a.download='prism_keyword_'+this.kwRunId.slice(0,8)+'.csv'; a.click(); setTimeout(()=>URL.revokeObjectURL(u),60000);
+    } catch(e) {this.kwError=e.message;}
+  },
   kwSlotBadge(cell) {return ({'확정':'ds-badge--success','판정됨':'ds-badge--intent','실패':'ds-badge--error'})[this.kwSlotState(cell)] || 'ds-badge--neutral';},
   // 콘텐츠 한 건의 목록 상태: 판정할 조합이 남았으면 미검수/검수 중 · 모두 확정이면 확정
   kwItemState(item) {

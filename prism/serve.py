@@ -2235,6 +2235,10 @@ def _g_lab_keywords(h, q):
     if not h._require_team():
         return None
     try:
+        if q.get("run") and q.get("csv"):             # 실행 결과 CSV(콘텐츠 × 조합) · 다른 AI 전달용
+            rid = q["run"][0]
+            h._send_file(KL.export_csv(rid, h._req_team()), "text/csv; charset=utf-8", "prism_keyword_" + rid[:8] + ".csv")
+            return None
         if q.get("run"):
             return KL.run_detail(q["run"][0], h._req_team())
         if q.get("version"):

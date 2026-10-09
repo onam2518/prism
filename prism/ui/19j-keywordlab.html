@@ -78,7 +78,7 @@
     <button class="ds-btn ds-btn--ghost ds-btn--s-sm" x-on:click="kwLoad()">새로고침</button>
   </div>
   <section class="panel" x-show="kwRunData && kwTab==='run'">
-    <div class="panel-hd"><b>실행 결과</b><span class="meta" x-text="kwRunData ? kwState(kwRunData) : ''"></span><button class="ds-btn ds-btn--outline ds-btn--s-sm ml-auto" x-show="kwRunData && !kwRunData.revealed" x-on:click="kwReveal()">모델·버전 공개</button></div>
+    <div class="panel-hd"><b>실행 결과</b><span class="meta" x-text="kwRunData ? kwState(kwRunData) : ''"></span><span class="control-row control-row--compact ml-auto"><button class="ds-btn ds-btn--outline ds-btn--s-sm" x-show="kwRunData && !kwRunData.revealed" x-on:click="kwReveal()">모델·버전 공개</button><button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-bind:disabled="!kwRunData || kwRunData.status==='running'" x-on:click="kwDownloadCsv()" data-tip="콘텐츠 × 조합 한 행 · 제목·본문·엔티티·핵심 키워드·핵심 문장·검수 결과" data-tip-pos="bottom">CSV 받기</button></span></div>
     <div class="panel-bd dc-body"><p role="status" x-show="kwRunData?.error" x-text="kwRunData?.error || ''"></p>
       <!-- 결과 목록(콘텐츠 검수 목록과 같은 결) · 행 = 콘텐츠 · 행 클릭 = 다음 판정할 조합으로 상세 검수 · 조합 셀 클릭 = 그 조합 -->
       <div class="overflow-auto kwl-wrap"><table class="ds-table kwl-table"><thead><tr><th class="kwl-state">상태</th><th>콘텐츠</th>

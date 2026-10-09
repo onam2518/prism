@@ -106,6 +106,34 @@ class KeywordLabTest(unittest.TestCase):
         self.assertFalse(K.action({'action': 'delete', 'version_id': other}, 'a', 'tester', True)['ok'])
         self.assertEqual(self.version('새 버전')['number'], 3)
 
+    def test_export_csv_rows_body_blind_and_formula_guard(self):
+        import csv, io
+        self.store.upsert_golden('g1', {'title': '=HYPERLINK("x")', 'body': '본문 원문\n둘째 줄'},
+                                 {'summary': '한국은행이 기준금리를 인하했다', 'entities': ['한국은행', '이창용'], 'intent': ['속보'], 'content_category': ['경제']})
+        versions = [self.version(str(i)) for i in range(2)]
+        with patch.object(K.threading, 'Thread'):
+            rid = K.start({'slots': [{'model': v['model'], 'version_id': v['id']} for v in versions], 'sample': 1}, 'a', 'tester')['id']
+        with patch.object(E, '_llm', return_value=(None, True, '')): K._run(rid, 'a')
+        run = K._get(K._key('run', rid), 'a')
+        cell = sorted(run['cells'].values(), key=lambda c: c['slot'])[0]
+        kws = cell['refined']['keywords']
+        K.review({'run_id': rid, 'cell_id': cell['id'], 'expected_revision': 0, 'no_keywords': len(kws) < 2,
+                  'judgments': [{'verdict': 'exclude', 'reason': '중복'}] + [{'verdict': 'accept'} for _ in kws[1:]]}, 'a', 'tester', True)
+        raw = K.export_csv(rid, 'a').decode('utf-8')
+        self.assertTrue(raw.startswith('\ufeff'))
+        rows = list(csv.DictReader(io.StringIO(raw[1:])))
+        self.assertEqual(len(rows), 2)
+        first = rows[0]
+        self.assertEqual(first['제목'], "'=HYPERLINK(\"x\")")          # 수식 인젝션 중화
+        self.assertEqual(first['본문'], '본문 원문\n둘째 줄')
+        self.assertEqual(first['엔티티'], '한국은행 | 이창용')
+        self.assertEqual(first['모델·버전'], '비공개')
+        self.assertEqual(first['핵심 키워드'], ' | '.join(k['text'] for k in kws))
+        self.assertEqual(first['검수 상태'], '판정됨')
+        self.assertIn(kws[0]['text'] + ' → 제외 (중복)', first['판정 사유'])
+        self.assertEqual(rows[1]['검수 상태'], '미검수')
+        with self.assertRaises(ValueError): K.export_csv(rid, 'b')
+
     def test_explicit_model_version_and_management_permissions(self):
         v = self.version()
         for slots in ([],[{'model':'solar-pro3'}],[{'model':'wrong','version_id':v['id']}], [{'model':v['model'],'version_id':v['id']}]*2):

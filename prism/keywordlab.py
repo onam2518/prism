@@ -390,6 +390,45 @@ def run_detail(rid, team):
     return {'ok': True, 'run': out}
 
 
+CSV_COLUMNS = ('실험ID', '실험 대상', '조합', '모델·버전', '콘텐츠 해시', '제목', '본문', '리드문', '엔티티', '인텐트', '카테고리',
+               '핵심 키워드', '키워드 형태', '핵심 문장', '생성 상태', '검수 상태', '확정 결과', '판정 사유')
+
+
+def export_csv(rid, team):
+    """실행 결과 CSV · 행 = 콘텐츠 × 조합 · 여러 값은 ' | ' 구분(순서 유지) · 다른 AI 에 넘기는 용도.
+    본문은 정답셋 원문에서만 채운다(실험에는 메타만 고정 보관) · 공개 전 실험은 모델·버전을 가린다."""
+    from .dashops import csv_cell
+    from .store import golden_hash
+    run = run_detail(rid, team)['run']
+    target = _target(run)
+    bodies = {golden_hash(r): (r.get('content') or {}).get('body') or '' for r in _store().get_golden(team) or []}
+    join = lambda xs: ' | '.join(str(x) for x in xs)
+    lines = [','.join(csv_cell(c) for c in CSV_COLUMNS)]
+    for item in run['items']:
+        meta = item['meta']
+        for slot in run['slots']:
+            cell = run['cells'].get(item['key'] + ':' + slot['label']) or {}
+            v = slot['version']
+            if target == 'sentence':
+                keywords = item.get('keywords', [])
+                sentence = (cell.get('sentence') or {}).get('text') or (cell.get('sentence') or {}).get('draft') or ''
+            else:
+                keywords, sentence = (cell.get('refined') or {}).get('keywords', []), ''
+            final = cell.get('final') or {}
+            status = '확정' if final else ('판정됨' if cell.get('reviews') else ('미검수' if _reviewable(cell) else ''))
+            reasons = [j['original'] + ' → ' + ({'edit': j['corrected'], 'exclude': '제외', 'hold': '보류'}[j['verdict']]) + ' (' + j['reason'] + ')'
+                       for j in (final or (cell.get('reviews') or [{}])[-1]).get('judgments', []) if j['verdict'] != 'accept']
+            row = [run['id'], '문장' if target == 'sentence' else '키워드', slot['label'],
+                   (v.get('model', '') + ' · ' + 'v' + str(v.get('number', '')) + ' ' + v.get('title', '')) if run['revealed'] else '비공개',
+                   item['hash'], item['title'], bodies.get(item['hash'], ''), meta.get('summary', ''),
+                   join(ER.MC.entity_names(meta.get('entities'))), join(meta.get('intent') or []), join(meta.get('content_category') or []),
+                   join(k['text'] for k in keywords), join('조합형' if k.get('kind') == 'combo' else '단일형' for k in keywords), sentence,
+                   {'done': '완료', 'failed': '실패'}.get(cell.get('status'), '대기') + (' · ' + cell['error'] if cell.get('error') else ''),
+                   status, join(k['text'] for k in _answers(final)) if final else '', join(reasons)]
+            lines.append(','.join(csv_cell(c) for c in row))
+    return ('\ufeff' + '\r\n'.join(lines)).encode('utf-8')
+
+
 def _review_payload(body, cell, item, target='keyword'):
     keywords = _candidates(cell)
     label = '문장' if target == 'sentence' else '키워드'
