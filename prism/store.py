@@ -252,15 +252,6 @@ class Store:
           content_hash TEXT, team TEXT NOT NULL DEFAULT '', model TEXT, version INTEGER,
           item_meta TEXT, quality_meta TEXT, ts REAL,
           PRIMARY KEY(content_hash, team, model, version));
-        -- AI 초안 판정(실험실): 심판 모델이 검수자별로 미리 채운 정확/수정 초안.
-        -- 콘텐츠 검수처럼 상시 적재 → 나갔다 와도·배포돼도 유지 · 재실행 시 이미 초안 있는 건 스킵.
-        -- 확정은 별개(feedback) · 초안은 남겨 audit/학습 신호(초안 verdict vs 사람 최종)로 쓴다.
-        CREATE TABLE IF NOT EXISTS autoreview(
-          content_hash TEXT, reviewer TEXT, team TEXT NOT NULL DEFAULT '',
-          verdict TEXT, confidence REAL, reason TEXT, elements TEXT,
-          model TEXT, content_model TEXT, same_model INTEGER,
-          service TEXT, title TEXT, grade TEXT, ts REAL,
-          PRIMARY KEY(content_hash, reviewer));
         -- 피드백 라우팅(append-only): 교정 원문을 요소·단계별 개선 지시로 재분류한 결과.
         CREATE TABLE IF NOT EXISTS feedback_routes(
           id INTEGER PRIMARY KEY AUTOINCREMENT, content_hash TEXT, reviewer TEXT,
@@ -323,25 +314,6 @@ class Store:
           key_hash TEXT, key_prefix TEXT, revoked INTEGER NOT NULL DEFAULT 0,
           ts REAL, last_used REAL);
         CREATE INDEX IF NOT EXISTS ix_depkeys_dep ON deployment_keys(deployment_id);
-        -- MCP 파트너 키(트랙 B · prism/mcpkeys.py): sha256 해시만 저장(평문 미보관) ·
-        -- (user_id, team) 을 발급 시점에 고정 · 조회·폐기는 (key_id, team) 복합 필터.
-        -- key_id 는 난수 문자열이다 — 순차 정수면 남의 키 id 를 찍어 맞힐 수 있다(감사 O3).
-        -- team 은 NOT NULL + 빈 문자열 금지: 팀 없는 키는 스토어에도 들어오지 못한다(감사 H1).
-        CREATE TABLE IF NOT EXISTS mcp_keys(
-          key_id TEXT PRIMARY KEY,
-          team TEXT NOT NULL CHECK(team <> ''), user_id TEXT NOT NULL CHECK(user_id <> ''),
-          key_hash TEXT NOT NULL UNIQUE, prefix TEXT NOT NULL DEFAULT '',
-          label TEXT NOT NULL DEFAULT '', revoked INTEGER NOT NULL DEFAULT 0,
-          created_at REAL, expires_at REAL, last_used REAL);
-        CREATE INDEX IF NOT EXISTS ix_mcpkeys_owner ON mcp_keys(team, user_id);
-        -- MCP 사용 기록: 인증을 통과한 호출만 쌓인다(인증 실패 미적재 · 감사 O2).
-        CREATE TABLE IF NOT EXISTS mcp_calls(
-          id INTEGER PRIMARY KEY AUTOINCREMENT, key_id TEXT NOT NULL,
-          team TEXT NOT NULL DEFAULT '', user_id TEXT NOT NULL DEFAULT '',
-          prefix TEXT NOT NULL DEFAULT '', tool TEXT NOT NULL DEFAULT '',
-          ok INTEGER NOT NULL DEFAULT 0, ms INTEGER NOT NULL DEFAULT 0,
-          resp_bytes INTEGER NOT NULL DEFAULT 0, ts REAL);
-        CREATE INDEX IF NOT EXISTS ix_mcpcalls_key ON mcp_calls(key_id, ts);
         -- 프롬프트 라이브러리: 잘 나온 프롬프트 패턴 저장·재사용(Atelier prompt_library 이식).
         CREATE TABLE IF NOT EXISTS prompt_library(
           id INTEGER PRIMARY KEY AUTOINCREMENT, team TEXT NOT NULL DEFAULT '',
@@ -362,7 +334,6 @@ class Store:
         CREATE INDEX IF NOT EXISTS ix_patch_hash ON patch_log(content_hash, ts);
         CREATE INDEX IF NOT EXISTS ix_patch_reviewer ON patch_log(reviewer, ts);
         CREATE INDEX IF NOT EXISTS ix_feedback_reviewer ON feedback(reviewer, ts);
-        CREATE INDEX IF NOT EXISTS ix_autoreview_reviewer ON autoreview(reviewer, ts);
         """)
         c.commit()
         if "event_id" not in [r[1] for r in c.execute("PRAGMA table_info(events)")]:
@@ -1085,50 +1056,6 @@ class Store:
             out.update({ch: float(ts or 0) for ch, ts in c.execute(
                 f"SELECT content_hash, MAX(ts) FROM drafts WHERE team=? AND content_hash IN ({ph})"
                 " GROUP BY content_hash", (team or "", *chunk))})
-        return out
-
-    # ── AI 초안 판정(실험실) · 검수자별 상시 적재 ──────────────────────────
-    def save_ai_draft(self, content_hash, reviewer, draft: dict, team=None):
-        """심판 모델 초안 1건 upsert(검수자당 콘텐츠 1건 · 재실행하면 갱신).
-        콘텐츠 검수처럼 저장 계층에 남겨 페이지 이탈·배포에도 유지된다.
-        team 은 supabase 와 시그니처 통일용(sqlite 단일팀이라 컬럼만 채운다)."""
-        d = draft or {}
-        c = self._conn()
-        c.execute("""INSERT INTO autoreview(content_hash,reviewer,team,verdict,confidence,reason,
-              elements,model,content_model,same_model,service,title,grade,ts)
-          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-          ON CONFLICT(content_hash,reviewer) DO UPDATE SET
-            team=excluded.team, verdict=excluded.verdict, confidence=excluded.confidence,
-            reason=excluded.reason, elements=excluded.elements, model=excluded.model,
-            content_model=excluded.content_model, same_model=excluded.same_model,
-            service=excluded.service, title=excluded.title, grade=excluded.grade, ts=excluded.ts""",
-          (content_hash, reviewer or "", team or "", d.get("verdict") or "",
-           float(d.get("confidence") or 0), d.get("reason") or "",
-           json.dumps(d.get("elements") or [], ensure_ascii=False), d.get("model") or "",
-           d.get("content_model") or "", 1 if d.get("same_model") else 0,
-           d.get("service") or "", d.get("title") or "", d.get("grade") or "", time.time()))
-        c.commit()
-
-    def ai_drafts(self, reviewer, team=None) -> dict:
-        """검수자의 저장된 초안 전부 → {content_hash: draft}. 초안 판정 서브탭의 상시 목록 ·
-        재실행 시 '이미 초안 있는 것' 스킵 원천. team 은 supabase 와 계약 통일용(sqlite 미사용)."""
-        me = (reviewer or "").strip()
-        if not me:
-            return {}
-        c = self._conn()
-        out = {}
-        for row in c.execute("""SELECT content_hash,verdict,confidence,reason,elements,model,
-              content_model,same_model,service,title,grade,ts FROM autoreview WHERE reviewer=?
-              ORDER BY ts""", (me,)):
-            try:
-                elems = json.loads(row[4] or "[]")
-            except (ValueError, TypeError):
-                elems = []
-            out[row[0]] = {"verdict": row[1] or "", "confidence": float(row[2] or 0),
-                           "reason": row[3] or "", "elements": elems, "model": row[5] or "",
-                           "content_model": row[6] or "", "same_model": bool(row[7]),
-                           "service": row[8] or "", "title": row[9] or "",
-                           "grade": row[10] or "", "ts": float(row[11] or 0)}
         return out
 
     # ── 콘텐츠별 검수 담당 배정(배타적 노출 · 진척 개인화) ─────────────────
@@ -1903,86 +1830,6 @@ class Store:
         c = self._conn()
         c.execute("UPDATE deployment_keys SET last_used=? WHERE id=?", (time.time(), int(key_id)))
         c.commit()
-
-    # ── MCP 파트너 키(트랙 B · mcpkeys.py) · supastore 와 동일 계약 ───────────
-    # 읽기 계약에 **key_hash 를 절대 담지 않는다**. 해시는 대조용으로 넣기만 하고
-    # 어떤 조회 경로로도 나오지 않아야 유출 표면이 0 이 된다(deploy_keys_for 는
-    # meta_only 인자로 감췄지만, 새 표면은 애초에 낼 수 없게 만든다).
-    _MCPKEY_COLS = "key_id,team,user_id,prefix,label,revoked,created_at,expires_at,last_used"
-
-    def _mcpkey_row(self, r) -> dict:
-        return {"key_id": r[0], "team": r[1] or "", "user_id": r[2] or "", "prefix": r[3] or "",
-                "label": r[4] or "", "revoked": bool(r[5]), "created_at": r[6],
-                "expires_at": r[7], "last_used_at": r[8]}
-
-    def mcp_key_add(self, user_id, team, key_id, key_hash, prefix, label, expires_at) -> str:
-        c = self._conn()
-        c.execute("INSERT INTO mcp_keys(key_id,team,user_id,key_hash,prefix,label,created_at,expires_at) "
-                  "VALUES(?,?,?,?,?,?,?,?)",
-                  (str(key_id), str(team or ""), str(user_id or ""), key_hash, prefix or "",
-                   label or "", time.time(), float(expires_at or 0)))
-        c.commit()
-        return str(key_id)
-
-    def mcp_key_find(self, key_hash=None, key_id=None):
-        """해시 또는 key_id 로 단건 조회(비밀 미포함). 해시 조회는 팀 필터가 없다 —
-        해시가 곧 팀을 **결정**하기 때문(교차 팀 열람 경로가 아니다)."""
-        if not (key_hash or key_id):
-            return None
-        c = self._conn()
-        if key_hash:
-            r = c.execute(f"SELECT {self._MCPKEY_COLS} FROM mcp_keys WHERE key_hash=?",
-                          (key_hash,)).fetchone()
-        else:
-            r = c.execute(f"SELECT {self._MCPKEY_COLS} FROM mcp_keys WHERE key_id=?",
-                          (str(key_id),)).fetchone()
-        return self._mcpkey_row(r) if r else None
-
-    def mcp_keys_for(self, user_id, team) -> list:
-        """(user_id, team) 복합 필터. 둘 중 하나라도 비면 빈 목록 — falsy 를 '전체'로
-        읽는 폴백을 만들지 않는다(감사 H1)."""
-        if not (user_id and team):
-            return []
-        c = self._conn()
-        return [self._mcpkey_row(r) for r in c.execute(
-            f"SELECT {self._MCPKEY_COLS} FROM mcp_keys WHERE user_id=? AND team=? "
-            "ORDER BY created_at DESC", (str(user_id), str(team)))]
-
-    def mcp_key_revoke(self, key_id, team, user_id) -> bool:
-        """(key_id, team, user_id) 3중 필터 폐기. 하나라도 불일치면 0행 → False.
-        team 을 빼면 감사 O3(타 팀 키 폐기)가 재현되고, user_id 를 빼면 그 반대편
-        (같은 팀 아무나 남의 키 폐기)이 열린다. 키는 개인 자격증명이라 관리자도 예외가 아니다."""
-        if not (key_id and team and user_id):
-            return False
-        c = self._conn()
-        n = c.execute("UPDATE mcp_keys SET revoked=1 "
-                      "WHERE key_id=? AND team=? AND user_id=? AND revoked=0",
-                      (str(key_id), str(team), str(user_id))).rowcount
-        c.commit()
-        return bool(n)
-
-    def mcp_key_touch(self, key_id):
-        c = self._conn()
-        c.execute("UPDATE mcp_keys SET last_used=? WHERE key_id=?", (time.time(), str(key_id)))
-        c.commit()
-
-    def mcp_call_add(self, key_id, user_id, team, prefix, tool, ok, ms, resp_bytes):
-        c = self._conn()
-        c.execute("INSERT INTO mcp_calls(key_id,team,user_id,prefix,tool,ok,ms,resp_bytes,ts) "
-                  "VALUES(?,?,?,?,?,?,?,?,?)",
-                  (str(key_id), str(team or ""), str(user_id or ""), prefix or "", tool or "",
-                   int(bool(ok)), int(ms or 0), int(resp_bytes or 0), time.time()))
-        c.commit()
-
-    def mcp_call_count(self, key_id, since_ts, ok=None) -> int:
-        """키의 since_ts 이후 호출 수. ok=None 은 전체(일일 상한 판정) · True/False 는 버킷별."""
-        c = self._conn()
-        q = "SELECT COUNT(*) FROM mcp_calls WHERE key_id=? AND ts>=?"
-        args = [str(key_id), float(since_ts or 0)]
-        if ok is not None:
-            q += " AND ok=?"
-            args.append(int(bool(ok)))
-        return int(c.execute(q, args).fetchone()[0] or 0)
 
     def existing_hashes(self, hashes, team=None) -> dict:
         """저장된 해시 → 실행 여부(bool). STEP 1 추가의 신규/기존 구분과 엑셀 일괄 추출의

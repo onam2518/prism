@@ -72,7 +72,6 @@ from . import evalops as EVO
 from . import deployops as DEP
 from . import crewops as CRW           # 검수 인력 운영(HR) · '검수운영' 메뉴
 from . import weekops as WKO           # 주간 운영 기록(주 마감 스냅샷 적립·조회)
-from . import mcpkeys as MK           # MCP 파트너 키(트랙 B · 외부 MCP) · 발급·해석·레이트리밋
 from . import metaquery as MQ         # 콘텐츠 조회(메타베이스 경유) · 검수 지정
 
 RN._SV = sys.modules[__name__]      # 실행 파이프라인 주입(로드맵 2단계 3차)
@@ -80,8 +79,6 @@ from . import prismtools as PTL       # 도구 계층: 내부 검수 보조·외
 PTL._SV = sys.modules[__name__]     # 동일 주입
 from . import reviewassist as RA     # 내부 검수 보조(트랙 A) 도구 · /assist
 RA._SV = sys.modules[__name__]      # 동일 주입
-from . import autoreview as AR       # AI 초안 판정(실험실 · 운영자 전용) · /autoreview-run
-AR._SV = sys.modules[__name__]      # 동일 주입
 from . import decide as DC           # 솔라 디사이드 판정 시험(실험실 · 운영자 전용) · /lab-decide-*
 from . import reviewtime as RT       # 검수 소요 시간 측정 · /review-time · /review-time-stats
 from . import entrefine as ER        # 핵심 키워드 / 문장 재가공 시험(실험실) · /lab-entrefine-* · /lab-core-config
@@ -89,7 +86,6 @@ ER._SV = sys.modules[__name__]
 from . import keywordlab as KL
 KL._SV = sys.modules[__name__]
 DC._SV = sys.modules[__name__]
-from . import mcpserver as MCPS       # 외부 MCP(트랙 B): 전송은 mcprpc · 도구는 위 prismtools
 IG._SV = sys.modules[__name__]      # 인입·잡 주입(동일)
 BD._SV = sys.modules[__name__]      # 게시판 주입(동일)
 EVO._SV = sys.modules[__name__]     # 평가 런 도메인 주입(Atelier eval_runs 이식)
@@ -97,7 +93,6 @@ DEP._SV = sys.modules[__name__]     # 프롬프트 배포 도메인 주입(Ateli
 CRW._SV = sys.modules[__name__]     # 검수 인력 운영(HR) 주입(동일)
 ELB._SV = sys.modules[__name__]     # 엔티티 라벨 원장 주입(동일)
 WKO._SV = sys.modules[__name__]     # 주간 운영 기록 주입(동일)
-MK._SV = sys.modules[__name__]      # MCP 파트너 키 주입(동일 · 전송 /mcp 는 mcpkeys 만 부른다)
 MQ._SV = sys.modules[__name__]      # 콘텐츠 조회(메타베이스) 주입(동일)
 
 _run_id = RN._run_id
@@ -2081,20 +2076,6 @@ def _g_deployments(h, q):
     return deployments_list(h._req_team())
 
 
-@_get_route("/mcp-keys")                             # 내 MCP 파트너 키 목록(비밀 없음 · 접두 6자만)
-def _g_mcp_keys(h, q):
-    # 소유자는 세션에서만 온다 · 쿼리로 남의 uid 를 넣어 목록을 바꿔치기할 자리를 두지 않는다.
-    # 관리자라도 남의 키는 보지 않는다(키 = 개인 자격증명 · 권한이 아니라 소유의 문제).
-    team = MK.scope_team(h._req_team())
-    uid = h._bearer_uid() or "local"
-    items = MK.list_keys(uid, team)
-    for k in items:                                  # 오늘 사용량(성공/실패 버킷 분리 · 감사 O2)
-        k["usage"] = MK.usage(k["key_id"], team, uid)
-    return {"ok": True, "items": items, "max": MK.MAX_KEYS_PER_USER,
-            "default_days": MK.DEFAULT_DAYS, "max_days": MK.MAX_DAYS,
-            "per_min": MK.PER_MIN, "per_day": MK.PER_DAY, "hint": MK.ONCE_HINT}
-
-
 @_get_route("/api/v1/prompt")                        # 공개 서빙: slug + Bearer pr_live_ 키(자체 검증)
 def _g_api_prompt(h, q):
     # 무인증 공개 경로 · 호출마다 원격 왕복(deploy_by_slug + deploy_keys_for)을 유발하므로
@@ -2195,13 +2176,6 @@ def _g_template_csv(h, q):
                  "prism_template_meta.csv" if meta else "prism_template.csv")
 
 
-@_get_route("/autoreview-status", admin=True)        # AI 초안 판정 진척도·부분 결과 폴링(운영 관리자 · 화이트리스트)
-def _g_autoreview_status(h, q):                       # 게이트 상세는 _autoreview_denied(POST 구역에 정의 · 호출 시점 해석)
-    if _autoreview_denied(h):
-        return None
-    return AR.status(q.get("id", [""])[0])
-
-
 @_get_route("/review-time-stats", admin=True)        # 검수 소요 시간 요약(검수자별·일자별 · 실측과 과거 추정 분리) · ?days=N
 def _g_review_time_stats(h, q):
     st = get_store()
@@ -2261,13 +2235,6 @@ def _g_lab_entrefine_votes(h, q):
 @_get_route("/lab-decide-status", admin=True)        # 솔라 디사이드 골든셋 시험 진척·결과 폴링
 def _g_lab_decide_status(h, q):
     return DC.status(q.get("id", [""])[0])
-
-
-@_get_route("/autoreview-drafts", admin=True)        # AI 초안 판정 상시 목록(저장된 초안 · 실행 무관 · 서브탭 진입/재접속)
-def _g_autoreview_drafts(h, q):
-    if _autoreview_denied(h):
-        return None
-    return AR.inbox(team=h._req_team(), reviewer=(h._bearer_uid() or h._bearer_email() or ""))
 
 
 @_get_route("/metaquery", admin=True)                # 콘텐츠 조회(메타베이스) 설정·연결 상태
@@ -2609,24 +2576,6 @@ def _p_deployment_key_new(h, body):
 def _p_deployment_key_revoke(h, body):
     d = json.loads(body or b"{}")
     return deployment_key_revoke(int(d.get("id") or 0), int(d.get("key_id") or 0), h._req_team())
-
-
-# ── MCP 파트너 키(트랙 B · 외부 MCP) · 로직은 전부 mcpkeys.py ──
-# gate="team" 인 이유: 팀 없는 계정이 키를 만들면 그 키의 모든 스토어 호출이 team=None 으로
-# 나가고 저장 계층이 그걸 '전 팀'으로 읽는다(감사 H1). mcpkeys.issue 도 같은 것을 다시 막는다.
-@_post_route("/mcp-key-new", gate="team")            # 키 발급(평문 1회 노출 · sha256 저장)
-def _p_mcp_key_new(h, body):
-    d = json.loads(body or b"{}")
-    return MK.issue(h._bearer_uid() or "local", MK.scope_team(h._req_team()),
-                    days=d.get("days") or MK.DEFAULT_DAYS, label=d.get("label") or "")
-
-
-@_post_route("/mcp-key-revoke", gate="team")         # 폐기: (key_id, team, 소유자) 3중 필터(감사 O3)
-def _p_mcp_key_revoke(h, body):
-    # 소유자는 **세션에서만** 온다(본문에서 받지 않는다) — 받으면 그 값이 곧 사칭 파라미터가 된다.
-    d = json.loads(body or b"{}")
-    ok = MK.revoke(d.get("key_id") or "", MK.scope_team(h._req_team()), h._bearer_uid() or "local")
-    return {"ok": ok} if ok else {"ok": False, "error": "키를 찾을 수 없습니다"}
 
 
 @_post_route("/builder-test", gate="admin")          # 컴파일 산출을 테스트 모델로 1회 실행(실모델 비용)
@@ -3211,27 +3160,6 @@ def _p_metaquery_stage_delete(h, body):
     return MQ.mq_stage_delete(json.loads(body or b"{}"), team=h._req_team())
 
 
-@_post_route("/mcp")                                 # 프리즘 MCP(트랙 B · 외부): 파트너 키로만 판단
-def _p_mcp(h, body):                                 # 무세션 JSON-RPC · 도구는 prismtools 단일 원천
-    # 로그인·팀 게이트가 없는 공개 경로 · 키 대입 연사만 IP 로 억제한다. 인증 자체는
-    # mcpserver 가 하고, 키 모듈이 없으면 전부 401 로 닫힌다(fail-closed).
-    # 최소 간격을 두지 않는 이유(실측): MCP 접속 절차는 initialize → notifications/initialized
-    # → tools/list 를 왕복마다 곧바로 이어 보내 간격이 수 ms 다. 0.1초 간격 규칙을 걸면
-    # 정상 클라이언트가 접속 단계에서 429 를 맞는다. 키당 상한은 mcpkeys.rate_check 가 맡고,
-    # 여기는 분당 총량으로 키 대입 스프레이만 막는다.
-    if rate_limited("mcp:" + _client_ip(h), min_interval=0.0, per_min=240):
-        h._send(429, json.dumps({"error": "요청이 너무 잦습니다 · 잠시 후 다시 시도하세요"},
-                                ensure_ascii=False), _JSON)
-        return None
-    status, out = MCPS.handle(h.headers.get("Authorization") or "", body)
-    if out is None:                                  # MCP 알림(notifications/*) = 본문 없는 202
-        h._send(202, b"", _JSON)
-    else:
-        h._send(status, json.dumps(out, ensure_ascii=False), _JSON)
-    return None
-
-
-
 @_post_route("/run")                                 # 추출 실행(단건 /run · 배치 /run-batch) = 콘텐츠 인입
 def _p_run(h, body):
     # 관리자 통제(supabase 모드) · 만료 로그인은 메시지로 구분
@@ -3295,27 +3223,6 @@ def _assist_me(h, d) -> str:
     return str((d or {}).get("reviewer") or "")[:64].strip()
 
 
-def _autoreview_emails() -> set:
-    """AI 초안 판정 허용 이메일(옵션). 설정 시 운영 관리자 중 이 목록만 · 미설정이면 운영 관리자 전체."""
-    raw = os.environ.get("PRISM_AUTOREVIEW_EMAILS", "")
-    return {e.strip().lower() for e in raw.replace("\n", ",").split(",") if e.strip()}
-
-
-def _autoreview_denied(h) -> bool:
-    """운영 관리자 게이트는 gate=super/admin 이 이미 처리 · 여기선 이메일 화이트리스트만 추가로 본다.
-    거부 시 403 을 직접 보내고 True 반환."""
-    allow = _autoreview_emails()
-    if allow and (h._bearer_email() or "").strip().lower() not in allow:
-        h._send(403, json.dumps({"error": "이 기능은 지정된 계정만 쓸 수 있습니다"}, ensure_ascii=False), _JSON)
-        return True
-    return False
-
-
-@_post_route("/autoreview-run", gate="super")        # AI 초안 판정 시작(백그라운드 잡) · 운영 관리자 + 옵션 화이트리스트
-def _p_autoreview_run(h, body):
-    if _autoreview_denied(h):
-        return None
-    return AR.start(team=h._req_team(), reviewer=(h._bearer_uid() or h._bearer_email() or ""))
 @_post_route("/lab-decide-run", gate="super")        # 솔라 디사이드 골든셋 시험 시작(백그라운드 잡)
 def _p_lab_decide_run(h, body):
     data = json.loads(body or b"{}")
@@ -3363,7 +3270,6 @@ def _p_lab_decide_try(h, body):
     return DC.try_one(json.loads(body or b"{}"))
 
 
-# GET /autoreview-status 는 GET 라우트 구역(_GET_ORDER 스냅샷 앞)에 등록돼 있다.
 
 
 @_post_route("/assist", gate="team")                 # 내부 검수 보조(트랙 A) 도구 · 팀 콘텐츠·검수 이력을 읽는다

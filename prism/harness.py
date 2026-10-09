@@ -188,7 +188,7 @@ def _mark_meta_hold(ctx, im) -> None:
     2026-09-08 정책: 입력 필요는 품질 등급(G·Y·R)과 원인이 다른 별개 상태다(품질 Yellow 는
     콘텐츠 자체 판정 · 입력 필요는 추출 재료 부족). 종전에는 검수 큐로 올리려고
     quality_meta.review 를 yellow 로 덮어썼는데, 그러면 유통 판단과 품질 지표가 함께 오염된다.
-    이제 hold_fields 만이 표식이고, 사람 검수 라우팅은 autoreview 가 그 값을 직접 본다."""
+    이제 hold_fields 만이 표식이다."""
     hold = list(getattr(im, "hold_fields", None) or [])
     if not hold:
         return

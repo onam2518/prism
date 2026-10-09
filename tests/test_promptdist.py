@@ -34,7 +34,7 @@
   M15 팀 강제 제거                              1건 (밖 3)  TestTeamScope
   M16 args 의 team 을 그대로 넘김                  1건 (밖 1)  TestTeamScope
   M18 도구를 internal 로도 엶                    1건 (밖 0)  TestRegistry
-  (M17 = 전송 배선. tests/test_mcpserver.py 2건 · 그 파일에서만 잡힌다)
+  (M17 = 전송 배선 · 외부 MCP(/mcp)는 2026-10-09 제거되어 해당 없음)
 
 **'밖 0' 인 항목은 이 파일이 유일한 눈이다. 지우지 말 것.** 지우면 그 계약은 아무도 보지 않는다.
 

@@ -300,7 +300,7 @@ window.PRISM_APP_PARTS.push(() => ({
           }
         }
         else if (id === 'testset') { this.loadGoldenStatusThrottled(); this.loadLearnReport(); this.loadGoldenList(); this.loadLearnData(); this.loadAdmin(); this.loadActivity(); this.loadCost(); }
-        else if (id === 'lab') { this.loadDashThrottled(); }
+        else if (id === 'lab') { this.loadDashThrottled(); if (this.labTab === 'entref') this.kwInit(); }
         else if (id === 'dict') {
           if (!this.dictData) this.loadDict();          // /dict 는 세션 중 사실상 불변(36KB) · 편집·초기화는 응답으로 dictData 를 직접 갱신한다
           if (this.dictTab === 'entity') this.loadEntdict();
