@@ -134,6 +134,23 @@ class KeywordLabTest(unittest.TestCase):
         self.assertEqual(rows[1]['검수 상태'], '미검수')
         with self.assertRaises(ValueError): K.export_csv(rid, 'b')
 
+    def test_delete_run_blocks_gold_adopted_running_and_clears(self):
+        run = self.run_case(count=1)
+        cell = next(iter(run['cells'].values()))
+        self.final(run, cell)
+        gold = K.confirm_gold({'run_id': run['id'], 'cell_id': cell['id']}, 'a', 'tester', True)['gold']
+        self.assertFalse(K.action({'action': 'delete_run', 'run_id': run['id']}, 'a', 'tester', True)['ok'])
+        other = self.run_case(count=1)
+        self.assertFalse(K.action({'action': 'delete_run', 'run_id': other['id']}, 'a', 'tester')['ok'])   # 관리 권한
+        with K.LOCK: K.ACTIVE.add(('a', other['id']))
+        self.assertFalse(K.action({'action': 'delete_run', 'run_id': other['id']}, 'a', 'tester', True)['ok'])
+        with K.LOCK: K.ACTIVE.discard(('a', other['id']))
+        self.assertTrue(K.action({'action': 'delete_run', 'run_id': other['id']}, 'a', 'tester', True)['ok'])
+        self.assertNotIn(other['id'], [r['id'] for r in K.catalog('a')['runs']])
+        with self.assertRaises(ValueError): K.run_detail(other['id'], 'a')
+        self.assertFalse(K.action({'action': 'delete_run', 'run_id': other['id']}, 'b', 'tester', True)['ok'])
+        self.assertEqual(K.catalog('a')['gold'][0]['id'], gold['id'])
+
     def test_explicit_model_version_and_management_permissions(self):
         v = self.version()
         for slots in ([],[{'model':'solar-pro3'}],[{'model':'wrong','version_id':v['id']}], [{'model':v['model'],'version_id':v['id']}]*2):

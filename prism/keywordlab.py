@@ -639,15 +639,38 @@ def delete_version(body, team):
     return {'ok': True}
 
 
+def delete_run(body, team):
+    """실험 기록 삭제 · 본문을 비우고 목록에서 뺀다(저장 계층에 삭제 계약이 없어 빈 값으로 덮음).
+    정답·채택이 참조하는 실험은 개선 루프가 원본 검수를 다시 확인하므로 지우지 않는다."""
+    rid = body.get('run_id')
+    key = _key('run', rid)
+    with LOCK:
+        if (team, rid) in ACTIVE:
+            raise ValueError('실행 중인 실험은 삭제할 수 없습니다')
+    c = _catalog(team)
+    if any(g.get('run_id') == rid for g in c['gold'].values()):
+        raise ValueError('정답셋에 반영된 결과가 있는 실험은 삭제할 수 없습니다')
+    if any(a.get('run_id') == rid for a in c['active'].values()):
+        raise ValueError('버전 채택 근거로 쓰인 실험은 삭제할 수 없습니다')
+    def clear(run):
+        if not run:
+            raise ValueError('이 팀에 해당 실험이 없습니다')
+        run.clear()
+    _update(key, team, clear)
+    _update(CATALOG, team, lambda cat: cat.update(runs=[r for r in cat['runs'] if r['id'] != rid]), c)
+    return {'ok': True}
+
+
 def action(body, team=None, actor='', can_manage=False, can_final=False):
     if not isinstance(body, dict):
         return {'ok': False, 'error': '요청 형식을 확인하세요'}
     try:
         op = body.get('action')
-        if op in ('version', 'delete', 'start', 'compile', 'adopt') and not can_manage:
+        if op in ('version', 'delete', 'delete_run', 'start', 'compile', 'adopt') and not can_manage:
             raise ValueError('실험 관리 권한이 필요합니다')
         if op == 'version': return create_version(body, team, actor)
         if op == 'delete': return delete_version(body, team)
+        if op == 'delete_run': return delete_run(body, team)
         if op == 'start': return start(body, team, actor)
         if op == 'review': return review(body, team, actor, can_final)
         if op == 'gold': return confirm_gold(body, team, actor, can_final)
