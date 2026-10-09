@@ -1,7 +1,7 @@
       <!-- ═══ 모듈: 사전 · 매핑 ═══ -->
-      <template x-if="mod === 'dict'">
+      <template x-if="mod === 'dict'"><template x-if="dictTab === 'policy'">
         <section x-show="dictTab === 'policy'" x-cloak class="panel w-full" x-init="opsLoad()"><header class="panel-hd"><b>검수 기준 사례</b></header><section class="panel-bd fn-stack"><ul class="ds-bullets"><li>조치 상세에서 원문 근거와 실제 적용 정책 버전을 확인한 합의 기록입니다</li></ul><template x-for="(c,i) in ((opsList||{}).calibrations||[])" x-bind:key="i"><article class="fn"><b class="fn__title" x-text="c.decision"></b><p class="text-xs" x-text="c.evidence"></p><p class="text-xs" x-text="c.basis.policy_version+' · '+fmtTs(c.ts)+' · '+c.by"></p><button class="copybtn" type="button" x-on:click="opsOpenCase(c)">연결 콘텐츠</button></article></template></section></section>
-      </template>
+      </template></template>
       <!-- 사전 · 정책: 탭형 · 사전(인텐트·카테고리 · 추출이 참조하는 어휘) / 정책(품질·법령·처리 · 판정 기준) -->
       <template x-if="mod === 'dict'">
         <div class="w-full" style="margin-bottom:10px">

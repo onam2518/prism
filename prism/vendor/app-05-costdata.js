@@ -337,12 +337,12 @@ window.PRISM_APP_PARTS.push(() => ({
       learnData: null, learnDataBusy: false,
       async loadLearnData() {
         this.learnDataBusy = true;
-        try { const r = await (await fetch('/learn-data', { headers: this._authHeaders() })).json(); if (r && r.ok) this.learnData = r; } catch (e) {}
+        try { const r = await (await this._afetch('/learn-data', { headers: this._authHeaders() })).json(); if (r && r.ok) this.learnData = r; } catch (e) {}
         this.learnDataBusy = false;
       },
       async exportLearn(kind) {
         try {
-          const res = await fetch('/learn-export?kind=' + kind, { headers: this._authHeaders() });
+          const res = await this._afetch('/learn-export?kind=' + kind, { headers: this._authHeaders() });
           if (!res.ok) { this._err('내보내기 실패'); return; }
           const blob = await res.blob(); const a = document.createElement('a');
           const m = (res.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/);
@@ -353,7 +353,7 @@ window.PRISM_APP_PARTS.push(() => ({
       ciTxt(ci) { return ci ? (this.pctTxt(ci.acc) + ' · 95% CI ' + this.pctTxt(ci.lo) + '~' + this.pctTxt(ci.hi) + ' (n=' + ci.n + ')') : '·'; },
       async exportSpec() {
         try {
-          const res = await fetch('/learn-spec', { headers: this._authHeaders() });
+          const res = await this._afetch('/learn-spec', { headers: this._authHeaders() });
           if (!res.ok) { this._err('소요서 생성 실패'); return; }
           const blob = await res.blob(); const a = document.createElement('a');
           const m = (res.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/);
@@ -362,7 +362,7 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       async exportHandoff() {
         try {
-          const res = await fetch('/handoff-export', { headers: this._authHeaders() });
+          const res = await this._afetch('/handoff-export', { headers: this._authHeaders() });
           if (!res.ok) { this._err('핸드오프 번들 생성 실패'); return; }
           const m = (res.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/);
           const blob = await res.blob(); const a = document.createElement('a');

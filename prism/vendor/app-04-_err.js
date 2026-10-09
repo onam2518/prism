@@ -112,7 +112,19 @@ window.PRISM_APP_PARTS.push(() => ({
           if (this.backend === 'supabase' && !this.authToken) return;
           const es = new EventSource('/events' + (this.authToken ? ('?token=' + encodeURIComponent(this.authToken)) : '')); this._es = es;
           es.onmessage = (e) => { let d; try { d = JSON.parse(e.data); } catch (_) { return; } this.onLive(d); };
-          es.onerror = () => {};                       // 자동 재연결(브라우저 기본)
+          // 일시 끊김은 브라우저가 자동 재연결(readyState 0). 닫힘(2 · 만료 토큰 401 등)은 재시도가 없어
+          // 직접 복구: 토큰 갱신(성공 시 authRefresh 가 재구독) · 실패·로컬이면 그대로 재구독.
+          // 30초 안에 다시 닫히면 30초 뒤로 미룬다(빡빡한 재접속 루프 방지).
+          es.onerror = () => {
+            if (es.readyState !== 2 || this._es !== es) return;
+            const wait = Date.now() - (this._liveFixAt || 0) < 30000 ? 30000 : 0;
+            clearTimeout(this._liveFixT);
+            this._liveFixT = setTimeout(async () => {
+              if (this._es !== es) return;
+              this._liveFixAt = Date.now();
+              if (!(await this.authRefresh())) this.startLive();
+            }, wait);
+          };
         } catch (e) {}
       },
       onLive(d) {
@@ -171,7 +183,7 @@ window.PRISM_APP_PARTS.push(() => ({
             this.authToken = r.access_token;
             if (r.refresh_token) this.rtoken = r.refresh_token;     // supabase 는 갱신 시 회전
             try { localStorage.setItem('prism_token', this.authToken); localStorage.setItem('prism_rtoken', this.rtoken); } catch (e) {}
-            if (!this._es || this._es.readyState === 2) this.startLive();   // 만료로 닫힌 SSE 를 새 토큰으로 재구독
+            this.startLive();   // 열린 SSE 도 옛 토큰을 쥐고 있어 끊기면 만료 토큰으로 재접속(401) → 새 토큰으로 항상 재구독
             return true;
           } catch (e) { return false; }
           finally { this._refreshBusy = null; }
@@ -235,7 +247,7 @@ window.PRISM_APP_PARTS.push(() => ({
       async loadPreview() {
         if (!this.pvModel) this.pvModel = this.availableModels[0] || '';
         if (!this.pvModel) return;
-        try { this.pvData = await (await fetch('/prompt-preview?model=' + encodeURIComponent(this.pvModel) + '&call=' + encodeURIComponent(this.pvCall) + '&service=' + encodeURIComponent(this.pvService), { headers: this._authHeaders() })).json(); } catch (e) { this.pvData = null; }
+        try { this.pvData = await (await this._afetch('/prompt-preview?model=' + encodeURIComponent(this.pvModel) + '&call=' + encodeURIComponent(this.pvCall) + '&service=' + encodeURIComponent(this.pvService), { headers: this._authHeaders() })).json(); } catch (e) { this.pvData = null; }
       },
       // 미리보기 원천: '' = 현재 합성 · 'v:N' = 학습 스냅샷 · 'run:ID' = 평가 런이 시작 시점에 실제로 쓴 프롬프트
       pvSrc: '', pvStored: null, pvLatestVer: 0, pvMsg: '',
@@ -283,7 +295,7 @@ window.PRISM_APP_PARTS.push(() => ({
       _evalDetailSeq: 0, _evalDetailT: null, evalItemFilter: 'all', evalItemSearch: '', evalItemLimit: 50,
       setEvalTab(tab) {
         this.evalTab = tab; clearTimeout(this._evalDetailT);
-        if (tab === 'results') { this.loadEvalRuns(); if (this.evalSelected) this.openEvalHistory(this.evalSelected, true); }
+        if (tab === 'results') { this.loadEvalRuns(); this.loadLearnTrend(); if (this.evalSelected) this.openEvalHistory(this.evalSelected, true); }
       },
       evalTabKey(event) {
         if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -557,15 +569,18 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       pollCompare(id) {
         clearTimeout(this._cmpPollT);
+        let fails = 0;                                   // 연속 실패(예외·오류 문구 없는 ok:false) 20회(~1분)면 멈춘다
         const step = async () => {
           try {
             const r = await (await this._afetch('/compare-status?id=' + id, { headers: this._authHeaders() })).json();
             if (r && r.ok) {
-              this.cmpJob = r.job;
+              fails = 0; this.cmpJob = r.job;
               if (r.job.status === 'done') { this.cmpResult = r.job.result; this.cmpHistKey = (r.job.result || {}).key || ''; this.loadCompareHist(); this.loadEvalRuns(); this.cmpBusy = false; this.liveToast('모델 비교 완료 · #' + id); return; }
               if (r.job.status === 'failed') { this._err('모델 비교 실패: ' + (r.job.error || '')); this.cmpBusy = false; return; }
             } else if (r && r.error) { this._err(r.error); this.cmpBusy = false; return; }
-          } catch (e) {}
+            else fails++;
+          } catch (e) { fails++; }
+          if (fails >= 20) { this._err('모델 비교 상태 확인 실패 · 진척 창에서 확인하거나 새로고침 해주세요'); this.cmpBusy = false; return; }
           this._cmpPollT = setTimeout(step, 3000);
         };
         step();
@@ -609,12 +624,6 @@ window.PRISM_APP_PARTS.push(() => ({
         this.applyBusy = false;
       },
       myEvalVote(d) { const r = (d.judge && d.judge.reviewers) || {}; const me = (this.arenaData && this.arenaData.my_id) || this.reviewer || ''; return r[me] || r[this.reviewer] || ''; },
-      evalConsensus(d) {
-        const j = d.judge || {}; const mg = (this.evalDetail && this.evalDetail.min_good) || 1;
-        if ((j.adopt || 0) >= mg && (j.adopt || 0) > (j.reject || 0)) return 'adopt';
-        if ((j.reject || 0) >= mg && (j.reject || 0) > (j.adopt || 0)) return 'reject';
-        return '';
-      },
       async evalJudge(d, verdict) {                 // 평가 판정: 검수와 같은 집단 지성(1인 1표 · 재판정 허용)
         if (!this.ensureReviewer()) return;
         try {

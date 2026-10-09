@@ -31,7 +31,7 @@ window.PRISM_APP_PARTS.push(() => ({
           }
           let liveN = 0;
           try {                                    // Solar 는 실조회(키 있을 때) · 실패해도 전체는 계속
-            const j = await (await fetch('/models', { headers: this._authHeaders() })).json();
+            const j = await (await this._afetch('/models', { headers: this._authHeaders() })).json();
             if (j.ok) {
               this.models = j.models;
               if (!this.cfgModel || !this.models.includes(this.cfgModel))
@@ -196,7 +196,7 @@ window.PRISM_APP_PARTS.push(() => ({
       async jobContents(j) {
         if (!j.hashes_n) return;                    // 폴링 응답엔 건수만 · 목록은 클릭 시 1회 조회
         let hs = [];
-        try { hs = ((await (await fetch('/ingest-status?job=' + encodeURIComponent(j.id), { headers: this._authHeaders() })).json()) || {}).hashes || []; } catch (e) { return; }
+        try { hs = ((await (await this._afetch('/ingest-status?job=' + encodeURIComponent(j.id), { headers: this._authHeaders() })).json()) || {}).hashes || []; } catch (e) { return; }
         if (!hs.length) return;
         this.jobFilter = { name: j.name, kind: j.kind || '', hashes: hs };
         this.$nextTick(() => { const el = document.getElementById('added-contents'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
@@ -303,7 +303,7 @@ window.PRISM_APP_PARTS.push(() => ({
         this.ingestBusy[s.id] = false;
       },
       // 자동 인입 상태(진행률) 폴링 · 실행 큐/자동 인입 뷰에서 사용
-      async fetchIngestStatus() { try { const d = await (await fetch('/ingest-status', { headers: this._authHeaders() })).json(); this.ingestJobs = d.jobs || []; if (d.running) this.loadDashThrottled(); return d; } catch (e) { return { jobs: [], running: false }; } },
+      async fetchIngestStatus() { try { const d = await (await this._afetch('/ingest-status', { headers: this._authHeaders() })).json(); this.ingestJobs = d.jobs || []; if (d.running) this.loadDashThrottled(); return d; } catch (e) { return { jobs: [], running: false }; } },
       pollIngestStatus() {
         if (this._ingestPoll) return;
         let seenRun = false, empties = 0;              // 작업 등록 전 첫 조회에 폴링이 꺼지던 결함 방지

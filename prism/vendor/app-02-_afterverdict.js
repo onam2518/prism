@@ -112,7 +112,7 @@ window.PRISM_APP_PARTS.push(() => ({
         } catch (e) { this.bulkMsg = '일괄 실행 실패'; }
         this.bulkBusy = false;
       },
-      metaResults: null, metaBusy: false,
+      metaResults: null,
       verRows: [], verSel: null, verSnap: null, verBusy: false,   // 버전별 지시 히스토리(표)
       dmOpen: false, dmVer: null, dmModel: 'common', dmSnap: null, dmStages: {}, dmBusy: false, dmMsg: '',   // 모델 적용 팝업
       liveMsg: '', _es: null,
@@ -207,9 +207,9 @@ window.PRISM_APP_PARTS.push(() => ({
         } catch (e) {}
         this.loadVocab();
         this.loadDict();                               // 검수 요소·인텐트 정의 등 UI 사전 선로드(/dict 단일 원천)
-        // Cmd/Ctrl + Enter 로 추출 실행
+        // Cmd/Ctrl + Enter 로 추출 실행 · 콘텐츠 관리의 수동 실행 화면에서만(다른 화면 입력창에서 /run 오발사 방지)
         window.addEventListener('keydown', (e) => {
-          if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !this.loading) { e.preventDefault(); this.run(); }
+          if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !this.loading && this.mod === 'content' && this.contentTab === 'run' && !this.detailOpen) { e.preventDefault(); this.run(); }
         });
         // 검수 상세 단축키: A=정확 · S=수정 · ←→=이전/다음 · Esc=닫기 (입력 중에는 무시)
         window.addEventListener('keydown', (e) => {
@@ -277,6 +277,8 @@ window.PRISM_APP_PARTS.push(() => ({
         if (id === 'crew') { id = 'admin'; this.adminTab = 'crew'; }   // 검수운영은 운영 관리의 탭으로 통합(딥링크 호환)
         if (id === 'eval') id = 'evaluate';
         if (id === 'golden') id = 'testset';
+        // 키워드 실험실 실행 폴링(1.8초)은 실험실을 떠나면 멈춘다 · 돌아오면 아래 lab 분기가 이어 받는다
+        if (this.mod === 'lab' && id !== 'lab') clearTimeout(this._kwTimer);
         this.mod = id;
         if (!this._noPush) {                          // URL 동기화(뒤로가기·새로고침 시 현재 화면 유지)
           try { const u = new URL(location.href); u.searchParams.set('m', id); history.pushState({ m: id }, '', u); } catch (e) {}
@@ -287,7 +289,7 @@ window.PRISM_APP_PARTS.push(() => ({
         // 예외 — crew 의 loadRaw(:아래)는 배정 직후 최신 후보 풀이 목적이라 스로틀 없이 그대로 둔다.
         if (id === 'home') { this.loadArenaThrottled(); this.loadDashThrottled(); }
         else if (id === 'create') { this.loadDashThrottled(); this.loadRawThrottled(); }
-        else if (id === 'evaluate') { this.loadDashThrottled(); this.loadGoldenStatusThrottled(); this.loadEvalRuns(); this.loadPilot(); this.loadLearnTrend(); this.loadCompareLast(); }
+        else if (id === 'evaluate') { this.loadDashThrottled(); this.loadGoldenStatusThrottled(); this.loadPilot(); this.loadCompareLast(); if (this.evalTab === 'results') { this.loadEvalRuns(); this.loadLearnTrend(); } }   // 이력·추이는 결과 탭 것(탭 클릭 시 lazy)
         else if (id === 'arena') this.loadArenaThrottled();
         else if (id === 'board') this.loadBoard();
         else if (id === 'admin' || id === 'system') {
@@ -299,8 +301,8 @@ window.PRISM_APP_PARTS.push(() => ({
             if (this.adminTab === 'crew') { this.loadCrew(); this.loadRaw(); }   // 후보 풀 = 기본 창(2000) 전체 · 배정 직후 최신화가 목적이라 스로틀 제외
           }
         }
-        else if (id === 'testset') { this.loadGoldenStatusThrottled(); this.loadLearnReport(); this.loadGoldenList(); this.loadLearnData(); this.loadAdmin(); this.loadActivity(); this.loadCost(); }
-        else if (id === 'lab') { this.loadDashThrottled(); if (this.labTab === 'entref') this.kwInit(); }
+        else if (id === 'testset') { this.loadAdmin(); }   // 탭 데이터는 각 탭 패널 x-init 이 연다(14-golden.html · 탭별 x-if)
+        else if (id === 'lab') { this.loadDashThrottled(); if (this.labTab === 'entref') this.kwInit(); if (this.kwRunId && this.kwRunData && this.kwRunData.status === 'running') this.kwOpenRun(this.kwRunId); }
         else if (id === 'dict') {
           if (!this.dictData) this.loadDict();          // /dict 는 세션 중 사실상 불변(36KB) · 편집·초기화는 응답으로 dictData 를 직접 갱신한다
           if (this.dictTab === 'entity') this.loadEntdict();
@@ -313,7 +315,7 @@ window.PRISM_APP_PARTS.push(() => ({
           else if (this.promptSub === 'deploy') this.loadDeploys();      // 프롬프트 탭 = 빌더+하위(배포·라이브러리)
           else if (this.promptSub === 'library') this.loadLibrary();
         }
-        else if (id === 'content') { this.loadDashThrottled(); this.loadGoldenStatusThrottled(); if (!this.dictData) this.loadDict(); this.fetchIngestStatus(); this.pollIngestStatus(); this.loadFails(); }
+        else if (id === 'content') { this.loadDashThrottled(); this.loadGoldenStatusThrottled(); if (!this.dictData) this.loadDict(); this.pollIngestStatus(); this.loadFails(); }   // 폴링 시작 시 즉시 1회 조회(중복 /ingest-status 제거)
         else if (id === 'metaq') this.mqLoad();
       },
       toggleTheme() {
@@ -322,7 +324,7 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       // 데이터 GET 은 운영(supabase)에서 로그인 필수(서버 게이트 · 2026-07-10) → 인증 헤더 동봉.
       // 로그인 전 401 은 JSON 으로 조용히 떨어지고, 로그인·가입 완료 시 재로드한다.
-      loadVocab() { fetch('/vocab', { headers: this._authHeaders() }).then(r => r.json()).then(j => { if (j.groups && j.groups.length) this.groups = j.groups; }).catch(() => {}); },
+      loadVocab() { this._afetch('/vocab', { headers: this._authHeaders() }).then(r => r.json()).then(j => { if (j.groups && j.groups.length) this.groups = j.groups; }).catch(() => {}); },
       // intentMismatch 는 2026-09-22 공통 사전 전환으로 삭제했다.
       // 68개 후보가 출처와 무관하게 모두 유효해져 '이 서비스 값이 아니다' 경고가 성립하지 않는다.
       async loadDash() { this.modBusy = true; try { const r = await this._afetch('/dashboard'); const d = await r.json(); if (r.ok && d && !d.error) this.dashData = d; } catch (e) { this._err('대시보드 불러오기 실패 · 네트워크 확인 후 새로고침 해주세요'); } this.modBusy = false; },
@@ -331,7 +333,7 @@ window.PRISM_APP_PARTS.push(() => ({
         if (!t || !t.cluster_id) return;
         this.drillOpen = true; this.drillBusy = true;
         this.drillData = { kind: 'topic', value: (t.name || t.label || t.cluster_id), items: [] };
-        try { this.drillData = await (await fetch('/topic-drill?cluster=' + encodeURIComponent(t.cluster_id) + (this.reviewer ? '&reviewer=' + encodeURIComponent(this.reviewer) : ''), { headers: this._authHeaders() })).json(); } catch (e) { this._err('토픽 콘텐츠 불러오기 실패'); }
+        try { this.drillData = await (await this._afetch('/topic-drill?cluster=' + encodeURIComponent(t.cluster_id) + (this.reviewer ? '&reviewer=' + encodeURIComponent(this.reviewer) : ''), { headers: this._authHeaders() })).json(); } catch (e) { this._err('토픽 콘텐츠 불러오기 실패'); }
         this.drillBusy = false;
       },
       drillKindKr(k) { return k === 'intent' ? '인텐트' : k === 'category' ? '카테고리' : k === 'topic' ? '토픽' : '품질 사유'; },

@@ -70,5 +70,10 @@ class TestFetchCoalesce(unittest.TestCase):
         self.assertNotIn("split('?')", body)
 
 
+    def test_inflight_map_is_not_reactive(self):
+        """반응형이면 x-effect 안 로더가 자기 _inflight 쓰기로 재실행돼 무한 재조회한다."""
+        self.assertIn("_inflight: { __v_skip: true }", _src())
+
+
 if __name__ == "__main__":
     unittest.main()

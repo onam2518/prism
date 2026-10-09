@@ -44,7 +44,7 @@ window.PRISM_APP_PARTS.push(() => ({
       msData: null, abAm: '', abAv: '', abBm: '', abBv: '',
       async loadModelStats() {
         try {
-          const r = await (await fetch('/model-stats', { headers: this._authHeaders() })).json();
+          const r = await (await this._afetch('/model-stats', { headers: this._authHeaders() })).json();
           if (r && r.ok) {
             this.msData = r;
             const ms = r.models;
@@ -63,7 +63,7 @@ window.PRISM_APP_PARTS.push(() => ({
         this.draftsData = null; this.cmpL = 0; this.cmpR = 1; this.cmpAmiss = false; this.cmpBmiss = false;
         if (!this.cmpDraftHash) return;
         try {
-          const r = await (await fetch('/drafts?hash=' + encodeURIComponent(this.cmpDraftHash), { headers: this._authHeaders() })).json();
+          const r = await (await this._afetch('/drafts?hash=' + encodeURIComponent(this.cmpDraftHash), { headers: this._authHeaders() })).json();
           if (!(r && r.ok)) return;
           this.draftsData = r;
           const items = r.items || [];
@@ -102,20 +102,21 @@ window.PRISM_APP_PARTS.push(() => ({
       detailAssignBlocked() { return this.assignBlocked(this.detail); },
       // 목록은 슬림(본문·메타 원본 없음) → 상세 진입 시 해시 단건(/raw-detail)으로 채운다.
       // body 가 이미 있는 행(골드 문항·최종큐·드릴 목록)은 그대로 써서 추가 왕복이 없다.
+      // 단건 조회 실패면 본문 없는 빈 상세를 열지 않고 안내 후 null(호출자는 이동·목록 갱신을 건너뛴다).
       async openRawFull(r) {
         let d = r;
         if (r && r.hash && !r.body) {
-          try {
-            const j = await (await this._afetch('/raw-detail?hash=' + encodeURIComponent(r.hash))).json();
-            if (j && j.ok && j.item) d = Object.assign({}, r, j.item);
-          } catch (e) {}
+          let j = null;
+          try { j = await (await this._afetch('/raw-detail?hash=' + encodeURIComponent(r.hash))).json(); } catch (e) {}
+          if (!(j && j.ok && j.item)) { this._err('콘텐츠 상세 불러오기 실패' + (j && j.error ? ' · ' + j.error : ' · 잠시 후 다시 시도해 주세요')); return null; }
+          d = Object.assign({}, r, j.item);
         }
         this.openDetail(this._rawToDetail(d));
         return d;
       },
       async openRawDetail(r) {                           // 목록 컨텍스트 보존 -> 상세에서 이전/다음·자동 이동
         const list = this.rawFiltered.slice();
-        await this.openRawFull(r);
+        if (!(await this.openRawFull(r))) return;
         this.detailNav = { list: list, idx: Math.max(0, list.findIndex((x) => x.hash === r.hash)) };
       },
       detailNav: null,
@@ -320,7 +321,7 @@ window.PRISM_APP_PARTS.push(() => ({
       get boardAdmin() { return this.backend !== 'supabase' || !!(this.adminData && (this.adminData.isAdmin || this.adminData.isSuperAdmin || this.adminData.isSysAdmin)); },
       async loadBoard() {
         this.modBusy = true;
-        try { this.boardData = await (await fetch('/board', { headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {} })).json(); } catch (e) {}
+        try { this.boardData = await (await this._afetch('/board')).json(); } catch (e) {}
         this.modBusy = false;
         if (this.backend === 'supabase' && !this.adminData) this.loadAdmin();   // 상태 변경 권한 판정용
       },
@@ -366,16 +367,21 @@ window.PRISM_APP_PARTS.push(() => ({
           if (d.error) { this.boardMsg = '오류: ' + d.error; } else this.boardData = d;
         } catch (e) {}
       },
+      // 이동 중 가드: idx 는 조회 뒤에 갱신되므로 빠른 연타(→→)가 같은 칸으로 겹치지 않게 진행 중엔 무시한다.
+      _detailGoBusy: false,
       async detailGo(step) {                             // 상세에서 목록 순서로 이전/다음 이동
-        if (!this.detailNav) return;
+        if (!this.detailNav || this._detailGoBusy) return;
         const i = this.detailNav.idx + step;
         if (i < 0 || i >= this.detailNav.list.length) return;
         const nav = this.detailNav;
         const wasFinal = !!this.finalCtx;                // 최종검수 흐름이면 다음 항목도 결정 바 유지
-        await this.openRawFull(nav.list[i]);
-        if (wasFinal) this.finalCtx = nav.list[i];
-        nav.idx = i;
-        this.detailNav = nav;
+        this._detailGoBusy = true;
+        try {
+          if (!(await this.openRawFull(nav.list[i]))) return;
+          if (wasFinal) this.finalCtx = nav.list[i];
+          nav.idx = i;
+          this.detailNav = nav;
+        } finally { this._detailGoBusy = false; }
       },
       async detailNextTodo() {                           // 다음 미검수 항목으로 · 없으면 완료 안내 후 닫기
         if (!this.detailNav) return;
@@ -384,7 +390,7 @@ window.PRISM_APP_PARTS.push(() => ({
           const r = nav.list[i];
           // 타인 배정분(관리자 목록에만 보임)은 판정할 수 없으니 자동 이동에서 건너뛴다
           if (!this.myVerdict(r.fb) && !r._doneLocal && !this.assignBlocked(r)) {
-            await this.openRawFull(r);
+            if (!(await this.openRawFull(r))) return;
             nav.idx = i;
             this.detailNav = nav;
             return;

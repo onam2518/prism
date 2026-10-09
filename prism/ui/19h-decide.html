@@ -1,7 +1,7 @@
       <!-- 실험실 › 솔라 디사이드(운영자 전용) · 서브탭 labTab==='decide' · 06-quality-lab 탭 바에 의존
            판정 전용 모델(글을 쓰지 않음) 시험: 한 건 직접 입력 + 골든셋 일괄 채점 · 로직은 prism/decide.py
            디자인 시스템(ds-components.css) 컴포넌트만 사용 · 영역 간격은 .dc-body gap -->
-      <template x-if="mod === 'lab'">
+      <template x-if="mod === 'lab'"><template x-if="labTab === 'decide'">
         <div x-show="labTab === 'decide'" x-cloak class="w-full dc-body">
 
         <section class="panel">
@@ -136,4 +136,4 @@
         </section>
 
         </div>
-      </template>
+      </template></template>

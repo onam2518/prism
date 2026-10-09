@@ -150,13 +150,30 @@ window.PRISM_APP_PARTS.push(() => ({
       updateAvail: false,     // 새 버전 배포 감지(서버 부팅 ID 변화) · 새로고침 배너
       _adminBusy: false,      // ensureAdmin 동시 실행 가드(초기 이중 트리거 dedupe)
       // 골든셋 평가(정합성) 상태 + 테스트(로우 데이터) 상태
-      goldenResult: null, goldenBusy: false, goldenMsg: '',
+      goldenResult: null, goldenBusy: false,
       rawData: null, rawSel: null,
       // 콘텐츠별 검수 담당 배정(관리자 전용): 편집 중 행·선택 담당자·최소 검수인원
       assignSel: null, assignPick: [], assignMin: 1, assignBusy: false,
       // 기본 창 2000건(서버 슬림 목록 · DOM 은 rawShownList 200 캡이 지킨다). 종전 '최신 200건'
       // 창은 방금 올린 것만 보이는 착시를 만들었다(400건 넣고 목록·배정 풀에 200건만 · 2026-08-06 운영).
-      async loadRaw(limit) { try { const p = new URLSearchParams({ limit: String(limit || 2000) }); if (this.reviewer) p.set('reviewer', this.reviewer); const r = await (await this._afetch('/raw?' + p.toString())).json(); if (r && r.ok) { this.rawData = r; this.rawSel = null; this.assignSel = null; this._absorbFreshFb(); if (this._pendingDetail) this._consumePendingDetail(); } } catch (e) { this._err('검수 목록 불러오기 실패 · 네트워크 확인 후 새로고침 해주세요'); } },
+      // SSE 가 ≤4초마다 다시 부른다 → 열어 둔 JSON 원문·배정 편집은 그 행이 새 목록에 남아 있으면 유지한다.
+      // 순번 가드: 늦게 도착한 옛 응답(예: loadRaw(2000) vs 딥링크 재조회 loadRaw(3000))은 버린다.
+      _rawSeq: 0,
+      async loadRaw(limit) {
+        const seq = ++this._rawSeq;
+        try {
+          const p = new URLSearchParams({ limit: String(limit || 2000) }); if (this.reviewer) p.set('reviewer', this.reviewer);
+          const r = await (await this._afetch('/raw?' + p.toString())).json();
+          if (seq !== this._rawSeq) return;
+          if (r && r.ok) {
+            const keep = new Set((r.items || []).map((x) => x.hash));
+            this.rawData = r;
+            if (this.rawSel && !keep.has(this.rawSel.hash)) this.rawSel = null;
+            if (this.assignSel && !keep.has(this.assignSel.hash)) this.assignSel = null;
+            this._absorbFreshFb(); if (this._pendingDetail) this._consumePendingDetail();
+          }
+        } catch (e) { if (seq === this._rawSeq) this._err('검수 목록 불러오기 실패 · 네트워크 확인 후 새로고침 해주세요'); }
+      },
       // 딥링크 ?detail=<hash> 소진: 로드된 목록에서 찾아 상세 열기(없으면 1회 더 넓게 재조회 후 포기)
       _consumePendingDetail() {
         const h = this._pendingDetail;

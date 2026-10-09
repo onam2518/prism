@@ -147,7 +147,7 @@ class TestDeadCodeRemoved(unittest.TestCase):
 
     DEAD = ("studioModelList", "refreshStudioModels", "modelsMsgStudio",
             "crewEscalate", "crewEscRes", "showProfileFields", "teamMode", "caEditing",
-            "this.bulkModel")
+            "this.bulkModel", "evalConsensus", "kwChecks", "goldenMsg", "metaBusy")
 
     def test_dead_identifiers_absent(self):
         offenders = []
@@ -264,3 +264,26 @@ class TestEvalModelRefresh(unittest.TestCase):
         body = src[src.index("async loadModels()"):src.index("async refreshConfig()")]
         self.assertIn("j.router.timely", body)
         self.assertIn("this.modelCatalog.timely.text = cur.concat(", body)
+
+
+class TestP2HiddenListsAndState(unittest.TestCase):
+    """P2(2026-10-10) · 숨은 대량 목록은 x-if 로 그리지 않는다 · 목록 재조회 선택 유지·순번 가드(node 실행)."""
+
+    def test_heavy_hidden_lists_behind_x_if(self):
+        crew = _read("prism/ui/19b-crew.html")
+        self.assertIn('<template x-if="bulkOpen"><div class="ds-dialog"', crew)   # 일괄 배정 = 원장 전체 행
+        self.assertIn("<template x-if=\"mod === 'admin'\"><template x-if=\"adminTab === 'crew' && crewTab === 'assign'\">", crew)
+        self.assertIn("<template x-if=\"mod === 'create'\"><template x-if=\"createTab === 'edit'\">", _read("prism/ui/05-review.html"))
+        self.assertIn("<template x-if=\"mod === 'dict'\"><template x-if=\"dictTab === 'policy'\">", _read("prism/ui/08-dict.html"))
+
+    def test_raw_get_fetch_goes_through_afetch(self):
+        """인증 GET 은 _afetch(동시 합치기 + 401 갱신·재시도) · 날 fetch( GET 재유입 금지."""
+        offenders = [n for n, src in sorted(_vendor_sources().items())
+                     if re.search(r"(?<![\w.])fetch\([^;]*\{ headers: this\._authHeaders\(\) \}\)", src)]
+        self.assertEqual(offenders, [])
+
+    def test_client_state(self):
+        if not shutil.which("node"):
+            self.skipTest("node 미설치")
+        r = subprocess.run(["node", os.path.join(ROOT, "tests", "test_ui_state_client.js")], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr or r.stdout)

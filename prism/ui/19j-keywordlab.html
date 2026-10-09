@@ -1,4 +1,4 @@
-<template x-if="mod === 'lab'">
+<template x-if="mod === 'lab'"><template x-if="labTab === 'entref' && ['run','prompts'].includes(kwTab)">
 <div x-show="labTab === 'entref' && ['run','prompts'].includes(kwTab)" x-cloak class="w-full dc-body kw-workspace">
   <div class="control-row"><label class="selctl"><span class="selctl__lbl">실험 대상</span><select class="field" aria-label="실험 대상" x-bind:value="kwTarget" x-bind:disabled="kwBusy" x-on:change="kwTargetChange($event.target.value)"><option value="keyword">핵심 키워드</option><option value="sentence">핵심 문장</option></select></label><span class="meta" x-text="kwTarget==='sentence' ? '문장 검수·정답셋·프롬프트 개선' : '키워드별 검수·정답셋·프롬프트 개선'"></span></div>
   <p role="alert" class="ds-hint ds-hint--error" x-show="kwError" x-text="kwError"></p>
@@ -84,15 +84,15 @@
       <div class="overflow-auto kwl-wrap"><table class="ds-table kwl-table"><thead><tr><th class="kwl-state">상태</th><th>콘텐츠</th>
         <template x-for="s in (kwRunData?.slots || [])" x-bind:key="'kh'+s.label"><th><span x-text="'조합 '+s.label"></span><p class="meta kwl-ellipsis" x-text="kwRunData.revealed ? s.version.model+' · '+kwVersionLabel(s.version) : '판정 후 공개'" x-bind:title="kwRunData.revealed ? s.version.model+' · '+kwVersionLabel(s.version) : ''"></p></th></template>
         <th class="kwl-act">검수</th></tr></thead><tbody>
-        <template x-for="item in (kwRunData?.items || [])" x-bind:key="item.key"><tr role="button" tabindex="0" class="kwl-row" x-bind:class="kwReview && kwReview.item.key===item.key ? 'is-sel' : ''" x-on:click="kwOpenItem(item)" x-on:keydown.enter="kwOpenItem(item)">
-          <td><span class="ds-badge" x-bind:class="kwItemState(item)[1]" x-text="kwItemState(item)[0]"></span></td>
+        <template x-for="item in (kwRunData?.items || [])" x-bind:key="item.key"><tr role="button" tabindex="0" class="kwl-row" x-data="{ st: [] }" x-effect="st = kwItemState(item)" x-bind:class="kwReview && kwReview.item.key===item.key ? 'is-sel' : ''" x-on:click="kwOpenItem(item)" x-on:keydown.enter="kwOpenItem(item)">
+          <td><span class="ds-badge" x-bind:class="st[1]" x-text="st[0]"></span></td>
           <td class="text-ink"><span x-text="item.title"></span><p class="meta kwl-ellipsis" x-text="kwMetaList(item.meta.entities).join(' · ') || '엔티티 없음'"></p></td>
           <template x-for="s in kwRunData.slots" x-bind:key="item.key+s.label"><td x-on:click.stop="kwReviewable(kwCell(item,s)) && kwOpenReview(item,s)" x-bind:class="kwReviewable(kwCell(item,s)) ? 'kwl-cell' : ''">
             <span class="ds-badge" x-bind:class="kwSlotBadge(kwCell(item,s))" x-text="kwSlotState(kwCell(item,s))"></span>
             <span class="ds-badge ds-badge--warning" x-show="kwCell(item,s)?.mock">모의</span>
             <p class="kwl-kw kwl-ellipsis" x-bind:title="kwCandidates(kwCell(item,s)).map(k=>k.text).join(' · ')" x-text="kwCell(item,s)?.error && !kwReviewable(kwCell(item,s)) ? kwCell(item,s).error : (kwCandidates(kwCell(item,s)).map(k=>k.text).join(' · ') || (kwCell(item,s) ? kwTargetLabel()+' 없음' : '실행 대기 중…'))"></p>
           </td></template>
-          <td x-on:click.stop><button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-show="['미검수','검수 중'].includes(kwItemState(item)[0])" x-on:click="kwOpenItem(item)">검수하기</button><span class="text-xs text-muted kwl-done" x-show="['판정됨','확정'].includes(kwItemState(item)[0])" x-on:click="kwOpenItem(item)" data-tip="상세에서 판정을 다시 보거나 수정" data-tip-pos="top" x-text="'✓ '+kwItemState(item)[0]"></span></td>
+          <td x-on:click.stop><button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-show="['미검수','검수 중'].includes(st[0])" x-on:click="kwOpenItem(item)">검수하기</button><span class="text-xs text-muted kwl-done" x-show="['판정됨','확정'].includes(st[0])" x-on:click="kwOpenItem(item)" data-tip="상세에서 판정을 다시 보거나 수정" data-tip-pos="top" x-text="'✓ '+st[0]"></span></td>
         </tr></template>
         <tr x-show="!(kwRunData?.items || []).length"><td x-bind:colspan="(kwRunData?.slots.length || 1)+3" class="text-xs text-muted">결과가 없습니다</td></tr>
       </tbody></table></div>
@@ -228,4 +228,4 @@
     </div></section>
   </section>
 </div>
-</template>
+</template></template>

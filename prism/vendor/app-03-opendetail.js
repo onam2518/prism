@@ -151,7 +151,7 @@ window.PRISM_APP_PARTS.push(() => ({
         const h = this.detail.hash;
         this.histBusy = true;
         try {
-          const r = await (await fetch('/history?hash=' + encodeURIComponent(h), { headers: this._authHeaders() })).json();
+          const r = await (await this._afetch('/history?hash=' + encodeURIComponent(h), { headers: this._authHeaders() })).json();
           if (r && r.ok && this.detail && this.detail.hash === h) this.histItems = r.items || [];
         } catch (e) {}
         this.histBusy = false;
@@ -453,7 +453,9 @@ window.PRISM_APP_PARTS.push(() => ({
       // 캐시가 아니라 '진행 중인 같은 요청 나눠 쓰기'다 — 끝난 요청은 다음에 새로 나간다.
       // 응답은 clone 으로 나눠 준다(본문 스트림은 한 번만 읽을 수 있다).
       // 쓰기(POST 등)는 합치지 않는다 — 두 번 눌렀으면 두 번 보내는 게 맞다.
-      _inflight: {},
+      // 비반응(__v_skip · Alpine 반응성 제외): 반응형이면 x-effect 안에서 부른 로더가 _inflight[url] 읽기를
+      // 추적했다가 자기 쓰기·삭제로 다시 깨어나 무한 재조회(검수운영 현황 /review-time-stats 연발 · 2026-10-10).
+      _inflight: { __v_skip: true },
       async _afetch(url, opts) {
         if ((((opts || {}).method) || 'GET').toUpperCase() !== 'GET') return this._afetchOnce(url, opts);
         const cur = this._inflight[url];
