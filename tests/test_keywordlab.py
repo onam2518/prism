@@ -92,11 +92,25 @@ class KeywordLabTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'개발용'):
             K.compile_proposal({'version_id':run['slots'][0]['version']['id'],'compiler_model':'solar-pro3','gold_keys':[gold['item_key']]},'a','tester')
 
+    def test_delete_version_keeps_runs_blocks_adopted_and_never_reuses_number(self):
+        run = self.run_case(count=2)
+        for cell in run['cells'].values(): self.final(run, cell)
+        K.reveal({'run_id': run['id']}, 'a')
+        adopted, other = (s['version']['id'] for s in run['slots'])
+        K.adopt({'run_id': run['id'], 'version_id': adopted}, 'a')
+        self.assertFalse(K.action({'action': 'delete', 'version_id': adopted}, 'a', 'tester', True)['ok'])
+        self.assertTrue(K.action({'action': 'delete', 'version_id': other}, 'a', 'tester', True)['ok'])
+        self.assertNotIn(other, [v['id'] for v in K.catalog('a')['versions']])
+        self.assertIn(other, [s['version']['id'] for s in K._get(K._key('run', run['id']), 'a')['slots']])
+        with self.assertRaises(ValueError): K._version(other, 'a')
+        self.assertFalse(K.action({'action': 'delete', 'version_id': other}, 'a', 'tester', True)['ok'])
+        self.assertEqual(self.version('새 버전')['number'], 3)
+
     def test_explicit_model_version_and_management_permissions(self):
         v = self.version()
         for slots in ([],[{'model':'solar-pro3'}],[{'model':'wrong','version_id':v['id']}], [{'model':v['model'],'version_id':v['id']}]*2):
             self.assertFalse(K.action({'action':'start','slots':slots,'meta':self.meta},'a','tester',True)['ok'])
-        for action in ('version','start','compile','adopt'):
+        for action in ('version','delete','start','compile','adopt'):
             self.assertFalse(K.action({'action':action},'a','tester')['ok'])
 
     def test_provider_selection_is_preserved(self):

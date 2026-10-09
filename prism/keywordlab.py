@@ -156,7 +156,8 @@ def create_version(body, team, actor):
         v['training_hashes'] = sorted(set((parent or {}).get('training_hashes', []) + proposal.get('training_hashes', [])))
     v['fingerprint'] = _digest([target, v['model'], v['system'], v['review_system'], v['validator_version']])
     def add(c):
-        v['number'] = 1 + max((x['number'] for x in c['versions'] if x['model'] == model and _target(x) == target), default=0)
+        # 삭제한 버전 번호도 다시 쓰지 않는다(실험 기록의 vN 표기가 다른 프롬프트를 가리키지 않게).
+        v['number'] = 1 + max((x['number'] for x in c['versions'] + c.get('deleted', []) if x['model'] == model and _target(x) == target), default=0)
         c['versions'].append(v)
     _update(CATALOG, team, add, _catalog(team))
     return {'ok': True, 'version': v}
@@ -485,7 +486,7 @@ def confirm_gold(body, team, actor, can_final):
         if body.get('expected_gold_id', '') != (existing or {}).get('id', ''):
             raise ValueError('기존 정답이 변경되었습니다 · 현재 정답을 확인하고 다시 반영하세요')
         # 개발에 노출된 콘텐츠는 평가셋으로 전환할 수 없다(버전 전체 계보 확인).
-        if gold['partition'] == 'evaluation' and (item['hash'] in c.get(_training_field(target), []) or any(item['key'] in v.get('training_keys', []) for v in c['versions'])):
+        if gold['partition'] == 'evaluation' and (item['hash'] in c.get(_training_field(target), []) or any(item['key'] in v.get('training_keys', []) for v in c['versions']) or item['key'] in c.get('training_keys', [])):
             raise ValueError('프롬프트 개선에 사용된 콘텐츠는 평가용으로 지정할 수 없습니다')
         c['gold'][item['key']] = gold
     _update(CATALOG, team, save, _catalog(team), guard=(_key('run', run['id']), run))
@@ -578,14 +579,36 @@ def adopt(body, team):
     return {'ok': True}
 
 
+def delete_version(body, team):
+    """저장한 버전 삭제 · 실험 기록은 실행 시 복사한 사본을 쓰므로 그대로 남는다."""
+    ident = body.get('version_id')
+    def change(c):
+        v = next((x for x in c['versions'] if x['id'] == ident), None)
+        if not v:
+            raise ValueError('이 팀에 해당 프롬프트 버전이 없습니다')
+        if any(a.get('version_id') == ident for a in c['active'].values()):
+            raise ValueError('채택 중인 버전은 삭제할 수 없습니다 · 다른 버전을 채택한 뒤 삭제하세요')
+        c['versions'].remove(v)
+        # 개선에 노출된 콘텐츠 기록은 지우지 않는다(평가셋 지정 차단 유지).
+        field = _training_field(_target(v))
+        c[field] = sorted(set(c.get(field, []) + v.get('training_hashes', [])))
+        c.setdefault('training_keys', [])
+        c['training_keys'] = sorted(set(c['training_keys'] + v.get('training_keys', [])))
+        c.setdefault('deleted', []).append({'id': v['id'], 'target': _target(v), 'model': v['model'],
+                                            'number': v['number'], 'title': v['title'], 'at': time.time()})
+    _update(CATALOG, team, change, _catalog(team))
+    return {'ok': True}
+
+
 def action(body, team=None, actor='', can_manage=False, can_final=False):
     if not isinstance(body, dict):
         return {'ok': False, 'error': '요청 형식을 확인하세요'}
     try:
         op = body.get('action')
-        if op in ('version', 'start', 'compile', 'adopt') and not can_manage:
+        if op in ('version', 'delete', 'start', 'compile', 'adopt') and not can_manage:
             raise ValueError('실험 관리 권한이 필요합니다')
         if op == 'version': return create_version(body, team, actor)
+        if op == 'delete': return delete_version(body, team)
         if op == 'start': return start(body, team, actor)
         if op == 'review': return review(body, team, actor, can_final)
         if op == 'gold': return confirm_gold(body, team, actor, can_final)

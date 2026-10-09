@@ -1741,3 +1741,22 @@ button.tbchip:disabled{cursor:default;opacity:.8}
   .kw-workspace .ds-table tbody th{font-family:var(--ds-font-body);color:var(--ds-ink);font-size:var(--ds-size-body)}
   .kw-settings-table .kw-version-control,.kw-settings-table .kw-model-control{max-width:calc(var(--ds-space-4) * 24)}
   .kw-model-control .mpick__refresh{height:var(--control-row-h);width:var(--control-row-h)}
+  /* 실험 결과 상세 검수(detailview): 판정 열 + 근거 열(순위·이름·유형·값 한 격자) · 넘치면 말줄임 */
+  .kwd-chips{display:flex;flex-wrap:wrap;gap:var(--ds-space-1);margin:0}
+  .kwd-sub{font-size:11px;font-weight:400;color:var(--ds-muted)}
+  .kwd-head{display:flex;align-items:center;gap:var(--ds-space-2)}
+  .kwd-gap{margin-top:var(--ds-space-4)}
+  .kwd-gap-sm{margin-top:var(--ds-space-2)}
+  .kwd-flush{margin-top:var(--ds-space-1)}
+  .kwd-split{display:grid;grid-template-columns:minmax(0,1fr) calc(var(--ds-space-10) * 5);gap:var(--ds-space-4);align-items:start}
+  .kwd-split--one{grid-template-columns:minmax(0,1fr)}
+  .kwd-side{display:flex;flex-direction:column;gap:var(--ds-space-2);padding-left:var(--ds-space-4);border-left:1px solid var(--ds-divider-section);min-width:0}
+  .kwd-side > .dve__lbl{margin-bottom:0}
+  .kwd-side > .copybtn,.dve__verdict .copybtn{align-self:flex-start;width:fit-content}
+  .kwd-row{display:grid;grid-template-columns:var(--ds-space-3) minmax(0,1fr) var(--ds-space-6) var(--ds-space-8);gap:var(--ds-space-1);align-items:center}
+  .kwd-row--off{opacity:.55}
+  .kwd-name{max-width:100%;min-width:0;justify-self:start}
+  .kwd-name > span,.kwd-ellipsis{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .kwd-val{text-align:right}
+  .kwd-wide{grid-column:2/-1;min-width:0}
+  @media (max-width:900px){.kwd-split{grid-template-columns:minmax(0,1fr)}.kwd-side{padding-left:0;border-left:0}}
