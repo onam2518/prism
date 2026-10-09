@@ -20,10 +20,10 @@ async function main(){
  b.kwCount=3;b.kwSlots=[{model:'m1',version_id:'v1'},{model:'m2',version_id:'v2'},{model:'m3',version_id:'v3'}];
  b.kwSource='reuse';b.kwReuse='many';assert.equal(b.kwReady(),true);
  b.kwSlots[2].version_id='v2';assert.equal(b.kwReady(),false);b.kwSlots[2].version_id='v3';
- b.kwChooseMode('single');assert.equal(b.kwCount,1);assert.equal(b.kwReuse,'');assert.equal(b.kwReady(),false);
- b.kwSource='hash';b.kwHashes='a,b';assert.equal(b.kwReady(),false);b.kwHashes='a';assert.equal(b.kwReady(),true);
+ b.kwChooseMode('single');assert.equal(b.kwCount,1);assert.equal(b.kwReuse,'many');assert.equal(b.kwReady(),true);
+ b.kwSlots[0].version_id='v1';b.kwSource='hash';b.kwHashes='a,a';assert.equal(b.kwReady(),false);b.kwHashes='a,b';assert.equal(b.kwReady(),true);
  b.kwSource='sample';b.kwSample=20;b.kwRequest=async(q,data)=>{sent=data;return{ok:true,id:'new'}};b.kwOpenRun=async()=>{};b.kwLoad=async()=>{};
- await b.kwStart();assert.equal(sent.slots.length,1);assert.equal(sent.sample,1);assert.equal(sent.blind,false);
+ await b.kwStart();assert.equal(sent.slots.length,1);assert.equal(sent.sample,20);assert.equal(sent.blind,false);
  b.kwChooseMode('compare');b.kwCount=3;b.kwSample=2;await b.kwStart();assert.equal(sent.slots.length,3);assert.equal(sent.sample,2);assert.equal(sent.blind,true);
  b.kwCreateVersion(1);assert.equal(b.kwTab,'prompts');assert.equal(b.kwDraft.model,'m2');
  b.kwRequest=async()=>({ok:true,version:{id:'new-v',model:'m2',number:1,rules:'new rules',title:'new'}});

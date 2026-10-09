@@ -4,14 +4,14 @@
   <p role="alert" class="ds-hint ds-hint--error" x-show="kwError" x-text="kwError"></p>
   <p role="status" class="ds-hint" x-show="kwMessage" x-text="kwMessage"></p>
   <section role="tabpanel" id="kw-panel-run" aria-labelledby="kw-tab-run" x-show="kwTab==='run'" class="dc-body">
-    <div class="stepline"><span class="stepline__no">STEP 1</span><b>테스트 방식</b><span class="meta">단건 테스트 또는 비교 실험 선택</span></div>
+    <div class="stepline"><span class="stepline__no">STEP 1</span><b>테스트 방식</b><span class="meta">단일 모델 테스트 또는 비교 실험 선택</span></div>
     <section class="panel">
       <div class="panel-bd dc-body">
         <fieldset class="kw-mode-options" x-bind:disabled="kwBusy"><legend class="sr-only">테스트 방식 선택</legend>
-          <label class="pickchip" x-bind:class="kwMode==='single' ? 'on' : ''"><input type="radio" name="kw-mode" value="single" x-bind:checked="kwMode==='single'" x-on:change="kwChooseMode('single')">단일 모델 · 단건 테스트</label>
+          <label class="pickchip" x-bind:class="kwMode==='single' ? 'on' : ''"><input type="radio" name="kw-mode" value="single" x-bind:checked="kwMode==='single'" x-on:change="kwChooseMode('single')">단일 모델 테스트</label>
           <label class="pickchip" x-bind:class="kwMode==='compare' ? 'on' : ''"><input type="radio" name="kw-mode" value="compare" x-bind:checked="kwMode==='compare'" x-on:change="kwChooseMode('compare')">모델·버전 비교 실험</label>
         </fieldset>
-        <ul class="ds-bullets" x-show="!kwMode"><li>단건 테스트는 모델 1개로 콘텐츠 1건을 확인합니다</li><li>비교 실험은 동일한 콘텐츠에서 모델·프롬프트 버전 2~3개를 비교합니다</li></ul>
+        <ul class="ds-bullets" x-show="!kwMode"><li>단일 모델 테스트는 모델 1개로 콘텐츠 1~30건을 확인합니다</li><li>비교 실험은 동일한 콘텐츠에서 모델·프롬프트 버전 2~3개를 비교합니다</li></ul>
         <div x-show="kwMode==='compare'" class="control-row">
           <label class="selctl"><span class="selctl__lbl">비교 조합</span><select class="field" aria-label="비교 조합" x-model.number="kwCount"><option value="2">2개 조합</option><option value="3">3개 조합</option></select></label>
           <label class="kw-check"><input type="checkbox" x-model="kwBlind">모델·버전 가리고 검수</label>
@@ -34,7 +34,7 @@
         <ul class="ds-bullets"><li>선택한 모델에 저장된 프롬프트 버전만 표시합니다</li><li>저장된 버전이 없으면 ‘새 버전 만들기’에서 규칙을 확인하고 저장하세요</li></ul>
       </div>
     </section>
-    <div class="stepline" x-show="kwMode"><span class="stepline__no">STEP 3</span><b>콘텐츠 선택</b><span class="meta" x-text="kwMode==='single' ? '콘텐츠 1건' : '모든 조합에 동일한 콘텐츠·입력 메타 적용'"></span></div>
+    <div class="stepline" x-show="kwMode"><span class="stepline__no">STEP 3</span><b>콘텐츠 선택</b><span class="meta" x-text="kwMode==='single' ? '테스트할 콘텐츠와 건수 선택' : '모든 조합에 동일한 콘텐츠·입력 메타 적용'"></span></div>
     <section class="panel" x-show="kwMode">
       <div class="panel-bd dc-body">
         <div class="control-row"><label class="selctl"><span class="selctl__lbl">입력 방식</span><select class="field" aria-label="콘텐츠 입력 방식" x-model="kwSource" x-on:change="kwSourceChanged()"><option value="direct">메타 직접 입력</option><option value="sample">콘텐츠 정답셋에서 샘플</option><option value="hash">콘텐츠 정답셋 해시 지정</option><option value="reuse">기존 실험의 입력 재사용</option></select></label></div>
@@ -48,10 +48,10 @@
           <label class="fn"><span class="ds-label">카테고리 · 선택</span><input class="field" x-model="kwCategories" placeholder="쉼표로 구분"></label>
         </div>
         <div x-show="kwSource==='sample'" class="dc-body">
-          <div class="control-row" x-show="kwMode==='compare'"><label for="kw-sample" class="ds-label">샘플 수</label><input id="kw-sample" type="number" min="1" max="30" class="field kw-count-field" x-model.number="kwSample"><span class="meta">최대 30건</span></div>
-          <ul class="ds-bullets"><li x-text="kwMode==='single' ? '엔티티가 있는 콘텐츠 정답셋에서 1건을 가져옵니다' : '엔티티가 있는 콘텐츠 정답셋에서 선택한 수만큼 가져옵니다'"></li></ul>
+          <div class="control-row"><label for="kw-sample" class="ds-label">샘플 수</label><input id="kw-sample" type="number" min="1" max="30" class="field kw-count-field" x-model.number="kwSample"><span class="meta">최대 30건</span></div>
+          <ul class="ds-bullets"><li>엔티티가 있는 콘텐츠 정답셋에서 입력한 수만큼 가져옵니다</li></ul>
         </div>
-        <label x-show="kwSource==='hash'" class="fn"><span class="ds-label" x-text="kwMode==='single' ? '콘텐츠 해시 1개' : '콘텐츠 해시 · 최대 30개'"></span><textarea class="field" x-model="kwHashes" rows="2" x-bind:placeholder="kwMode==='single' ? '콘텐츠 해시 1개를 입력하세요' : '줄바꿈 또는 쉼표로 구분'"></textarea></label>
+        <label x-show="kwSource==='hash'" class="fn"><span class="ds-label" x-text="'콘텐츠 해시 · 최대 30개'"></span><textarea class="field" x-model="kwHashes" rows="2" placeholder="줄바꿈 또는 쉼표로 구분"></textarea></label>
         <label x-show="kwSource==='reuse'" class="fn"><span class="ds-label">입력을 재사용할 실험</span><select class="field" x-model="kwReuse" x-on:change="kwLoadInputRun(kwReuse)"><option value="">실험 선택</option><template x-for="r in kwReusableRuns()" x-bind:key="r.id"><option x-bind:value="r.id" x-text="kwTargetLabel(r.target || 'keyword')+' · '+kwDate(r.created_at)+' · 콘텐츠 '+r.n+'건'"></option></template></select></label>
         <div x-show="kwTarget==='sentence'" class="content-section dc-body">
           <b class="fn__title">문장에 사용할 핵심 키워드</b>
@@ -68,8 +68,8 @@
     <div class="stepline" x-show="kwMode"><span class="stepline__no">STEP 4</span><b>실행·결과 확인</b></div>
     <section class="panel" x-show="kwMode">
       <div class="panel-bd dc-body">
-        <ul class="ds-bullets"><li x-text="kwMode==='single' ? '모델 1개 · 콘텐츠 1건으로 테스트합니다' : '모델·프롬프트 '+kwCount+'개 조합으로 같은 콘텐츠를 비교합니다'"></li><li x-show="kwInputIssue()" x-text="kwInputIssue()"></li></ul>
-        <div class="control-row"><button type="button" class="ds-btn ds-btn--solid ds-btn--c-primary" x-bind:disabled="!kwReady() || !kwCatalog?.can_manage" x-on:click="kwStart()" x-text="kwBusy ? '실행 준비 중…' : kwMode==='single' ? '단건 테스트 실행' : kwCount+'개 조합 비교 실행'"></button></div>
+        <ul class="ds-bullets"><li x-text="kwMode==='single' ? '모델 1개로 선택한 콘텐츠를 테스트합니다' : '모델·프롬프트 '+kwCount+'개 조합으로 같은 콘텐츠를 비교합니다'"></li><li x-show="kwInputIssue()" x-text="kwInputIssue()"></li></ul>
+        <div class="control-row"><button type="button" class="ds-btn ds-btn--solid ds-btn--c-primary" x-bind:disabled="!kwReady() || !kwCatalog?.can_manage" x-on:click="kwStart()" x-text="kwBusy ? '실행 준비 중…' : kwMode==='single' ? '단일 모델 테스트 실행' : kwCount+'개 조합 비교 실행'"></button></div>
       </div>
     </section>
   <div class="control-row kw-history" x-show="kwTab==='run' || kwTab==='prompts'">
