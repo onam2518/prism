@@ -223,6 +223,25 @@ window.PRISM_APP_PARTS.push(() => ({
     if(!this.kwReviewable(cell)) return '실패';
     return cell.final ? '확정' : (cell.reviews || []).length ? '판정됨' : '미검수';
   },
+  // 실행 결과 CSV: 인증 GET 이라 fetch+Blob(exportDash 와 같은 이유) · 오류면 JSON 이 오므로 형식으로 구분
+  async kwDeleteRun() {
+    const r=this.kwRuns().find(x=>x.id===this.kwRunId);
+    if(!r || this.kwBusy || !window.confirm(this.kwDate(r.created_at)+' 실험 기록(콘텐츠 '+r.n+'건)을 삭제합니다.\n검수 판단도 함께 사라지며 되돌릴 수 없습니다.')) return;
+    this.kwBusy=true;this.kwError='';
+    try {
+      await this.kwRequest('',{action:'delete_run',run_id:r.id});
+      clearTimeout(this._kwTimer);this.kwRunId='';this.kwRunData=null;this.kwReview=null;
+      await this.kwLoad();this.kwMessage='실험 기록을 삭제했습니다';
+    } catch(e){this.kwError=e.message;} finally{this.kwBusy=false;}
+  },
+  async kwDownloadCsv() {
+    try {
+      const r=await this._afetch('/lab-keywords?csv=1&run='+encodeURIComponent(this.kwRunId),{headers:this._authHeaders()});
+      if(!(r.headers.get('content-type') || '').includes('text/csv')) throw new Error((await r.json()).error || 'CSV를 만들지 못했습니다');
+      const u=URL.createObjectURL(await r.blob()), a=document.createElement('a');
+      a.href=u; a.download='prism_keyword_'+this.kwRunId.slice(0,8)+'.csv'; a.click(); setTimeout(()=>URL.revokeObjectURL(u),60000);
+    } catch(e) {this.kwError=e.message;}
+  },
   kwSlotBadge(cell) {return ({'확정':'ds-badge--success','판정됨':'ds-badge--intent','실패':'ds-badge--error'})[this.kwSlotState(cell)] || 'ds-badge--neutral';},
   // 콘텐츠 한 건의 목록 상태: 판정할 조합이 남았으면 미검수/검수 중 · 모두 확정이면 확정
   kwItemState(item) {

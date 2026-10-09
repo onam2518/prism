@@ -363,6 +363,15 @@ _CSV_TRUNC_NOTE = ("⚠ 내보내기 상한 {n:,}행 초과 · 최신 {n:,}건�
                    "(전체는 이보다 많습니다 · 기간을 나눠 다시 받아주세요)")
 
 
+def csv_cell(v) -> str:
+    s = str(v if v is not None else "")
+    # CSV 수식 인젝션 중화: 셀 선두 = + - @ 및 탭/CR 은 스프레드시트가 수식/DDE 로 실행 →
+    # 선행 작은따옴표로 무력화(RFC4180 따옴표 이스케이프는 유지).
+    if s[:1] in ("=", "+", "-", "@", "\t", "\r"):
+        s = "'" + s
+    return '"' + s.replace('"', '""') + '"'
+
+
 def build_results_csv(team=None) -> bytes:
     """적재된 추출 결과(콘텐츠 현황)를 CSV(엑셀)로 내보냄. team 스코프 강제(전 팀 유출 방지).
 
@@ -374,13 +383,7 @@ def build_results_csv(team=None) -> bytes:
     # 발행 키 4열(511607345): 원문 3필드 + 키에서 계산한 프리픽스. 프리픽스는 저장하지 않는다.
     out = ["제목,서비스,리드문,엔티티,인텐트,콘텐츠 카테고리,등급,품질 사유,노출제한,"
            "item_unique_key,source_prefix,service_code,cp_type"]
-    def esc(v):
-        s = str(v if v is not None else "")
-        # CSV 수식 인젝션 중화: 셀 선두 = + - @ 및 탭/CR 은 스프레드시트가 수식/DDE 로 실행 →
-        # 선행 작은따옴표로 무력화(RFC4180 따옴표 이스케이프는 유지).
-        if s[:1] in ("=", "+", "-", "@", "\t", "\r"):
-            s = "'" + s
-        return '"' + s.replace('"', '""') + '"'
+    esc = csv_cell
     if truncated:                                   # 파일을 여는 순간 보이게 첫 줄에
         out.append(",".join([esc(_CSV_TRUNC_NOTE.format(n=CSV_MAX_ROWS))] + [esc("")] * 12))
     for r in rows:

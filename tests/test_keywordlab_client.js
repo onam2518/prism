@@ -57,6 +57,10 @@ async function main(){
  assert.equal(d.kwItemState(it[0])[0],'검수 중');d.kwOpenItem(it[0]);assert.equal(d.kwReview.cell_id,'i1:B');
  d.kwRunData.cells['i2:B'].final={};assert.equal(d.kwItemState(it[1])[0],'확정');
  delete d.kwRunData.cells['i3:B'];assert.equal(d.kwItemState(it[2])[0],'대기');
+ // 실험 기록 삭제: 확인 후 선택·상세·결과를 비운다
+ const e=window.PRISM_APP_PARTS[0]();e.kwCatalog={runs:[{id:'r1',n:2,created_at:1}]};e.kwRunId='r1';e.kwRunData={};e.kwReview={};
+ e.kwRequest=async(q,data)=>{sent=data;return{ok:true}};e.kwLoad=async()=>{};const c0=window.confirm;window.confirm=()=>true;
+ await e.kwDeleteRun();window.confirm=c0;assert.equal(sent.action,'delete_run');assert.equal(sent.run_id,'r1');assert.equal(e.kwRunId,'');assert.equal(e.kwRunData,null);assert.equal(e.kwReview,null);
  console.log('Keyword workspace client: required selection, review identity, revision and failures passed');
 }
 main().catch(e=>{console.error(e);process.exitCode=1});
