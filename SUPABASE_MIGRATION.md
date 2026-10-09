@@ -227,7 +227,7 @@ alter table public.prism_prompt_library enable row level security;
 ```
 스튜디오 라이브러리 탭: 패턴 저장·핀 우선 정렬·복사·단계 원천 지시 적용(빌더 결과 저장 연동).
 
-**MCP 파트너 키(`prism_mcp_keys` 외 1, 2026-08-13 · 적용됨 · 트랙 B 외부 MCP · `prism/mcpkeys.py`)**:
+**MCP 파트너 키(`prism_mcp_keys` 외 1, 2026-08-13 · 적용됨 · 트랙 B 외부 MCP · 코드는 2026-10-09 제거 · 테이블·데이터는 유지)**:
 ```sql
 -- 키는 sha256 해시만 저장(평문 미보관 · 발급 시 1회 표시).
 -- key_id 는 난수 문자열이다 — 순차 정수면 남의 키 id 를 찍어 맞힐 수 있다(감사 O3).
@@ -271,7 +271,7 @@ alter table public.prism_mcp_calls enable row level security;
 > 적용: 2026-08-13 · 운영 프로젝트 `uycdzslkhkruvmyjcbgj` · 두 테이블 RLS enable + 정책 0(서버 전용) ·
 > 인덱스·외래키 확인 완료. 기존 테이블 무변경.
 
-**AI 초안 판정 상시 적재(`prism_autoreview`, 2026-08-19 · 적용됨 · 실험실 초안 판정 인박스 · `prism/autoreview.py`)**:
+**AI 초안 판정 상시 적재(`prism_autoreview`, 2026-08-19 · 적용됨 · 실험실 초안 판정 인박스 · 코드는 2026-10-09 제거 · 테이블·데이터는 유지)**:
 ```sql
 create table if not exists public.prism_autoreview (
   content_hash  text not null,

@@ -551,47 +551,6 @@ class TestAuthErrorHygiene(unittest.TestCase):
 
 
 
-class TestMcpGatewayRateLimit(SupaGateMixin, unittest.TestCase):
-    """[O2-2] 무인증 공개 경로에 IP 상한이 없으면 실패 트래픽이 무제한이 된다.
-
-    이 클래스는 2026-08-13 스펙트럼 관문 제거 때 그쪽에서 옮겨 왔다. 관문은 사라졌지만
-    거기서 배운 것은 `/mcp` 에 그대로 적용된다. **옮겨 오지 않았으면 그 교훈이 모듈과
-    함께 사라졌을 것이다** — 프리즘의 무인증 MCP 표면은 이제 `/mcp` 하나뿐이고,
-    이 파일이 그 표면의 상한 규칙을 지키는 유일한 자리다. 지우지 말 것."""
-
-    @classmethod
-    def setUpClass(cls):
-        cls._boot()
-
-    @classmethod
-    def tearDownClass(cls):
-        cls._halt()
-
-    def _hit(self, method="tools/list", i=1):
-        return self._call("/mcp", {"jsonrpc": "2.0", "id": i, "method": method, "params": {}})[0]
-
-    def test_rate_limited(self):
-        """총량 상한은 있어야 한다. 키 대입 스프레이를 IP 로 억제하는 몫이다."""
-        codes = [self._hit() for _ in range(260)]
-        self.assertIn(429, codes)
-
-    def test_handshake_is_not_rate_limited(self):
-        """MCP 접속 절차는 한 연결에서 연달아 나간다. 최소 간격을 두면 정상 클라이언트가 끊긴다.
-
-        2026-08-12 운영 실측(연결 재사용 · 당시 스펙트럼 관문):
-        1회 401(0.127s) → 2회 429(41ms 뒤) → 3회 429. `min_interval=0.1` 은
-        "정상 연사에는 여유 있다" 는 전제였는데, 접속 절차(initialize →
-        notifications/initialized → tools/list)가 수십 ms 안에 끝나 그 전제가 틀렸다.
-        브라우저로 눌러 보는 시연은 간격이 넉넉해 통과하므로 눈으로는 안 보인다.
-
-        상한 자체를 없애자는 게 아니다. 분당 총량은 위 test_rate_limited 가 계속 지킨다.
-        여기서 막는 것은 **간격 규칙의 부활**뿐이다."""
-        codes = [self._hit(m, i) for i, m in
-                 enumerate(("initialize", "notifications/initialized", "tools/list"))]
-        self.assertNotIn(429, codes, f"접속 절차가 상한에 걸렸다: {codes}")
-
-
-# ── P1: 클라이언트 조기 종료 가드 ────────────────────────────────────────────
 class TestDisconnectGuard(SupaGateMixin, unittest.TestCase):
     """[P1] 응답 본문 write 에 끊김 가드가 없어 중단 요청 1건당 stderr 3.2KB·34줄이 샜다."""
 

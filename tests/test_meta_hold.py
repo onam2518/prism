@@ -1,4 +1,4 @@
-"""입력 필요(hold_fields): 호출별 부분 보류(agents) · 품질 등급과 분리(harness) · 채우면 목록에서 빠짐(patch) · 검수 큐 라우팅(autoreview) · 채점 meta_hold_rate."""
+"""입력 필요(hold_fields): 호출별 부분 보류(agents) · 품질 등급과 분리(harness) · 채우면 목록에서 빠짐(patch) · 채점 meta_hold_rate."""
 import os
 import sys
 import tempfile
@@ -121,20 +121,6 @@ class TestItemGateRemoved(unittest.TestCase):
         ctx.item_meta = None
         H.st_item(ctx)
         self.assertIsNone(ctx.item_meta)
-
-
-class TestQueueRouting(unittest.TestCase):
-    """입력 필요만 남은 건(품질은 auto·G)도 사람 검수 큐에 들어와야 한다."""
-
-    def test_needs_human(self):
-        from prism import autoreview as AR
-        hold = {"quality_meta": {"review": "auto", "finalGrade": "G"},
-                "item_meta": {"hold_fields": ["summary"]}}
-        judg = {"quality_meta": {"review": "yellow", "finalGrade": ""}, "item_meta": {"hold_fields": []}}
-        clean = {"quality_meta": {"review": "auto", "finalGrade": "G"}, "item_meta": {"hold_fields": []}}
-        self.assertTrue(AR._needs_human(hold))
-        self.assertTrue(AR._needs_human(judg))
-        self.assertFalse(AR._needs_human(clean))
 
 
 class TestReleaseOnPatch(unittest.TestCase):
