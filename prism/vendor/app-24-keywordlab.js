@@ -225,6 +225,21 @@ window.PRISM_APP_PARTS.push(() => ({
     if(!this.kwReviewable(cell)) return '실패';
     return cell.final ? '확정' : (cell.reviews || []).length ? '판정됨' : '미검수';
   },
+  kwSlotBadge(cell) {return ({'확정':'ds-badge--success','판정됨':'ds-badge--intent','실패':'ds-badge--error'})[this.kwSlotState(cell)] || 'ds-badge--neutral';},
+  // 콘텐츠 한 건의 목록 상태: 판정할 조합이 남았으면 미검수/검수 중 · 모두 확정이면 확정
+  kwItemState(item) {
+    const cells=(this.kwRunData?.slots || []).map(s=>this.kwCell(item,s)), ok=cells.filter(c=>this.kwReviewable(c));
+    if(cells.some(c=>!c)) return ['대기','ds-badge--neutral'];
+    if(!ok.length) return ['실패','ds-badge--error'];
+    if(ok.every(c=>c.final)) return ['확정','ds-badge--success'];
+    if(ok.every(c=>(c.reviews || []).length)) return ['판정됨','ds-badge--intent'];
+    return ok.some(c=>(c.reviews || []).length) ? ['검수 중','ds-badge--warning'] : ['미검수','ds-badge--neutral'];
+  },
+  kwOpenItem(item) {
+    const slots=this.kwRunData?.slots || [], ok=slots.filter(s=>this.kwReviewable(this.kwCell(item,s)));
+    const slot=ok.find(s=>!(this.kwCell(item,s).reviews || []).length) || ok[0];
+    if(slot) this.kwOpenReview(item,slot);
+  },
   kwMetaList(v) {return Array.isArray(v) ? v.map(x=>typeof x==='string' ? x : (x && x.name) || '').filter(Boolean) : [];},
   kwInKeywords(name) {return this.kwCandidates(this.kwReviewCell()).some(k=>k.text.includes(name));},
   async kwSaveReview(finalize=false) {
