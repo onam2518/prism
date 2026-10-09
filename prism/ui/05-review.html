@@ -123,7 +123,8 @@
       </div>
       </template>
 
-      <template x-if="mod === 'create'">
+      <!-- 결과 비교 탭은 열렸을 때만 그린다(x-if) · 콘텐츠별 비교 표가 원장 전체(rawData.items)를 돈다 -->
+      <template x-if="mod === 'create'"><template x-if="createTab === 'edit'">
         <div x-show="createTab === 'edit'" x-cloak class="w-full">
         <div class="space-y-4">
           <!-- 요소 단위 모델별 결과 현황: 같은 정보요소를 모델 축으로 비교 -->
@@ -188,7 +189,7 @@
           </section>
         </div>
       </div>
-      </template>
+      </template></template>
 
       <!-- 콘텐츠별 초안 비교 팝업 -->
       <div class="ds-dialog-backdrop" x-show="cmpModalOpen" x-cloak x-transition.opacity x-on:mousedown.self="cmpModalOpen=false" style="z-index:74">

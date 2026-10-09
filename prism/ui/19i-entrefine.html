@@ -1,7 +1,7 @@
       <!-- 실험실 › 핵심 키워드 / 문장(운영자 전용) · labTab==='entref' · 06-quality-lab 탭 바에 의존
            1차 추출 뒤 두 재가공 호출: ① 핵심 키워드(엔티티 재처리 · 구독 키워드 3개) ② 핵심 문장(구독 카드·알림용 1문장)
            STEP 1 모델·프롬프트(호출별 모델·규칙 저장 · 출력 형식은 코드 고정) → STEP 2 실행(단건 | 다건 선택) · 로직 prism/entrefine.py -->
-      <template x-if="mod === 'lab'">
+      <template x-if="mod === 'lab'"><template x-if="labTab === 'entref' && kwTab === 'sentence'">
         <div x-show="labTab === 'entref' && kwTab === 'sentence'" role="tabpanel" id="kw-panel-sentence" aria-labelledby="kw-tab-sentence" x-cloak class="w-full dc-body">
 
         <section class="panel">
@@ -204,4 +204,4 @@
           </div>
         </section>
         </div>
-      </template>
+      </template></template>

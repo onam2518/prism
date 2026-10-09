@@ -303,7 +303,7 @@
       </template><!-- /정답셋 관리 · 현황 -->
 
 
-      <template x-if="mod === 'testset'">
+      <template x-if="mod === 'testset'"><template x-if="testTab === 'golden'">   <!-- 숨은 탭의 x-init 조회(/golden-list)를 탭 열 때로 -->
         <div x-show="testTab === 'golden'" x-cloak class="w-full space-y-4">
         <section class="panel" x-show="backend !== 'supabase' || (adminData && adminData.isAdmin)" x-init="loadGoldenList()"><div class="panel-hd"><b>정답셋 목록</b>
           <span class="meta" x-text="goldenList ? (goldenList.total + '건 · 검수로 확정 ' + ((goldenList.source_counts&&goldenList.source_counts.review)||0) + ' · 직접 등록 ' + ((goldenList.source_counts&&goldenList.source_counts.manual)||0)) : ((adminData&&adminData.goldenCount?adminData.goldenCount+'건 등록됨':'미등록'))"></span>
@@ -315,7 +315,7 @@
           <div class="panel-bd">
             <ul class="ds-bullets" style="margin-bottom:20px"><li>정답은 <b>검수 '정확' 합의</b>가 학습 반영 때 누적 승격됩니다</li><li>평가와 어긋나 <b>오류 의심 · 교정 필요</b> 표시된 항목은 확인 후 제거하세요(정답 오류는 모델 순위를 뒤집습니다)</li><li>인텐트 후보가 <b>전 출처 공통 68개</b>로 바뀌어(2026-09-22) 기존 정답의 인텐트는 <b>재확정 필요</b> 표시가 붙고 확정 전까지 인텐트 측정에서 빠집니다<ul><li>폐기된 값이 남은 항목은 <b>재판정(폐기값)</b>으로 먼저 보이며, 행의 <b>인텐트 확정</b>으로 새 후보 기준으로 다시 고르면 측정에 포함됩니다</li></ul></li></ul>
             <div class="flexrow" style="gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px" x-show="goldenList && goldenList.intent_review_counts">
-              <span class="text-xs text-muted tnum" x-text="'인텐트 재확정 · 필요 ' + ((goldenList.intent_review_counts||{}).needed||0) + '건 · 확정 ' + ((goldenList.intent_review_counts||{}).confirmed||0) + '건 · 폐기값 남은 행 ' + ((goldenList.intent_review_counts||{}).retired||0) + '건'"></span>
+              <span class="text-xs text-muted tnum" x-text="'인텐트 재확정 · 필요 ' + (((goldenList||{}).intent_review_counts||{}).needed||0) + '건 · 확정 ' + (((goldenList||{}).intent_review_counts||{}).confirmed||0) + '건 · 폐기값 남은 행 ' + (((goldenList||{}).intent_review_counts||{}).retired||0) + '건'"></span>
               <button type="button" class="srcfilter__chip" x-bind:class="giOnly ? 'sel' : ''" x-bind:aria-pressed="giOnly ? 'true' : 'false'" x-on:click="giOnly = !giOnly">재확정 필요만 보기</button>
               <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-bind:disabled="giBusy" x-on:click="giMigrate()" data-tip="폐기 인텐트 중 대응이 하나뿐인 값(생활·실용정보 → 실용 정보 · 음악 큐레이션 → 큐레이션·모음 · 차트·랭킹 → 랭킹·리스트)은 치환하고, 후보가 여럿인 값은 재판정 표시만 · 인텐트가 있는 정답 전체에 재확정 필요 표시 · 여러 번 눌러도 같은 결과" data-tip-pos="top" x-text="giBusy ? '정리 중…' : '폐기값 정리·재확정 표시 일괄 적용'"></button>
               <span class="text-xs text-muted" aria-live="polite" x-text="giMsg"></span>
@@ -355,9 +355,9 @@
           </div>
         </section>
       </div>
-      </template><!-- /정답셋 목록 -->
+      </template></template><!-- /정답셋 목록 -->
       <!-- 학습 데이터: 항목별 카드(요약 | 내보내기 | 소요 산정 | 커버리지·신뢰도 | 오류 후보) · 용어는 호버 정의 -->
-      <template x-if="mod === 'testset'">
+      <template x-if="mod === 'testset'"><template x-if="testTab === 'data'">   <!-- 숨은 탭의 x-init 조회(/learn-data)를 탭 열 때로 -->
         <div x-show="testTab === 'data'" x-cloak class="w-full">
         <div x-show="backend !== 'supabase' || (adminData && adminData.isAdmin)" x-init="loadLearnData()" class="space-y-4">
         <section class="panel" data-fn>
@@ -488,7 +488,7 @@
         </template>
         </div>
       </div>
-      </template><!-- /학습 데이터 -->
+      </template></template><!-- /학습 데이터 -->
 
       <!-- 콘텐츠 검수 · 원본 목록: 결과 원본을 가공 없이 빠르게 -->
       <template x-if="mod === 'create'">

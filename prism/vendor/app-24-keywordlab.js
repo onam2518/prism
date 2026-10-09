@@ -132,7 +132,6 @@ window.PRISM_APP_PARTS.push(() => ({
     } catch(e) {this.kwError=e.message;}
   },
   kwCell(item, slot) {return (this.kwRunData && this.kwRunData.cells[item.key+':'+slot.label]) || null;},
-  kwChecks(cell) {return this.erKeywordChecks(cell);},
   kwRate(m, verdict) {return m.reviewed_keywords ? Math.round(100*m.judgments[verdict]/m.reviewed_keywords)+'%' : '미검수';},
   kwMoney(value) {return value==null ? '미집계' : '$'+Number(value).toFixed(6);},
   async kwReveal() {
