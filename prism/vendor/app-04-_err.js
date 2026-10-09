@@ -3,6 +3,34 @@
 window.PRISM_APP_PARTS = window.PRISM_APP_PARTS || [];
 window.PRISM_APP_PARTS.push(() => ({
       _err(m) { this.errMsg = m; if (this._errT) clearTimeout(this._errT); this._errT = setTimeout(() => { this.errMsg = ''; }, 4800); },
+      // 모달 공통 · Esc 는 맨 위(z-index 최대) 대화상자 하나만 닫는다(상세 74 위 정답 확정 76 등 겹침 동시 닫힘 방지).
+      // 첫 핸들러가 이벤트에 스냅숏을 남겨 같은 키 입력의 다른 핸들러도 닫히기 전 상태로 판정한다.
+      _escTop(e, el) {
+        if (!e._dlgTop) {
+          let z = -1; e._dlgTop = 1;
+          document.querySelectorAll('.ds-dialog-backdrop').forEach((b) => {
+            if (!b.getClientRects().length) return;                 // 숨김(display:none) 제외
+            const zi = +getComputedStyle(b).zIndex || 0;
+            if (zi >= z) { z = zi; e._dlgTop = b; }                 // 같은 z 면 DOM 뒤쪽(나중에 그려진 쪽)
+          });
+        }
+        return !!el && e._dlgTop === el.closest('.ds-dialog-backdrop');
+      },
+      // 모달 열림 → 안의 첫 입력·버튼으로 포커스 · 닫힘 → 열기 전 포커스 복귀. x-effect="_dlgFocus($el, !!열림)"
+      // ponytail: 포커스 트랩(Tab 순환)은 없음 · 필요해지면 여기서 keydown Tab 을 가둔다
+      _dlgFocus(el, open) {
+        if (open && !el._dlgRet) {
+          el._dlgRet = document.activeElement || document.body;
+          setTimeout(() => {
+            if (el.contains(document.activeElement)) return;
+            const f = [...el.querySelectorAll('input:not([type=hidden]),textarea,select,button')].find((x) => x.getClientRects().length && !x.disabled);
+            if (f) f.focus();
+          }, 50);
+        } else if (!open && el._dlgRet) {
+          const r = el._dlgRet; el._dlgRet = null;
+          if (r.focus && document.contains(r)) r.focus();
+        }
+      },
       logout() {
         try { localStorage.removeItem('prism_reviewer'); localStorage.removeItem('prism_reviewer_char'); localStorage.removeItem('prism_token'); localStorage.removeItem('prism_rtoken'); } catch (e) {}
         this._loadCred();                              // 저장 선택 시 재로그인 편의(프리필 유지)
@@ -173,13 +201,27 @@ window.PRISM_APP_PARTS.push(() => ({
       // 세션 자동 갱신: supabase access token 은 1시간 만료 · refresh_token 으로 무중단 연장.
       // (만료 후 관리자 메뉴가 조용히 사용자 메뉴로 강등되던 원인 · 2026-07-08)
       rtoken: '',
+      // 다른 탭이 이미 회전한 토큰 채택(localStorage 가 원천) · 바뀐 게 있으면 true.
+      // supabase refresh_token 은 1회용이라 같은 토큰으로 두 번 갱신하면 refresh_token_already_used(400) 다.
+      _adoptStoredToken() {
+        let t = '', rt = '';
+        try { t = localStorage.getItem('prism_token') || ''; rt = localStorage.getItem('prism_rtoken') || ''; } catch (e) {}
+        if (!t || !rt || rt === this.rtoken) return false;
+        this.authToken = t; this.rtoken = rt;
+        return true;
+      },
       async authRefresh() {
-        if (!this.rtoken) return false;
-        if (this._refreshBusy) return this._refreshBusy;            // 동시 호출 dedupe
+        if (this._refreshBusy) return this._refreshBusy;            // 탭 안 단일 비행: 동시 401 이 같은 토큰을 한 번만 쓴다
         this._refreshBusy = (async () => {
           try {
+            if (this._adoptStoredToken()) { this.startLive(); return true; }   // 다른 탭이 먼저 갱신함
+            if (!this.rtoken) return false;
             const r = await (await fetch('/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'refresh', refresh_token: this.rtoken }) })).json();
-            if (!(r && r.ok && r.access_token)) return false;
+            if (!(r && r.ok && r.access_token)) {
+              // 회전 경합(다른 탭과 동시 갱신 → already_used): 저장소의 최신 토큰으로 한 번 더 살린다
+              if (this._adoptStoredToken()) { this.startLive(); return true; }
+              return false;
+            }
             this.authToken = r.access_token;
             if (r.refresh_token) this.rtoken = r.refresh_token;     // supabase 는 갱신 시 회전
             try { localStorage.setItem('prism_token', this.authToken); localStorage.setItem('prism_rtoken', this.rtoken); } catch (e) {}

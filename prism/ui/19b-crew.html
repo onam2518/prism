@@ -650,7 +650,7 @@
     </div>
   </div>
   <!-- 검수자 일괄 배정(슈퍼관리자 이상): ① 콘텐츠 선택 → ② 담당자 지정 → ③ 확인 · 배정 -->
-  <div class="ds-dialog-backdrop" x-show="bulkOpen" x-cloak x-transition.opacity x-on:mousedown.self="bulkOpen=false" x-on:keydown.escape.window="bulkOpen && (bulkOpen=false)" style="z-index:78">
+  <div class="ds-dialog-backdrop" x-show="bulkOpen" x-cloak x-transition.opacity x-on:mousedown.self="bulkOpen=false" x-on:keydown.escape.window="bulkOpen && _escTop($event, $el) && (bulkOpen=false)" style="z-index:78">
     <!-- 닫혀 있을 땐 그리지 않는다(x-if): bulkFiltered 는 원장 전체(2~3천 행)라 x-show 면 숨은 채 SSE 마다 재렌더 -->
     <template x-if="bulkOpen"><div class="ds-dialog" role="dialog" aria-modal="true" aria-label="검수자 일괄 배정" style="max-width:720px;display:flex;flex-direction:column;max-height:88vh">
       <h2 class="ds-dialog__title" style="display:flex;align-items:baseline;gap:10px">검수자 일괄 배정

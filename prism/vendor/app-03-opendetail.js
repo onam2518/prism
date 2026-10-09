@@ -472,8 +472,10 @@ window.PRISM_APP_PARTS.push(() => ({
           if (this.authToken) h['Authorization'] = 'Bearer ' + this.authToken;
           return fetch(url, Object.assign({}, opts, { headers: h }));
         };
+        const sent = this.authToken;
         let r = await call();
-        if (r.status === 401 && this.rtoken && await this.authRefresh()) r = await call();
+        // 응답을 기다리는 사이 이미 갱신됐으면(다른 요청·다른 탭) 새 토큰으로 재시도만 · 재갱신 안 함
+        if (r.status === 401 && this.rtoken && (this.authToken !== sent || await this.authRefresh())) r = await call();
         if (r.status === 401 && this.backend === 'supabase') {
           this._err('로그인이 만료됐습니다 · 다시 로그인해 주세요');
           this.reviewerEditing = true;

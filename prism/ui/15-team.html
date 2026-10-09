@@ -71,7 +71,7 @@
           </div>
         </section>
         <!-- 비밀번호 재설정 결과: 임시 비밀번호는 이 화면에서만 1회 노출(저장 안 함) · 생성자가 직접 전달 -->
-        <div class="ds-dialog-backdrop" x-show="pwReset" x-cloak x-on:mousedown.self="pwReset=null" style="z-index:76">
+        <div class="ds-dialog-backdrop" x-show="pwReset" x-cloak x-on:mousedown.self="pwReset=null" x-on:keydown.escape.window="pwReset && _escTop($event, $el) && (pwReset=null)" x-effect="_dlgFocus($el, !!pwReset)" style="z-index:76">
           <div class="ds-dialog" role="dialog" aria-modal="true" aria-label="임시 비밀번호 발급">
             <h2 class="ds-dialog__title"><span x-text="pwReset && pwReset.member"></span> 님 임시 비밀번호</h2>
             <div class="ds-dialog__body">
