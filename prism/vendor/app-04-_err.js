@@ -210,6 +210,10 @@ window.PRISM_APP_PARTS.push(() => ({
         this.authToken = t; this.rtoken = rt;
         return true;
       },
+      _dropRtoken() {
+        try { if (localStorage.getItem('prism_rtoken') === this.rtoken) localStorage.removeItem('prism_rtoken'); } catch (e) {}
+        this.rtoken = '';
+      },
       async authRefresh() {
         if (this._refreshBusy) return this._refreshBusy;            // 탭 안 단일 비행: 동시 401 이 같은 토큰을 한 번만 쓴다
         this._refreshBusy = (async () => {
@@ -220,6 +224,7 @@ window.PRISM_APP_PARTS.push(() => ({
             if (!(r && r.ok && r.access_token)) {
               // 회전 경합(다른 탭과 동시 갱신 → already_used): 저장소의 최신 토큰으로 한 번 더 살린다
               if (this._adoptStoredToken()) { this.startLive(); return true; }
+              this._dropRtoken();   // 거절된 토큰은 죽은 토큰: 쥐고 있으면 폴러 401 마다 같은 토큰으로 재갱신(already_used 로그 반복)
               return false;
             }
             this.authToken = r.access_token;

@@ -76,7 +76,12 @@ window.mreview = () => ({
     try {
       if (this.adoptStored()) return true;
       const r = await (await fetch('/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'refresh', refresh_token: this.rtoken }) })).json();
-      if (!(r && r.ok && r.access_token)) return this.adoptStored();
+      if (!(r && r.ok && r.access_token)) {
+        if (this.adoptStored()) return true;
+        // 거절된 토큰은 버린다(쥐고 있으면 401 마다 같은 죽은 토큰으로 재갱신) · 앱 _dropRtoken 과 같은 규칙
+        try { if (localStorage.getItem('prism_rtoken') === this.rtoken) localStorage.removeItem('prism_rtoken'); } catch (e) {}
+        this.rtoken = ''; return false;
+      }
       this.authToken = r.access_token;
       if (r.refresh_token) this.rtoken = r.refresh_token;
       try { localStorage.setItem('prism_token', this.authToken); localStorage.setItem('prism_rtoken', this.rtoken); } catch (e) {}

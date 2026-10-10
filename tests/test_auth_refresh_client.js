@@ -44,13 +44,21 @@ async function run() {
   assert.equal(await a.authRefresh(), true);
   assert.equal(a.authToken, 'c9'); assert.equal(a.rtoken, 's9');
 
-  // 4) 진짜 만료(저장소도 그대로) → false(호출자가 재로그인 안내) · 다음 호출은 다시 시도 가능
+  // 4) 진짜 만료(저장소도 그대로) → false(호출자가 재로그인 안내) · 거절된 토큰은 버려 폴러가 같은 토큰으로 재갱신하지 않는다
   store = { prism_token: 'd1', prism_rtoken: 't1' }; calls = [];
   ({ a } = app(store, async () => { calls.push(1); return reply({ ok: false }); }));
   a.authToken = 'd1'; a.rtoken = 't1';
   assert.equal(await a.authRefresh(), false);
+  assert.equal(a.rtoken, ''); assert.equal('prism_rtoken' in store, false);
   assert.equal(await a.authRefresh(), false);
-  assert.equal(calls.length, 2, '실패 후 단일 비행 잠금이 풀려야 한다');
+  assert.equal(calls.length, 1, '죽은 토큰으로 다시 갱신 요청하지 않는다');
+
+  // 4b) 네트워크 오류(서버 거절 아님)는 토큰을 지키고 다음에 다시 시도
+  store = { prism_token: 'e1', prism_rtoken: 'u1' };
+  ({ a } = app(store, async () => { throw new Error('offline'); }));
+  a.authToken = 'e1'; a.rtoken = 'u1';
+  assert.equal(await a.authRefresh(), false);
+  assert.equal(a.rtoken, 'u1'); assert.equal(store.prism_rtoken, 'u1');
 
   // 5) Esc: 보이는 대화상자 중 z-index 최대 하나만 · 같은 이벤트의 두 번째 판정도 스냅숏 기준
   const mk = (z, shown) => { const b = { z, getClientRects: () => (shown ? [1] : []) }; b.closest = () => b; return b; };
