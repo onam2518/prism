@@ -1,15 +1,14 @@
-"""도구 계층 · 내부 검수 보조(트랙 A)와 외부 MCP(트랙 B)가 공유하는 단일 원천.
+"""도구 계층 · 검수 보조 에이전트(reviewassist)가 부르는 도구의 단일 원천.
 
-두 트랙은 앞단이 다르다. 트랙 A 는 프리즘 화면 안의 검수 보조라 이미 로그인한 세션을 쓰고,
-트랙 B 는 외부 클라이언트가 파트너 키로 부른다. 그러나 **도구 함수는 한 벌이어야 한다** —
-팀 스코프·응답 상한·골드 제외 같은 규칙이 두 군데로 갈라지면 반드시 어긋나고, 어긋난 쪽이
-조용히 틀린 답을 낸다. 2026-08-11 감사에서 본 것이 정확히 그것이었다(`ent_trending` 과
+(외부 MCP 앞단은 2026-10-09 제거 · scope 표기는 앞단을 다시 붙일 때를 위한 경계로 남긴다.)
+**도구 함수는 한 벌이어야 한다** — 팀 스코프·응답 상한·골드 제외 같은 규칙이 두 군데로
+갈라지면 반드시 어긋나고, 어긋난 쪽이 조용히 틀린 답을 낸다. 2026-08-11 감사에서 본 것이 정확히 그것이었다(`ent_trending` 과
 `ent_attr_index` 가 형제인데 한쪽만 고쳐져 운영에서 0건이 나오고 있었다).
 
 ## 이 모듈이 지키는 규칙
 
-1. **팀은 인자로 받되 호출자가 세션·키에서 해석한 값만 넘긴다.** 도구 사용자(모델·외부
-   클라이언트)가 team 을 지정할 수 없다. 저장 계층은 team 이 falsy 면 필터를 생략해
+1. **팀은 인자로 받되 호출자가 세션에서 해석한 값만 넘긴다.** 도구 사용자(모델)가
+   team 을 지정할 수 없다. 저장 계층은 team 이 falsy 면 필터를 생략해
    '전 팀' 으로 해석하므로(감사 H1), team 없이 부르는 경로를 만들지 않는다.
 2. **응답에 상한이 있고 잘리면 말한다.** `truncated` 와 `total` 을 함께 싣는다.
    조용한 절단은 "다 봤다" 로 읽혀 판단을 그르친다(감사 P3).
@@ -22,7 +21,6 @@ serve 역참조(`_SV`)는 learnops·topicops 관례를 따른다.
 from __future__ import annotations
 
 from . import dictionaries as D
-from . import promptdist as PD               # 프롬프트 배포·결과 규칙 검증(트랙 B 전용 도구 2종)
 
 _SV = None                                   # serve 주입(컴포지션 루트)
 
@@ -87,7 +85,7 @@ TAXONOMY_KINDS = ("category", "intent", "reason", "intake_policy", "legal_type")
 
 
 def get_taxonomy(kind: str, service: str = "", team=None) -> dict:
-    """프리즘이 쓰는 분류 체계와 허용값. 외부(트랙 B)에 가장 값어치 있는 도구다.
+    """프리즘이 쓰는 분류 체계와 허용값.
 
     intent 후보는 2026-09-22 부터 전 출처 공통 68개다(service 는 응답 echo 전용).
     정의문은 INTENT_VALUE_DEFS 단일 원천 · 검수 화면·추출 프롬프트와 같은 문장이다."""
@@ -249,9 +247,8 @@ def get_examples(kind: str = "", values=None, service: str = "", limit=None, tea
 
 
 # ── 도구 등록부 ──────────────────────────────────────────────────────────────
-# scope: internal(트랙 A 전용) · external(트랙 B 전용) · both
-# 각 앞단은 이 표에서 자기 scope 만 골라 노출한다. inputSchema 는 MCP tools/list 가 그대로
-# 쓰고 내부 에이전트의 도구 정의로도 쓰인다 — 한 곳만 고치면 둘 다 바뀐다.
+# scope: internal(검수 보조 전용) · both(외부 앞단에 열어도 되는 것)
+# 각 앞단은 이 표에서 자기 scope 만 골라 노출한다. inputSchema 는 에이전트의 도구 정의로 그대로 쓰인다.
 TOOLS = {
     "get_taxonomy": {
         "scope": "both",
@@ -315,64 +312,6 @@ TOOLS = {
         },
         "fn": get_examples,
     },
-    "get_extraction_prompt": {
-        # scope=external 인 근거: 이 도구가 주는 것은 **learned 를 뺀** 프롬프트다. 프리즘이
-        # 실제로 돌리는 것과 한 조각 다르다. 밖에서는 그게 정답이다(팀 데이터를 못 주고,
-        # 버전 고정이 재현성의 전부다). 안에서는 아니다 · 내부 검수 보조가 이걸 '지금 모델이
-        # 받은 지시' 로 읽으면 실제 실행과 다른 문서를 근거 삼게 된다. 내부에 열려면 실행
-        # 프롬프트 그대로를 주는 별도 경로여야 하고, 그건 팀 데이터라 이 도구와 규칙이 다르다.
-        "scope": "external",
-        "title": "추출 프롬프트 배포",
-        "desc": "프리즘의 현행 아이템 메타 추출 프롬프트를 콜 단위로 내려준다(독립 4콜: "
-                "summary · entities · intent · category). 받은 프롬프트를 그쪽 모델로 돌리면 "
-                "기준이 프리즘 것이라 결과가 프리즘 정의를 따르고, 응답의 version·fingerprint 로 "
-                "어떤 기준으로 만든 결과인지 나중에 되짚을 수 있다. "
-                "학습 보정(팀 검수 이력 누적분)은 빠져 있어 프리즘 실제 실행과 다를 수 있다 · "
-                "무엇이 다른지는 응답의 differs_from_prism_run 에 적혀 있다.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "call": {"type": "string", "enum": list(PD.CALLS),
-                         "description": "받을 콜 하나(독립 4콜 중)"},
-                "service": {"type": "string",
-                            "description": "displayServiceName(뉴스·연예·스포츠·티스토리 등) · "
-                                           "2026-09-22 부터 모델 입력·후보에 쓰지 않는다 · "
-                                           "응답에 그대로 되비칠 뿐 프롬프트를 바꾸지 않는다"},
-                "client_model": {"type": "string",
-                                 "description": "돌릴 모델 이름(선택 · 예: gpt-5 · gemini-3-pro) · "
-                                                "모델 계열에 맞는 래퍼로 조립한다 · 모르는 이름이면 범용 래퍼"},
-            },
-            "required": ["call"],
-            "additionalProperties": False,
-        },
-        "fn": PD.get_extraction_prompt,
-    },
-    "validate_result": {
-        # scope=external 인 근거: 형제 도구(get_extraction_prompt)로 만든 결과를 되받는 짝이다.
-        # 내부 메타는 실제 파이프라인과 검수 화면을 지나므로 이 검사가 하는 일이 이미 끝나 있다.
-        "scope": "external",
-        "title": "결과 규칙 검증",
-        "desc": "그쪽에서 만든 메타를 프리즘 규칙으로 검사한다. 사전 밖의 값·폐기된 값·"
-                "형식 오류·정의상 함께 못 쓰는 조합·계약 수량 규칙만 본다. "
-                "**품질을 판정하지 않는다** · 등급·점수를 내지 않으며, 위반 0건은 '규칙 위반 없음' 이지 "
-                "'정확하다' 는 뜻이 아니다(값이 콘텐츠에 맞는지는 검사 대상이 아니다).",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "result": {"type": "object",
-                           "description": "검사할 메타 JSON(키: summary · entities · intent · "
-                                          "content_category · 있는 필드만 검사한다)"},
-                "service": {"type": "string",
-                            "description": "그 콘텐츠의 displayServiceName · 선택 · 응답 echo 전용이며 "
-                                           "인텐트 후보를 가르지 않는다(2026-09-22 공통 사전)"},
-            },
-            # service 는 2026-09-22 부터 검사에 쓰이지 않으므로 필수에서 뺐다(공통 68개 · 511247058).
-            # 인자 자체는 남긴다 · 이미 보내는 파트너 호출이 additionalProperties=False 에 걸리지 않게.
-            "required": ["result"],
-            "additionalProperties": False,
-        },
-        "fn": PD.validate_result,
-    },
 }
 
 
@@ -384,7 +323,7 @@ def tools_for(scope: str) -> dict:
 def call(name: str, args: dict, team=None, registry=None) -> dict:
     """도구 실행 공통 진입점.
 
-    team 은 **호출자가 세션·키에서 해석한 값**이다. args 에 team 이 들어와도 무시한다 —
+    team 은 **호출자가 세션에서 해석한 값**이다. args 에 team 이 들어와도 무시한다 —
     도구 사용자가 팀을 지정할 수 있으면 그 자체가 교차 팀 접근 통로가 된다.
 
     registry 를 주면 그 등록부에서 찾는다(앞단 전용 묶음 · reviewassist). 도구 목록만 다를 뿐
