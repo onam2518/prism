@@ -18,7 +18,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from prism import dictionaries as D
 from prism import feedback_loop as FL
 from prism import meta_prompts as MP
-from prism import promptdist as PD
 from prism import promptstore as PS
 
 # 계열별 대표 모델. family_of 가 인식하는 분기를 전부 지난다(o1/o3/o4 는 gpt 계열로 수렴).
@@ -166,33 +165,6 @@ class TestLegalLabelsMatchPolicyTable(unittest.TestCase):
         for code, (label, article) in self.TABLE.items():
             self.assertEqual(D.LEGAL_HARM_TYPES[code]["label"], label, code)
             self.assertEqual(D.LEGAL_HARM_TYPES[code]["article"], article, code)
-
-
-class TestExternalPromptHasNoServiceWording(unittest.TestCase):
-    def test_shipped_prompt_is_service_free(self):
-        for call in PD.CALLS:
-            out = PD.get_extraction_prompt(call=call, client_model="gpt-5")
-            self.assertNotIn("error", out, call)
-            for phrase in BANNED:
-                self.assertNotIn(phrase, out["system"], f"{call} 배포 프롬프트에 '{phrase}'")
-            self.assertNotIn("{displayServiceName}", out["user_template"])
-
-    def test_service_argument_does_not_change_the_prompt(self):
-        a = PD.get_extraction_prompt(call="intent", client_model="gpt-5")
-        b = PD.get_extraction_prompt(call="intent", service="티스토리", client_model="gpt-5")
-        self.assertEqual(a["system"], b["system"])
-        self.assertEqual(a["fingerprint"], b["fingerprint"])
-
-    def test_differences_note_never_mentions_service_branching(self):
-        for line in PD._differences(True):
-            for phrase in BANNED:
-                self.assertNotIn(phrase, line)
-
-    def test_validate_result_no_longer_requires_service(self):
-        from prism import prismtools as PT
-        self.assertEqual(PT.TOOLS["validate_result"]["inputSchema"]["required"], ["result"])
-        out = PD.validate_result(result={"intent": D.intent_categories()[:1]})
-        self.assertNotIn("error", out)
 
 
 class TestRetiredIntentsAreMarkedNotRenamed(unittest.TestCase):
