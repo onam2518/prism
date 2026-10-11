@@ -83,5 +83,26 @@ class TestRouterModels(_KeyEnv):
         self.assertEqual(out["router"], {"timely": ["glm-5.3"]})
 
 
+class TestModelsCache(unittest.TestCase):
+    """부팅마다 /models 를 부르므로 성공 결과만 10분 캐시 · fresh=1(모델 새로고침)은 우회."""
+    def setUp(self):
+        SV._MODELS_CACHE.update(at=0.0, v=None)
+        self.addCleanup(SV._MODELS_CACHE.update, at=0.0, v=None)
+
+    def test_success_is_cached_failure_is_not_and_fresh_bypasses(self):
+        calls = []
+        res = [{"ok": False, "models": []}, {"ok": True, "models": ["solar-pro3"]}, {"ok": True, "models": ["solar-pro4"]}]
+        def solar():
+            calls.append(1)
+            return dict(res[len(calls) - 1])
+        with mock.patch.object(SV, "_solar_models", solar), mock.patch.object(SV, "_router_models", lambda: {}):
+            self.assertFalse(SV.list_models()["ok"])                      # 실패(키 없음 등)는 캐시 안 함
+            self.assertEqual(SV.list_models()["models"], ["solar-pro3"])
+            self.assertEqual(SV.list_models()["models"], ["solar-pro3"])  # 캐시 적중
+            self.assertEqual(len(calls), 2)
+            self.assertEqual(SV.list_models(fresh=True)["models"], ["solar-pro4"])
+            self.assertEqual(len(calls), 3)
+
+
 if __name__ == "__main__":
     unittest.main()
