@@ -15,7 +15,7 @@ async function main(){
 
  const b=window.PRISM_APP_PARTS[0]();
  assert.deepEqual(Array.from(b.kwTabs,t=>t[0]),['run','prompts']);
- b.kwCatalog={runs:[{id:'one',n:1},{id:'many',n:3}],versions:[],default_rules:'기본 규칙'};
+ b.kwCatalog={can_manage:true,runs:[{id:'one',n:1},{id:'many',n:3}],versions:[],default_rules:'기본 규칙'};
  b.kwChooseMode('compare');assert.equal(b.kwCount,2);
  b.kwCount=3;b.kwSlots=[{model:'m1',version_id:'v1'},{model:'m2',version_id:'v2'},{model:'m3',version_id:'v3'}];
  b.kwSource='reuse';b.kwReuse='many';assert.equal(b.kwReady(),true);
@@ -28,6 +28,21 @@ async function main(){
  b.kwCreateVersion(1);assert.equal(b.kwTab,'prompts');assert.equal(b.kwDraft.model,'m2');
  b.kwRequest=async()=>({ok:true,version:{id:'new-v',model:'m2',number:1,rules:'new rules',title:'new'}});
  await b.kwSaveVersion();assert.equal(b.kwTab,'run');assert.equal(b.kwSlots[1].version_id,'new-v');assert.equal(b.kwDraftSlot,null);
+
+ // 모델을 고르기 전에도 작성 화면에 진입하고 저장한 모델·버전을 원래 조합에 연결한다.
+ const draft=window.PRISM_APP_PARTS[0]();draft.kwCatalog={can_manage:true,default_rules:'기본 규칙'};
+ draft.kwChooseMode('single');draft.kwVersion={id:'old'};draft.kwCreateVersion(0);
+ assert.equal(draft.kwTab,'prompts');assert.equal(draft.kwDraft.model,'');assert.equal(draft.kwVersion,null);
+ draft.kwDraft.model='solar';draft.kwDraft.title='첫 버전';draft.kwLoad=async()=>{};
+ draft.kwRequest=async(q,data)=>({ok:true,version:{...data,id:'created',number:1}});
+ await draft.kwSaveVersion();assert.equal(draft.kwTab,'run');assert.equal(draft.kwSlots[0].model,'solar');assert.equal(draft.kwSlots[0].version_id,'created');
+ draft.kwCreateVersion(0);draft.kwDraft.model='other';await draft.kwSaveVersion();assert.equal(draft.kwSlots[0].model,'other');
+ draft.kwCreateVersion(0);draft.kwRequest=async()=>{throw new Error('저장 실패')};await draft.kwSaveVersion();
+ assert.equal(draft.kwTab,'prompts');assert.equal(draft.kwDraftSlot,0);assert.equal(draft.kwBusy,false);
+ draft.kwTab='run';draft.kwBusy=true;draft.kwCreateVersion(1);assert.equal(draft.kwTab,'run');
+ draft.kwBusy=false;draft.kwCatalog.can_manage=false;draft.kwCreateVersion(1);assert.equal(draft.kwTab,'run');
+ const markup=fs.readFileSync('prism/ui/19j-keywordlab.html','utf8');
+ assert.match(markup,/x-bind:disabled="kwBusy \|\| !kwCatalog\?\.can_manage">새 버전 만들기/);
  const c=window.PRISM_APP_PARTS[0]();c.kwRunData={id:'old'};c.kwReview={};await c.kwOpenRun('');assert.equal(c.kwRunData,null);assert.equal(c.kwReview,null);
  b.kwCatalog.rules_by_target={keyword:'keyword rules',sentence:'preserved sentence rules'};
  b.kwTargetChange('sentence');assert.equal(b.kwDraft.rules,'preserved sentence rules');assert.equal(b.kwSlots[0].version_id,'');assert.equal(b.kwRunData,null);
