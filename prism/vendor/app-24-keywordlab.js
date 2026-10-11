@@ -100,7 +100,9 @@ window.PRISM_APP_PARTS.push(() => ({
   },
   kwReady() { return !this.kwInputIssue() && !this.kwBusy; },
   kwCreateVersion(index) {
+    if(this.kwBusy || !this.kwCatalog?.can_manage) return;
     const slot=this.kwSlots[index]; this.kwDraftSlot=index;
+    this.kwVersion=null;
     this.kwDraft={target:this.kwTarget,model:slot.model,title:'',rules:this.kwDefaultRules(),note:'',parent_id:'',proposal_id:''};
     this.kwChangeTab('prompts');
   },
@@ -171,7 +173,8 @@ window.PRISM_APP_PARTS.push(() => ({
       const r=await this.kwRequest('',{action:'version',target:this.kwTarget,...this.kwDraft});
       this.kwVersion=r.version; await this.kwLoad();this.kwMessage=this.kwVersionLabel(r.version)+' 저장 완료';
       this.kwDraft={target:r.version.target || 'keyword',model:r.version.model,title:'',rules:r.version.rules,note:'',parent_id:r.version.id,proposal_id:''};
-      if(this.kwDraftSlot!=null && this.kwSlots[this.kwDraftSlot].model===r.version.model) {
+      if(this.kwDraftSlot!=null) {
+        this.kwSlots[this.kwDraftSlot].model=r.version.model;
         this.kwSlots[this.kwDraftSlot].version_id=r.version.id; this.kwChangeTab('run');
         this.kwMessage=this.kwVersionLabel(r.version)+' 저장 완료 · 해당 조합에 선택했습니다';
       }

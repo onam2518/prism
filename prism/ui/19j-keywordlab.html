@@ -28,10 +28,11 @@
           <tbody>
             <tr><th scope="row">모델</th><template x-for="(s,i) in kwSlots.slice(0,kwCount)" x-bind:key="i"><td><div class="control-row kw-model-control"><x-modelpick key="kwslot" value="s.model" set="kwModel(s,$v)" groups="textGroups" first-label="모델 선택" first-value="" width="0" tip="이 조합의 실행 모델"></x-modelpick></div></td></template></tr>
             <tr><th scope="row">프롬프트 버전</th><template x-for="(s,i) in kwSlots.slice(0,kwCount)" x-bind:key="i"><td><div class="control-row kw-version-control"><select class="field" x-model="s.version_id" x-bind:disabled="!s.model || !kwVersions(s.model).length" x-bind:aria-label="'조합 '+(i+1)+' 프롬프트 버전'"><option value="" x-text="!s.model ? '모델을 먼저 선택하세요' : kwVersions(s.model).length ? '버전 선택' : '저장된 버전 없음'"></option><template x-for="v in kwVersions(s.model)" x-bind:key="v.id"><option x-bind:value="v.id" x-bind:selected="s.version_id===v.id" x-text="kwVersionLabel(v)"></option></template></select></div></td></template></tr>
-            <tr><th scope="row">버전 관리</th><template x-for="(s,i) in kwSlots.slice(0,kwCount)" x-bind:key="i"><td><button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-on:click="kwCreateVersion(i)" x-bind:disabled="!s.model || !kwCatalog?.can_manage">새 버전 만들기</button></td></template></tr>
+            <tr><th scope="row">버전 관리</th><template x-for="(s,i) in kwSlots.slice(0,kwCount)" x-bind:key="i"><td><button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-on:click="kwCreateVersion(i)" x-bind:disabled="kwBusy || !kwCatalog?.can_manage">새 버전 만들기</button></td></template></tr>
           </tbody>
         </table></div>
-        <ul class="ds-bullets"><li>선택한 모델에 저장된 프롬프트 버전만 표시합니다</li><li>저장된 버전이 없으면 ‘새 버전 만들기’에서 규칙을 확인하고 저장하세요</li></ul>
+        <p class="meta" role="status" x-show="!kwCatalog || !kwCatalog.can_manage" x-text="!kwCatalog ? '실험 설정을 불러오는 중입니다. 실패하면 새로고침을 눌러 주세요.' : '새 버전 저장과 실험 실행에는 운영 권한이 필요합니다.'"></p>
+        <ul class="ds-bullets"><li>선택한 모델에 저장된 프롬프트 버전만 표시합니다</li><li>‘새 버전 만들기’에서 모델과 규칙을 선택하고 저장하면 해당 조합에 연결됩니다</li></ul>
       </div>
     </section>
     <div class="stepline" x-show="kwMode"><span class="stepline__no">STEP 3</span><b>콘텐츠 선택</b><span class="meta" x-text="kwMode==='single' ? '테스트할 콘텐츠와 건수 선택' : '모든 조합에 동일한 콘텐츠·입력 메타 적용'"></span></div>
