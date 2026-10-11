@@ -33,7 +33,7 @@
               <input type="text" class="field" style="width:220px" placeholder="이름·별칭 검색" x-model="entQ" x-on:keydown.enter="loadEntdict()">
               <select class="field" style="width:auto" x-model="entType" x-on:change="loadEntdict()">
                 <option value="">타입 전체</option>
-                <template x-for="(ko,t) in (entData ? entData.meta.types : {})" x-bind:key="t"><option x-bind:value="t" x-text="ko + ' (' + t + ')'"></option></template>
+                <template x-for="(ko,t) in (entData ? entData.meta.types : {})" x-bind:key="t"><option x-bind:value="t" x-text="ko + ' (' + t + ')'" x-bind:selected="String(t) === String(entType)"></option></template>
               </select>
               <select class="field" style="width:auto" x-model="entStatus" x-on:change="loadEntdict()">
                 <option value="">기본(미등재 제외)</option><option value="active">확정(active)</option><option value="pending">보류(pending)</option>

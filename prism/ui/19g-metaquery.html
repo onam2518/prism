@@ -46,7 +46,7 @@
                   </div>
                   <div class="fpop__row">
                     <label class="fpop__lbl" for="mq-svc">서비스</label>
-                    <select id="mq-svc" class="field" x-model="mqService"><option value="">전체</option><template x-for="sv in mqSvcs()" x-bind:key="sv"><option x-bind:value="sv" x-text="sv"></option></template></select>
+                    <select id="mq-svc" class="field" x-model="mqService"><option value="">전체</option><template x-for="sv in mqSvcs()" x-bind:key="sv"><option x-bind:value="sv" x-text="sv" x-bind:selected="String(sv) === String(mqService)"></option></template></select>
                   </div>
                   <div class="fpop__row">
                     <label class="fpop__lbl" for="mq-from">발행 시작</label>
@@ -60,11 +60,11 @@
                   <!-- 메타별 필터: 발행 메타(인텐트·카테고리·엔티티·모델)로 거른다 · 선택지는 스테이징에 실제 있는 값 -->
                   <div class="fpop__row">
                     <label class="fpop__lbl" for="mq-intent">인텐트</label>
-                    <select id="mq-intent" class="field" x-model="mqIntent"><option value="">전체</option><template x-for="v in mqFacet('intents')" x-bind:key="'fi'+v"><option x-bind:value="v" x-text="v"></option></template></select>
+                    <select id="mq-intent" class="field" x-model="mqIntent"><option value="">전체</option><template x-for="v in mqFacet('intents')" x-bind:key="'fi'+v"><option x-bind:value="v" x-text="v" x-bind:selected="String(v) === String(mqIntent)"></option></template></select>
                   </div>
                   <div class="fpop__row">
                     <label class="fpop__lbl" for="mq-cat">카테고리</label>
-                    <select id="mq-cat" class="field" x-model="mqCategory"><option value="">전체</option><template x-for="v in mqFacet('categories')" x-bind:key="'fc'+v"><option x-bind:value="v" x-text="catKo(v)"></option></template></select>
+                    <select id="mq-cat" class="field" x-model="mqCategory"><option value="">전체</option><template x-for="v in mqFacet('categories')" x-bind:key="'fc'+v"><option x-bind:value="v" x-text="catKo(v)" x-bind:selected="String(v) === String(mqCategory)"></option></template></select>
                   </div>
                   <div class="fpop__row">
                     <label class="fpop__lbl" for="mq-ent">엔티티</label>
@@ -72,7 +72,7 @@
                   </div>
                   <div class="fpop__row">
                     <label class="fpop__lbl" for="mq-model">모델</label>
-                    <select id="mq-model" class="field" x-model="mqModel"><option value="">전체</option><template x-for="v in mqFacet('models')" x-bind:key="'fm'+v"><option x-bind:value="v" x-text="v"></option></template></select>
+                    <select id="mq-model" class="field" x-model="mqModel"><option value="">전체</option><template x-for="v in mqFacet('models')" x-bind:key="'fm'+v"><option x-bind:value="v" x-text="v" x-bind:selected="String(v) === String(mqModel)"></option></template></select>
                   </div>
                   <div class="fpop__row">
                     <label class="fpop__lbl" for="mq-meta">메타</label>

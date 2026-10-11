@@ -351,7 +351,7 @@
                         <button type="button" class="copybtn" x-on:click="talkEdit(g)">말로 더 다듬기</button>
                         <input class="field" style="width:180px;padding:4px 8px" x-model="topicRenameDraft" x-on:keydown.enter.prevent="topicRename(g)" aria-label="토픽 이름">
                         <button type="button" class="copybtn" x-bind:disabled="topicBusy===g.id" x-on:click="topicRename(g)">이름 바꾸기</button>
-                        <select class="field" style="width:auto;padding:4px 8px" x-model="topicMergeInto" aria-label="합칠 토픽"><option value="">합칠 토픽 고르기</option><template x-for="o in topicMergeCands(g)" x-bind:key="'mg'+o.id"><option x-bind:value="o.id" x-text="o.name"></option></template></select>
+                        <select class="field" style="width:auto;padding:4px 8px" x-model="topicMergeInto" aria-label="합칠 토픽"><option value="">합칠 토픽 고르기</option><template x-for="o in topicMergeCands(g)" x-bind:key="'mg'+o.id"><option x-bind:value="o.id" x-text="o.name" x-bind:selected="String(o.id) === String(topicMergeInto)"></option></template></select>
                         <button type="button" class="copybtn" x-bind:disabled="!topicMergeInto || topicBusy===g.id" x-on:click="topicMerge(g)">병합</button>
                         <button type="button" class="copybtn" x-show="topicAdmin && g.status!=='archived'" x-on:click="topicStatusSet(g,'archived')">보관</button>
                         <button type="button" class="copybtn" x-show="topicAdmin && g.status==='archived'" x-on:click="topicStatusSet(g,'active')">복구</button>

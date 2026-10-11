@@ -171,14 +171,14 @@
                 <span class="selctl" data-tip="현재 합성 = 지금 실행하면 쓰이는 프롬프트 · 학습 버전 = 학습 반영 때 남긴 스냅샷 · 평가 런 = 그 런이 시작 시점에 실제로 쓴 프롬프트" data-tip-pos="top"><span class="selctl__lbl">원천</span>
                   <select class="field" x-model="pvSrc" x-on:change="loadPvSource()">
                     <option value="">현재 합성</option>
-                    <template x-for="v in pvVersions" x-bind:key="'pvv'+v"><option x-bind:value="'v:'+v" x-text="'학습 버전 v'+v"></option></template>
-                    <template x-for="r in evalRuns.filter(r => r.kind === 'eval')" x-bind:key="'pvr'+r.id"><option x-bind:value="'run:'+r.id" x-text="'평가 런 #'+r.id+' · '+(r.model||'설정 모델')+' · '+fmtTs(r.ts)"></option></template>
+                    <template x-for="v in pvVersions" x-bind:key="'pvv'+v"><option x-bind:value="'v:'+v" x-text="'학습 버전 v'+v" x-bind:selected="String('v:'+v) === String(pvSrc)"></option></template>
+                    <template x-for="r in evalRuns.filter(r => r.kind === 'eval')" x-bind:key="'pvr'+r.id"><option x-bind:value="'run:'+r.id" x-text="'평가 런 #'+r.id+' · '+(r.model||'설정 모델')+' · '+fmtTs(r.ts)" x-bind:selected="String('run:'+r.id) === String(pvSrc)"></option></template>
                   </select></span>
                 <span class="selctl" x-show="!pvSrc"><span class="selctl__lbl">모델</span>
                   <x-modelpick key="pv" value="pvModel" set="pvModel=$v; loadPreview()" options="availableModels" width="212px"></x-modelpick></span>
                 <span class="selctl"><span class="selctl__lbl">호출</span>
                   <select class="field" x-model="pvCall" x-on:change="loadPreview()">
-                    <template x-for="cl in (cfg.metaCalls||[])" x-bind:key="'pc'+cl"><option x-bind:value="cl" x-text="callLabel(cl)"></option></template>
+                    <template x-for="cl in (cfg.metaCalls||[])" x-bind:key="'pc'+cl"><option x-bind:value="cl" x-text="callLabel(cl)" x-bind:selected="String(cl) === String(pvCall)"></option></template>
                   </select></span>
                 <span class="text-xs text-muted" x-text="pvSrc ? (pvStored ? ('v' + pvStored.version + ' · ' + fmtTs(pvStored.ts)) : pvMsg) : (pvData ? ('계열 ' + pvData.family) : '')"></span>
                 <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" style="margin-left:auto" x-on:click="downloadPrompt(pvSrcParams())" data-tip="선택한 원천의 프롬프트를 호출마다 파일 하나(① ~ ④ + ⑤ 품질) 로 zip 에 담습니다 · 품질 판정의 서비스 묶음별로 갈리는 부분은 파일 안 분기 블록" data-tip-pos="top">내려받기(zip)</button>

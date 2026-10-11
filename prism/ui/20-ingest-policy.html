@@ -515,7 +515,7 @@
             <section class="dve__ops" x-show="opsManage" x-cloak>
               <div class="dve__lbl">실제 작업시간</div>
               <div class="control-row control-row--compact">
-                <select class="field field--compact dve__select" aria-label="작업 유형" x-model="opsTimeType"><template x-for="s in ['first','fix','recheck','final','operation']" x-bind:key="s"><option x-bind:value="s" x-text="opsTypeLabel(s)"></option></template></select>
+                <select class="field field--compact dve__select" aria-label="작업 유형" x-model="opsTimeType"><template x-for="s in ['first','fix','recheck','final','operation']" x-bind:key="s"><option x-bind:value="s" x-text="opsTypeLabel(s)" x-bind:selected="String(s) === String(opsTimeType)"></option></template></select>
                 <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="!opsMySession" x-bind:disabled="opsBusy" x-on:click="opsTime('start')">시작</button>
                 <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="opsMySession && opsMySession.active_since" x-bind:disabled="opsBusy" x-on:click="opsTime('pause')">중단</button>
                 <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="opsMySession && !opsMySession.active_since" x-bind:disabled="opsBusy" x-on:click="opsTime('resume')">재개</button>
@@ -527,7 +527,7 @@
               <section class="dve__ops">
                 <div class="dve__lbl">조치 진행</div>
                 <div class="dve__form">
-                  <label class="dve__field"><span class="dve__lbl">상태</span><select class="field field--compact" x-model="opsCase.state"><template x-for="s in ['open','working','recheck','verify','hold','closed']" x-bind:key="s"><option x-bind:value="s" x-text="opsStateLabel(s)"></option></template></select></label>
+                  <label class="dve__field"><span class="dve__lbl">상태</span><select class="field field--compact" x-model="opsCase.state"><template x-for="s in ['open','working','recheck','verify','hold','closed']" x-bind:key="s"><option x-bind:value="s" x-text="opsStateLabel(s)" x-bind:selected="String(s) === String(opsCase.state)"></option></template></select></label>
                   <label class="dve__field"><span class="dve__lbl">우선순위</span><select class="field field--compact" x-model="opsCase.priority"><option value="urgent">긴급</option><option value="high">높음</option><option value="normal">일반</option></select></label>
                   <label class="dve__field"><span class="dve__lbl">담당자 식별값</span><input class="field field--compact" x-model="opsCase.owner"></label>
                   <label class="dve__field"><span class="dve__lbl">대체 담당자</span><input class="field field--compact" x-model="opsCase.backup"></label>

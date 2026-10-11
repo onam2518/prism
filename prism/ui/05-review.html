@@ -12,7 +12,7 @@
         <section x-show="createTab === 'ops'" x-cloak class="panel w-full"><header class="panel-hd"><b>오류·보류 처리</b><button class="copybtn ml-auto" type="button" x-on:click="opsLoad()">새로고침</button></header>
           <section class="panel-bd fn-stack">
             <ul class="ds-bullets"><li>판정 저장 후에도 조치가 남은 콘텐츠입니다<ul><li>종료에는 현재 기준 재검수와 필요한 서비스 반영 근거가 필요합니다</li></ul></li></ul>
-            <div class="fn-row"><label class="fn"><span class="fn__title">처리 상태</span><select class="field" x-model="opsState"><option value="">전체</option><template x-for="s in ['open','working','recheck','verify','hold','closed']" x-bind:key="s"><option x-bind:value="s" x-text="opsStateLabel(s)"></option></template></select></label>
+            <div class="fn-row"><label class="fn"><span class="fn__title">처리 상태</span><select class="field" x-model="opsState"><option value="">전체</option><template x-for="s in ['open','working','recheck','verify','hold','closed']" x-bind:key="s"><option x-bind:value="s" x-text="opsStateLabel(s)" x-bind:selected="String(s) === String(opsState)"></option></template></select></label>
             <label class="fn"><span class="fn__title">담당자 식별값</span><input class="field" x-model="opsOwner" placeholder="비우면 전체 담당자"></label></div>
             <section class="overflow-auto"><table class="ds-table"><thead><tr><th>콘텐츠</th><th>상태</th><th>담당·기한</th><th>근거·다음 조치</th><th></th></tr></thead><tbody>
               <template x-for="c in opsFilteredCases" x-bind:key="c.id"><tr><td x-text="c.title||c.hash"></td><td><b x-text="opsStateLabel(c.state)"></b><p class="text-xs" x-show="c.overdue||c.check_overdue">기한 경과</p></td><td><p x-text="c.owner||'담당 미지정'"></p><time x-show="c.due" x-text="c.due"></time></td><td x-text="c.reason"></td><td><button class="copybtn" type="button" x-on:click="opsOpenCase(c, true)">조치 열기</button></td></tr></template>
@@ -29,7 +29,7 @@
           <div class="panel-bd fn-stack">
             <ul class="ds-bullets"><li>대상은 기초 검수를 거쳤지만 정답으로 확정되지 못한 건(의견 갈림 · 등급 없음 · 분류 없음)과, 인텐트 후보가 전 출처 공통 68개로 바뀌어(2026-09-22) 정답의 인텐트를 다시 확정해야 하는 건(<b>인텐트 재확정</b>)입니다</li><li>인텐트 재확정은 상세에서 <b>이 인텐트로 재확정</b>(초안 의도 그대로) 또는 <b>고쳐서 재확정</b>(의도를 고친 뒤 저장)으로 끝냅니다<ul><li>확정 전까지 그 정답은 인텐트 측정에서 빠집니다</li></ul></li></ul>
             <div class="text-xs text-muted tnum" x-show="finalQueue && finalQueue.stats && finalQueue.stats.total" x-text="'누적 최종판정 ' + ((finalQueue&&finalQueue.stats&&finalQueue.stats.total)||0) + '건 · 편입 ' + ((finalQueue&&finalQueue.stats&&finalQueue.stats.good)||0) + ' · 제외 ' + ((finalQueue&&finalQueue.stats&&finalQueue.stats.bad)||0)"></div>
-            <div class="fn-row"><label class="fn"><span class="fn__title">사유</span><select class="field" x-model="finalReason" x-on:change="finalOffset=0;loadFinalQueue()"><option value="">전체</option><template x-for="s in ['의견 갈림','등급 없음','분류 없음','인텐트 재확정','수정 반영 확인']" x-bind:key="s"><option x-bind:value="s" x-text="s"></option></template></select></label>
+            <div class="fn-row"><label class="fn"><span class="fn__title">사유</span><select class="field" x-model="finalReason" x-on:change="finalOffset=0;loadFinalQueue()"><option value="">전체</option><template x-for="s in ['의견 갈림','등급 없음','분류 없음','인텐트 재확정','수정 반영 확인']" x-bind:key="s"><option x-bind:value="s" x-text="s" x-bind:selected="String(s) === String(finalReason)"></option></template></select></label>
             <label class="fn"><span class="fn__title">대기 순서</span><select class="field" x-model="finalOrder" x-on:change="finalOffset=0;loadFinalQueue()"><option value="oldest">오래된 순</option><option value="newest">최근 순</option></select></label></div>
             <div class="flex flex-wrap items-center gap-2"><button class="copybtn" type="button" x-bind:disabled="!finalOffset||finalBusy" x-on:click="finalOffset=Math.max(0,finalOffset-50);loadFinalQueue()">이전 50건</button><button class="copybtn" type="button" x-bind:disabled="!finalQueue||finalOffset+50>=finalQueue.n||finalBusy" x-on:click="finalOffset+=50;loadFinalQueue()">다음 50건</button>
             <p class="text-xs text-muted tnum" x-text="finalQueue ? ('전체 미확정 '+finalQueue.n+' · 표시 '+(finalQueue.displayed_n||0)+' · 정확도 확인 문항 '+(finalQueue.gold_n||0)) : ''"></p></div>
@@ -136,16 +136,16 @@
               <div class="filterbar" style="margin:0 16px">
                 <span class="selctl selctl--a abslot"><span class="selctl__tag">A</span>
                   <span class="selctl__lbl">모델</span>
-                  <select class="field" x-model="abAm" x-on:change="abAv=String((msVers(abAm)[0]||''))"><template x-for="m in msModels" x-bind:key="'am'+m"><option x-bind:value="m" x-text="m"></option></template></select>
+                  <select class="field" x-model="abAm" x-on:change="abAv=String((msVers(abAm)[0]||''))"><template x-for="m in msModels" x-bind:key="'am'+m"><option x-bind:value="m" x-text="m" x-bind:selected="String(m) === String(abAm)"></option></template></select>
                   <span class="selctl__lbl">버전</span>
-                  <select class="field" x-model="abAv"><template x-for="v in msVers(abAm)" x-bind:key="'av'+v"><option x-bind:value="String(v)" x-text="'v' + v"></option></template></select>
+                  <select class="field" x-model="abAv"><template x-for="v in msVers(abAm)" x-bind:key="'av'+v"><option x-bind:value="String(v)" x-text="'v' + v" x-bind:selected="String(String(v)) === String(abAv)"></option></template></select>
                 </span>
                 <span class="abvs">VS</span>
                 <span class="selctl selctl--b abslot"><span class="selctl__tag">B</span>
                   <span class="selctl__lbl">모델</span>
-                  <select class="field" x-model="abBm" x-on:change="abBv=String((msVers(abBm)[0]||''))"><template x-for="m in msModels" x-bind:key="'bm'+m"><option x-bind:value="m" x-text="m"></option></template></select>
+                  <select class="field" x-model="abBm" x-on:change="abBv=String((msVers(abBm)[0]||''))"><template x-for="m in msModels" x-bind:key="'bm'+m"><option x-bind:value="m" x-text="m" x-bind:selected="String(m) === String(abBm)"></option></template></select>
                   <span class="selctl__lbl">버전</span>
-                  <select class="field" x-model="abBv"><template x-for="v in msVers(abBm)" x-bind:key="'bv'+v"><option x-bind:value="String(v)" x-text="'v' + v"></option></template></select>
+                  <select class="field" x-model="abBv"><template x-for="v in msVers(abBm)" x-bind:key="'bv'+v"><option x-bind:value="String(v)" x-text="'v' + v" x-bind:selected="String(String(v)) === String(abBv)"></option></template></select>
                 </span>
               </div>
             </div>
