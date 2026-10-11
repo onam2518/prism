@@ -1906,6 +1906,10 @@ class SupabaseStore:
         row = {"kind": kind, "team_key": team or "", "payload": payload}
         self._upsert("reports", [row])
 
+    def delete_report(self, kind: str, team=None):
+        self._req("DELETE", "reports", query="kind=eq.%s&team_key=eq.%s" % (
+            urllib.parse.quote(kind), urllib.parse.quote(team or "")), prefer="return=minimal")
+
     def get_report(self, kind: str, team=None):
         tq = urllib.parse.quote(team or "")
         rows = self._get("reports", f"select=payload&kind=eq.{urllib.parse.quote(kind)}&team_key=eq.{tq}")

@@ -689,7 +689,7 @@ def delete_version(body, team):
 
 
 def delete_run(body, team):
-    """실험 기록 삭제 · 본문을 비우고 목록에서 뺀다(저장 계층에 삭제 계약이 없어 빈 값으로 덮음).
+    """실험 기록 삭제 · 문서 행을 지우고 목록에서 뺀다.
     정답·채택이 참조하는 실험은 개선 루프가 원본 검수를 다시 확인하므로 지우지 않는다."""
     rid = body.get('run_id')
     key = _key('run', rid)
@@ -701,11 +701,9 @@ def delete_run(body, team):
         raise ValueError('정답셋에 반영된 결과가 있는 실험은 삭제할 수 없습니다')
     if any(a.get('run_id') == rid for a in c['active'].values()):
         raise ValueError('버전 채택 근거로 쓰인 실험은 삭제할 수 없습니다')
-    def clear(run):
-        if not run:
-            raise ValueError('이 팀에 해당 실험이 없습니다')
-        run.clear()
-    _update(key, team, clear)
+    if not _get(key, team):
+        raise ValueError('이 팀에 해당 실험이 없습니다')
+    _store().delete_report(key, team)
     _update(CATALOG, team, lambda cat: cat.update(runs=[r for r in cat['runs'] if r['id'] != rid]), c)
     return {'ok': True}
 

@@ -1,4 +1,4 @@
-/* 의존성 없는 클라이언트 회귀: 토큰 갱신 단일 비행 · 다른 탭이 회전한 토큰 채택 · Esc 맨 위 모달 판정. */
+/* 의존성 없는 클라이언트 회귀: 토큰 갱신 단일 비행 · 다른 탭이 회전한 토큰 채택 · Esc 맨 위 모달 판정 · Tab 가두기. */
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -72,6 +72,18 @@ async function run() {
   assert.equal(a._escTop(ev, lo), false, '같은 Esc 로 아래 모달까지 닫히면 안 된다');
   assert.equal(a._escTop({}, lo), true, '다음 Esc 에서는 아래 모달이 맨 위');
   assert.equal(a._escTop({}, null), false);
+
+  // 6) Tab 가두기: 맨 위 대화상자 안에서 처음↔끝 순환 · 밖에 있던 포커스는 안으로 · 모달 없으면 관여 안 함
+  const btn = (n) => { const x = { n, disabled: false, getClientRects: () => [1], focus: () => { ctx.document.activeElement = x; } }; return x; };
+  const b1 = btn(1), b2 = btn(2), outside = btn(0);
+  const dlg = { z: '76', getClientRects: () => [1], querySelectorAll: () => [b1, b2], contains: (x) => x === b1 || x === b2 };
+  ctx.document = { querySelectorAll: () => [dlg], activeElement: b2 };
+  const tab = (shift) => { const e = { key: 'Tab', shiftKey: shift, prevented: false, preventDefault() { this.prevented = true; } }; a._trapTab(e); return e; };
+  assert.ok(tab(false).prevented); assert.equal(ctx.document.activeElement, b1, '끝에서 Tab → 처음');
+  assert.ok(tab(true).prevented); assert.equal(ctx.document.activeElement, b2, '처음에서 Shift+Tab → 끝');
+  ctx.document.activeElement = outside; tab(false); assert.equal(ctx.document.activeElement, b1, '밖 포커스는 안으로');
+  ctx.document = { querySelectorAll: () => [], activeElement: outside };
+  assert.equal(tab(false).prevented, false, '모달이 없으면 기본 동작');
   console.log('auth refresh client ok');
 }
 run().catch((e) => { console.error(e); process.exit(1); });

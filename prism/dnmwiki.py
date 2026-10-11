@@ -210,6 +210,7 @@ def save_config(store, data, team):
         cfg['enabled'] = data['enabled'] is True
     cfg['team'] = team
     store.save_report(CONFIG, cfg)
+    _WAKE.set()                                  # 켬·주기 변경을 스케줄러가 바로 반영
     return cfg
 
 
@@ -275,17 +276,35 @@ def sync(store, llm, read=None, write=None):
         return status
 
 
+_WAKE = threading.Event()
+
+
+def _next_wait(cfg, last, now):
+    """다음 확인까지 잘 시간(초). 0 = 지금 확인. 꺼져 있으면 길게 잔다(save_config 가 깨운다)."""
+    if not cfg['enabled']:
+        return 600
+    return max(0, last + cfg['interval_min'] * 60 - now)
+
+
 def start_scheduler(server):
-    """설정에서 켠 경우에만 interval_min 간격으로 sync. 서버 시작 시 1회 호출."""
+    """설정에서 켠 경우에만 interval_min 간격으로 sync. 서버 시작 시 1회 호출.
+    예전엔 1분마다 설정·상태 2건을 읽어 프리즘 DB 요청의 약 70%를 차지했다 · 이제 다음 확인 시각까지 잔다."""
+    # ponytail: 깨우기는 같은 프로세스 안에서만 · 머신을 여러 대로 늘리면 다른 머신의 설정 변경은 최대 10분 늦게 반영
     def loop():
+        wait = 60
         while True:
-            time.sleep(60)
+            _WAKE.wait(wait)
+            _WAKE.clear()
+            wait = 60                                # 오류 시 1분 뒤 재시도
             try:
                 st = server.get_store()
                 cfg = config(st)
-                last = (st.get_report(STATUS) or {}).get('checked_at', 0)
-                if cfg['enabled'] and time.time() - last >= cfg['interval_min'] * 60:
+                last = (st.get_report(STATUS) or {}).get('checked_at', 0) if cfg['enabled'] else 0
+                w = _next_wait(cfg, last, time.time())
+                if w == 0:
                     sync(st, server.llm_for_model('', server.Handler.server_mock)[0])
+                    w = cfg['interval_min'] * 60
+                wait = max(60, w)
             except Exception as e:
                 print(f'  [dnm-wiki] 확인 실패: {e}')
     threading.Thread(target=loop, name='prism-dnm-wiki', daemon=True).start()

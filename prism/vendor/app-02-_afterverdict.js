@@ -193,6 +193,7 @@ window.PRISM_APP_PARTS.push(() => ({
           if (e.key === 'prism_rtoken' && this.rtoken && e.newValue && e.newValue !== this.rtoken && this._adoptStoredToken()) this.startLive();
         });
         this.refreshConfig();
+        document.addEventListener('keydown', (e) => this._trapTab(e));
         this.startLive();                              // 실시간 SSE 구독
         // 장기 폴백: 탭 복귀 시에도 판정이 비어 있으면 재시도(일시 실패로 사용자 메뉴만 굳는 것 방지)
         window.addEventListener('focus', () => {
