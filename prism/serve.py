@@ -1412,14 +1412,23 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
     return config_status(team)
 
 
-def list_models() -> dict:
+def list_models(fresh: bool = False) -> dict:
     """모델 새로고침 응답. models = Upstage 직접(/models 실조회 · ok/detail 은 이쪽 결과) ·
     router = 연결된 라우터(Timely)의 실목록. 화면 카탈로그(app-02 modelCatalog)는 7/29 스냅샷이라
     그 뒤 나온 모델(2026-08-26 기준 24개)을 평가 기준 등에서 고를 수 없었다 — 실목록을 실어
     보내면 화면이 스냅샷에 합쳐 모든 픽커에 반영한다."""
+    now = time.time()
+    if not fresh and _MODELS_CACHE["v"] and now - _MODELS_CACHE["at"] < 600:
+        return dict(_MODELS_CACHE["v"])
     out = _solar_models()
     out["router"] = _router_models()
+    if out.get("ok"):                             # 실패는 캐시하지 않는다(키 저장 직후 바로 재시도되게)
+        _MODELS_CACHE.update(at=now, v=dict(out))
     return out
+
+
+# 부팅마다 모든 탭이 부르므로 외부 /models 2회(Upstage·Timely)를 10분 캐시 · '모델 새로고침'은 fresh=1 로 우회
+_MODELS_CACHE = {"at": 0.0, "v": None}
 
 
 # 라우터 목록 중 텍스트 생성이 아닌 것(임베딩·음성·이미지 생성 등)은 픽커에 올리지 않는다.
@@ -1633,7 +1642,7 @@ def _g_boot(h, q):
 
 @_get_route("/models")
 def _g_models(h, q):
-    return list_models()
+    return list_models(fresh=bool(q.get("fresh")))
 
 
 @_get_route("/vocab")

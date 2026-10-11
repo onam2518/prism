@@ -31,7 +31,7 @@ window.PRISM_APP_PARTS.push(() => ({
           }
           let liveN = 0;
           try {                                    // Solar 는 실조회(키 있을 때) · 실패해도 전체는 계속
-            const j = await (await this._afetch('/models', { headers: this._authHeaders() })).json();
+            const j = await (await this._afetch('/models?fresh=1', { headers: this._authHeaders() })).json();
             if (j.ok) {
               this.models = j.models;
               if (!this.cfgModel || !this.models.includes(this.cfgModel))
