@@ -165,6 +165,7 @@ class KeywordLabTest(unittest.TestCase):
         self.assertTrue(K.action({'action': 'delete_run', 'run_id': other['id']}, 'a', 'tester', True)['ok'])
         self.assertNotIn(other['id'], [r['id'] for r in K.catalog('a')['runs']])
         with self.assertRaises(ValueError): K.run_detail(other['id'], 'a')
+        self.assertIsNone(self.store.get_report('keyword_lab_run_' + other['id'], 'a'))   # 빈 행을 남기지 않는다
         self.assertFalse(K.action({'action': 'delete_run', 'run_id': other['id']}, 'b', 'tester', True)['ok'])
         self.assertEqual(K.catalog('a')['gold'][0]['id'], gold['id'])
 

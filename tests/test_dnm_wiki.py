@@ -94,5 +94,15 @@ class DnmWiki(unittest.TestCase):
             W.write_record('1', pairs, api=self.read)
 
 
+
+class NextWaitTest(unittest.TestCase):
+    def test_sleeps_until_due_and_long_when_disabled(self):
+        from prism import dnmwiki as W
+        on = dict(W.DEFAULT, enabled=True, interval_min=30)
+        self.assertEqual(W._next_wait(on, 1000, 1000 + 60), 29 * 60)
+        self.assertEqual(W._next_wait(on, 1000, 1000 + 31 * 60), 0)
+        self.assertEqual(W._next_wait(on, 0, 10 ** 9), 0)           # 한 번도 안 돌았으면 바로
+        self.assertEqual(W._next_wait(dict(W.DEFAULT, enabled=False), 0, 10 ** 9), 600)
+
 if __name__ == '__main__':
     unittest.main()

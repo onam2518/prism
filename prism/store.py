@@ -1009,6 +1009,11 @@ class Store:
                   (kind, team or "", json.dumps(payload, ensure_ascii=False), time.time()))
         c.commit()
 
+    def delete_report(self, kind: str, team=None):
+        c = self._conn()
+        c.execute("DELETE FROM reports WHERE kind=? AND team=?", (kind, team or ""))
+        c.commit()
+
     def get_report(self, kind: str, team=None):
         c = self._conn()
         row = c.execute("SELECT payload FROM reports WHERE kind=? AND team=?",

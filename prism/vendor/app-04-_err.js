@@ -6,18 +6,32 @@ window.PRISM_APP_PARTS.push(() => ({
       // 모달 공통 · Esc 는 맨 위(z-index 최대) 대화상자 하나만 닫는다(상세 74 위 정답 확정 76 등 겹침 동시 닫힘 방지).
       // 첫 핸들러가 이벤트에 스냅숏을 남겨 같은 키 입력의 다른 핸들러도 닫히기 전 상태로 판정한다.
       _escTop(e, el) {
-        if (!e._dlgTop) {
-          let z = -1; e._dlgTop = 1;
-          document.querySelectorAll('.ds-dialog-backdrop').forEach((b) => {
-            if (!b.getClientRects().length) return;                 // 숨김(display:none) 제외
-            const zi = +getComputedStyle(b).zIndex || 0;
-            if (zi >= z) { z = zi; e._dlgTop = b; }                 // 같은 z 면 DOM 뒤쪽(나중에 그려진 쪽)
-          });
-        }
+        if (!e._dlgTop) e._dlgTop = this._topDialog() || 1;
         return !!el && e._dlgTop === el.closest('.ds-dialog-backdrop');
       },
+      _topDialog() {                                                 // 보이는 대화상자 중 맨 위(같은 z 면 DOM 뒤쪽)
+        let z = -1, top = null;
+        document.querySelectorAll('.ds-dialog-backdrop').forEach((b) => {
+          if (!b.getClientRects().length) return;                   // 숨김(display:none) 제외
+          const zi = +getComputedStyle(b).zIndex || 0;
+          if (zi >= z) { z = zi; top = b; }
+        });
+        return top;
+      },
+      // 모달이 열려 있으면 Tab·Shift+Tab 이 맨 위 대화상자 안에서만 돈다(뒤 화면으로 새지 않게 · init 에서 전역 1회 등록)
+      _trapTab(e) {
+        if (e.key !== 'Tab') return;
+        const top = this._topDialog();
+        if (!top) return;
+        const f = [...top.querySelectorAll('a[href],input:not([type=hidden]),textarea,select,button,[tabindex]:not([tabindex="-1"])')]
+          .filter((x) => x.getClientRects().length && !x.disabled);
+        const a = document.activeElement;
+        if (!f.length) { e.preventDefault(); return; }
+        if (!top.contains(a)) { e.preventDefault(); f[0].focus(); }
+        else if (e.shiftKey && a === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
+        else if (!e.shiftKey && a === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+      },
       // 모달 열림 → 안의 첫 입력·버튼으로 포커스 · 닫힘 → 열기 전 포커스 복귀. x-effect="_dlgFocus($el, !!열림)"
-      // ponytail: 포커스 트랩(Tab 순환)은 없음 · 필요해지면 여기서 keydown Tab 을 가둔다
       _dlgFocus(el, open) {
         if (open && !el._dlgRet) {
           el._dlgRet = document.activeElement || document.body;
