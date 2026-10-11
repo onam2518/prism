@@ -1507,7 +1507,7 @@ def ping_router(service: str) -> dict:
     if not key:
         return {"ok": False, "detail": "키가 설정되지 않았습니다"}
     try:
-        req = urllib.request.Request(info["base"].rstrip("/") + "/models",
+        req = urllib.request.Request(IMG.router_base(service) + "/models",
                                      headers={"Authorization": "Bearer " + key})
         t0 = time.time()
         with urllib.request.urlopen(req, timeout=12) as r:

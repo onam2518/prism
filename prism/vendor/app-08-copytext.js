@@ -72,7 +72,10 @@ window.PRISM_APP_PARTS.push(() => ({
           if (!this.cmpA && this.availableModels.length) { this.cmpA = this.availableModels[0]; this.cmpB = this.availableModels[1] || ''; }   // A/B 기본 슬롯
           if (Array.isArray(this.cfg.ingestSources)) this.ingestSources = this.cfg.ingestSources.slice();
           if (this.cfg.guideUrls) this.teamLinks = Object.assign({ guide: '', guide_user: '', guide_admin: '' }, this.cfg.guideUrls);
-          if (!this._keyTargetInit) { this._keyTargetInit = true; this.keyTarget = ['bizrouter', 'timely', 'solar'].find((s) => this.keyState(s)) || 'bizrouter'; }
+          // 키 상태는 전체 응답에만 있다(로그인 전 슬림 /config 엔 없음) · 슬림 응답으로 대상을 굳히지 않는다
+          if (!this._keyTargetInit && 'hasKey' in this.cfg) { this._keyTargetInit = true; this.keyTarget = ['bizrouter', 'timely', 'solar'].find((s) => this.keyState(s)) || 'bizrouter'; }
+          // Solar 목록은 실조회라 비어 있으면 모든 픽커의 '직접 · Solar' 묶음이 설정 모델 하나뿐이다 → 키가 보이면 1회 채운다
+          if (this.cfg.hasKey && !this.models.length) this._ensureModels();
           if (this.cfg.textProvider) this.textProvider = this.cfg.textProvider;
           if (typeof this.cfg.textModel === 'string' && this.cfg.textModel) this.textModel = this.cfg.textModel;
           if (typeof this.cfg.legalEnabled === 'boolean') this.legalEnabled = this.cfg.legalEnabled;
@@ -93,6 +96,7 @@ window.PRISM_APP_PARTS.push(() => ({
       keyState(service) { return !!this.cfg[this.keyDefs[service].has]; },
       keyPersisted(service) { return !!this.cfg[this.keyDefs[service].persisted]; },
       async saveKey(service) {
+        if (!(this.keyInputs[service] || '').trim()) { this.keyMsgs[service] = '키를 입력하세요'; return; }
         this.keyMsgs[service] = '저장 중…'; this.cfgBusy = true;
         try {
           const body = { persist: this.cfgPersist };

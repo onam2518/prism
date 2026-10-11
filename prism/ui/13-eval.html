@@ -244,7 +244,7 @@
                     <div><h3 class="content-section__title" id="compare-loop-title">개선 루프</h3>
                     <p class="content-section__description">문제점을 골라 공통 스테이지 프롬프트(사전·정책 › 메타 프롬프트)에 반영하고 다시 비교합니다.</p></div>
                     <div class="control-row content-section__actions"><label class="selctl"><span class="selctl__lbl">모델</span>
-                      <select class="field" x-model="cmpLoopModel"><template x-for="(m,mi) in evalCols" x-bind:key="m.model"><option x-bind:value="m.model" x-text="cmpTag(mi) + ' ' + m.model"></option></template></select>
+                      <select class="field" x-model="cmpLoopModel"><template x-for="(m,mi) in evalCols" x-bind:key="m.model"><option x-bind:value="m.model" x-text="cmpTag(mi) + ' ' + m.model" x-bind:selected="String(m.model) === String(cmpLoopModel)"></option></template></select>
                     </label></div>
                   </div>
                   <div class="overflow-auto" style="margin-top:8px"><table class="ds-table"><thead><tr><th style="width:90px">영역</th><th style="width:220px">문제점</th><th>쿡북 지시(프롬프트에 얹을 문장)</th><th style="width:120px">반영</th></tr></thead><tbody>

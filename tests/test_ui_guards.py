@@ -33,5 +33,18 @@ class FontRangeTest(unittest.TestCase):
                     self.assertNotRegex(rng.group(1), r"U\+0020\b|U\+00(0|1)[0-9A-F]-00[2-9A-F][0-9A-F]", css)
 
 
+class SelectSyncTest(unittest.TestCase):
+    """x-for 로 만든 <option> 은 x-model 초기값보다 늦게 생겨 첫 옵션이 보인다(상태와 화면 불일치).
+    설정 API 키에서 Timely 상태인데 'BizRouter' 가 보여 엉뚱한 키를 덮어쓰던 원인 · 옵션마다 selected 를 묶는다."""
+
+    def test_dynamic_options_bind_selected(self):
+        for sel in re.findall(r'<select[^>]*x-model[^>]*>.*?</select>', page.PAGE, re.S):
+            if "x-for" not in sel:
+                continue
+            for opt in re.findall(r'<option\b[^>]*>', sel):
+                if re.search(r'(?:x-bind)?:value=', opt):
+                    self.assertIn("selected", opt, opt[:160])
+
+
 if __name__ == "__main__":
     unittest.main()

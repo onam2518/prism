@@ -543,7 +543,7 @@
                   </div>
                   <div class="fpop__row">
                     <label class="fpop__lbl" for="fp-svc">서비스</label>
-                    <select id="fp-svc" class="field" x-model="rawSvc"><option value="">전체</option><template x-for="sv in rawSvcs" x-bind:key="sv"><option x-bind:value="sv" x-text="sv"></option></template></select>
+                    <select id="fp-svc" class="field" x-model="rawSvc"><option value="">전체</option><template x-for="sv in rawSvcs" x-bind:key="sv"><option x-bind:value="sv" x-text="sv" x-bind:selected="String(sv) === String(rawSvc)"></option></template></select>
                   </div>
                   <!-- 기본 '미검수': 내가 판정한 건은 감춘다(할 일 목록) · 완료분은 아래 힌트나 이 필터로 다시 본다 -->
                   <div class="fpop__row">

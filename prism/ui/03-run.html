@@ -16,7 +16,7 @@
           <div x-show="activeTabId === 'text'" x-cloak class="mb-4">
             <label class="lbl">콘텐츠 그룹</label>
             <select x-model="group" class="field">
-              <template x-for="g in groups" x-bind:key="g"><option x-bind:value="g" x-text="g"></option></template>
+              <template x-for="g in groups" x-bind:key="g"><option x-bind:value="g" x-text="g" x-bind:selected="String(g) === String(group)"></option></template>
             </select>
           </div>
           <!-- 텍스트 -->
@@ -46,7 +46,7 @@
               <div class="control-row" style="align-items:flex-end">
                 <div style="flex:0 0 200px;min-width:160px"><label class="lbl">콘텐츠 그룹</label>
                   <select class="field" x-model="mediaImg.group">
-                    <template x-for="g in groups" x-bind:key="g"><option x-bind:value="g" x-text="g"></option></template>
+                    <template x-for="g in groups" x-bind:key="g"><option x-bind:value="g" x-text="g" x-bind:selected="String(g) === String(mediaImg.group)"></option></template>
                   </select>
                 </div>
                 <div style="flex:1;min-width:220px"><label class="lbl">제목</label>
@@ -79,7 +79,7 @@
                 </div>
                 <div style="flex:0 0 240px;min-width:200px"><label class="lbl">시각 이해 방식</label>
                   <select class="field" x-model="mediaImg.vision">
-                    <template x-for="v in visionCandidates" x-bind:key="v.id"><option x-bind:value="v.id" x-text="v.label"></option></template>
+                    <template x-for="v in visionCandidates" x-bind:key="v.id"><option x-bind:value="v.id" x-text="v.label" x-bind:selected="String(v.id) === String(mediaImg.vision)"></option></template>
                     <option x-show="!visionCandidates.length" value="upstage_ie">기본 · 문서 시각 이해(Upstage)</option>
                   </select>
                 </div>
@@ -116,7 +116,7 @@
               <div class="control-row" style="align-items:flex-end">
                 <div style="flex:0 0 200px;min-width:160px"><label class="lbl">콘텐츠 그룹</label>
                   <select class="field" x-model="mediaVid.group">
-                    <template x-for="g in groups" x-bind:key="g"><option x-bind:value="g" x-text="g"></option></template>
+                    <template x-for="g in groups" x-bind:key="g"><option x-bind:value="g" x-text="g" x-bind:selected="String(g) === String(mediaVid.group)"></option></template>
                   </select>
                 </div>
                 <div style="flex:1;min-width:240px"><label class="lbl">영상 파일</label>

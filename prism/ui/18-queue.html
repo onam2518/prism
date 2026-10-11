@@ -48,7 +48,7 @@
             <div class="filterbar" x-show="failAll.length" x-cloak>
               <select class="field" style="width:auto" x-model="failKind" x-on:change="pickFailKind($event.target.value)">
                 <option value="">실패 종류 전체</option>
-                <template x-for="k in failKindOpts" x-bind:key="'fko'+k"><option x-bind:value="k" x-text="failKindKr(k)"></option></template>
+                <template x-for="k in failKindOpts" x-bind:key="'fko'+k"><option x-bind:value="k" x-text="failKindKr(k)" x-bind:selected="String(k) === String(failKind)"></option></template>
               </select>
               <select class="field" style="width:auto" x-show="failModelOpts.length > 1" x-model="failModel" x-on:change="pickFailModel($event.target.value)">
                 <option value="">모델 전체</option>
@@ -94,7 +94,7 @@
             <select class="field" style="width:auto" x-model="contentModel" x-on:change="pickModel($event.target.value)">
               <option value="">모델 전체</option>
               <option value="(미실행)">미실행(초안 없음)</option>
-              <template x-for="m in contentModels" x-bind:key="'cm'+m"><option x-bind:value="m" x-text="m"></option></template>
+              <template x-for="m in contentModels" x-bind:key="'cm'+m"><option x-bind:value="m" x-text="m" x-bind:selected="String(m) === String(contentModel)"></option></template>
             </select>
             <button type="button" class="ds-btn ds-btn--s-sm ds-btn--outline" style="padding:0 12px;font-size:12px" x-bind:disabled="!pickedHashes.length || pickBusy" x-on:click="rerunPicked()" x-text="pickBusy ? '재실행 중…' : ('선택 재실행' + (pickedHashes.length ? (' ' + pickedHashes.length + '건') : ''))" data-tip="체크한 콘텐츠를 STEP 2의 사용 모델로 다시 실행합니다 · 기존 초안은 이력 보존 · 건당 비용 발생" data-tip-pos="top"></button>
             <button type="button" class="copybtn" x-show="pickedHashes.length" x-cloak x-on:click="clearPick()">선택 해제</button>

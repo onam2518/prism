@@ -192,8 +192,7 @@ window.PRISM_APP_PARTS.push(() => ({
         window.addEventListener('storage', (e) => {
           if (e.key === 'prism_rtoken' && this.rtoken && e.newValue && e.newValue !== this.rtoken && this._adoptStoredToken()) this.startLive();
         });
-        // Solar 목록은 실조회라 비어 있으면 모든 픽커의 '직접 · Solar' 묶음이 설정 모델 하나뿐이다 → 부팅 때 1회 채운다
-        this.refreshConfig().then(() => { if (this.cfg && this.cfg.hasKey) this._ensureModels(); });
+        this.refreshConfig();
         this.startLive();                              // 실시간 SSE 구독
         // 장기 폴백: 탭 복귀 시에도 판정이 비어 있으면 재시도(일시 실패로 사용자 메뉴만 굳는 것 방지)
         window.addEventListener('focus', () => {

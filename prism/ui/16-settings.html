@@ -92,10 +92,10 @@
                 <label class="selctl"><span class="selctl__tag">대상</span>
                   <select x-model="keyTarget" class="bg-transparent text-[13px]" style="border:none;outline:none">
                     <template x-for="s in ['bizrouter', 'timely', 'solar']" x-bind:key="s">
-                      <option x-bind:value="s" x-text="keyDefs[s].label.replace(' 키', '') + (s === 'solar' ? ' · 직접' : ' · 라우터') + (keyState(s) ? ' ✓' : '')"></option>
+                      <option x-bind:value="s" x-text="keyDefs[s].label.replace(' 키', '') + (s === 'solar' ? ' · 직접' : ' · 라우터') + (keyState(s) ? ' ✓' : '')" x-bind:selected="String(s) === String(keyTarget)"></option>
                     </template>
                   </select></label>
-                <span class="sdot" x-bind:class="keyState(keyTarget) ? 'ok' : 'off'" style="cursor:help" x-bind:data-tip="keyState(keyTarget) ? '연결됨' : '미연결 · 키를 저장하면 연결됩니다'" data-tip-pos="top"></span>
+                <span class="sdot" x-bind:class="keyState(keyTarget) ? 'ok' : 'off'" style="cursor:help" x-bind:data-tip="keyState(keyTarget) ? '키 등록됨 · 유효한지는 연결 테스트로 확인' : '미등록 · 키를 저장하면 연결을 확인합니다'" data-tip-pos="top"></span>
                 <div class="keyin" style="flex:1;min-width:220px;margin:0">
                   <input x-bind:type="keyShow[keyTarget] ? 'text' : 'password'" x-model="keyInputs[keyTarget]" x-bind:placeholder="keyDefs[keyTarget].ph" class="field" autocomplete="off">
                   <button type="button" class="eye" x-on:click="keyShow[keyTarget] = !keyShow[keyTarget]" aria-label="키 보기">

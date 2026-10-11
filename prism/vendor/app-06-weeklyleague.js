@@ -116,7 +116,8 @@ window.PRISM_APP_PARTS.push(() => ({
         return '지난 스냅샷 대비 변화 ' + (d.changed_n || 0) + '건' + (d.new_n ? (' (신규 토픽 ' + d.new_n + ')') : '') + (d.gone_n ? (' · 사라짐 ' + d.gone_n + '개') : '') + (top ? (' · ' + top) : '');
       },
       async _ensureModels() {                       // Solar 모델 선택지: 없으면 1회 조회(서버 캐시 · 실패 무해)
-        if ((this.models || []).length) return;
+        if ((this.models || []).length || this._modelsTried) return;
+        this._modelsTried = true;                   // refreshConfig 마다 불리므로 실패해도 재조회는 '모델 새로고침'으로만
         try { const j = await (await this._afetch('/models', { headers: this._authHeaders() })).json(); if (j && j.ok && Array.isArray(j.models)) { this.models = j.models; if (!this.cfgModel) this.cfgModel = j.current || ''; } } catch (e) {}
       },
       _syncTopicSettings() { const s = (this.topicData && this.topicData.settings) || {}; this.settingsDraft = { co_min: s.co_min || 2, entity_min: s.entity_min || 2 }; },
