@@ -550,8 +550,10 @@ def review(body, team, actor, can_final):
                 raise ValueError('정답셋 용도를 선택하세요')
             cell['final'] = data
         run['revision'] += 1
-    _update(key, team, save)
-    return {'ok': True}
+    saved = _update(key, team, save)
+    cell = saved['cells'][body['cell_id']]
+    return {'ok': True, 'cell': {k: cell[k] for k in ('id', 'reviews', 'review_revision', 'final')},
+            'revision': saved['revision']}
 
 
 def confirm_gold(body, team, actor, can_final):

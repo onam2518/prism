@@ -86,6 +86,23 @@ class KeywordLabTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, '개선에 사용'): K.confirm_gold(b,'a','tester',True)
         self.assertEqual(K._version(vid,'a')['rules'], '메타에 근거한 키워드 최대 3개')
 
+    def test_review_acknowledges_persisted_revision_without_revealing_model(self):
+        run = self.run_case(1)
+        cell = next(iter(run['cells'].values()))
+        body = {'action': 'review', 'run_id': run['id'], 'cell_id': cell['id'], 'expected_revision': 0,
+                'judgments': [{'verdict': 'accept'} for _ in cell['refined']['keywords']],
+                'note': '검수 메모'}
+        response = K.action(body, 'a', 'tester')
+        self.assertTrue(response['ok'])
+        persisted = Store(self.tmp.name + '/t.db').get_report(K._key('run', run['id']), 'a')
+        self.assertEqual(response['revision'], persisted['revision'])
+        self.assertEqual(response['cell']['reviews'], persisted['cells'][cell['id']]['reviews'])
+        self.assertEqual(response['cell']['review_revision'], 1)
+        self.assertEqual(response['cell']['reviews'][0]['note'], '검수 메모')
+        self.assertEqual(set(response['cell']), {'id', 'reviews', 'review_revision', 'final'})
+        self.assertEqual(K.run_detail(run['id'], 'a')['run']['cells'][cell['id']]['reviews'],
+                         response['cell']['reviews'])
+
     def test_evaluation_gold_never_compiled(self):
         run = self.run_case(1); cell = next(iter(run['cells'].values()))
         b = self.final(run,cell,'evaluation'); gold = K.confirm_gold(b,'a','tester',True)['gold']
