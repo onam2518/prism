@@ -334,7 +334,7 @@ window.PRISM_APP_PARTS.push(() => ({
       this.kwBusy=false;
       this.kwMessage=finalize ? '최종 확정했습니다 · 정답셋 반영 여부를 선택하세요' : '판단을 저장했습니다';
       if(!finalize && this.kwAutoNext && this.kwNextPending()) this.kwMessage='판단을 저장했습니다 · 다음 미검수 결과입니다';
-    }catch(e){this.kwReviewError('판단을 저장하지 못했습니다. '+e.message);}finally{this.kwBusy=false;}
+    }catch(e){this.kwReviewError('저장 완료를 확인하지 못했습니다. '+e.message);}finally{this.kwBusy=false;}
   },
   kwCurrentGold() {return ((this.kwCatalog || {}).gold || []).find(g=>this.kwReview && g.item_key===this.kwReview.item.key);},
   async kwSaveGold() {
