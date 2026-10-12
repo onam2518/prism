@@ -107,6 +107,29 @@ async function main(){
  window.confirm=()=>true;await f.kwDiscardReview();window.confirm=confirm0;
  assert.equal(f.kwReview,null);assert.equal(JSON.stringify(f.kwRunData.cells['i1:A'].reviews),savedReviews);
  assert.match(markup,/x-on:mousedown.self="kwCloseReview\(\)"/);assert.match(markup,/kwBeforeUnload\(\$event\)/);
- console.log('Keyword workspace client: selection, persistence, validation and navigation passed');
+ const cancel=window.PRISM_APP_PARTS[0]();cancel.kwRunId='r';cancel.kwRunData=JSON.parse(JSON.stringify(f.kwRunData));
+ cancel.kwRunData.cells['i1:A'].final={id:'final-review',partition:'development'};
+ cancel.kwCatalog={can_final:true,gold:[{item_key:'i1',run_id:'r',cell_id:'i1:A',review_id:'final-review',partition:'development'},
+   {item_key:'i2',run_id:'other',cell_id:'i2:A',review_id:'other-review',partition:'development'}]};
+ cancel.kwTraining=['i1','i2'];cancel.kwOpenReview(it[0],sl[0]);const oldNote=cancel.kwReview.note;let canceledRequests=0;
+ cancel.kwRequest=async(query,data)=>{
+   if(!data) return {ok:true,run:JSON.parse(JSON.stringify(cancel.kwRunData))};
+   canceledRequests++;sent=data;return {ok:true,revision:2,cell:{...cancel.kwRunData.cells[data.cell_id],review_revision:2,final:null}};
+ };
+ window.confirm=()=>false;await cancel.kwCancelFinal();assert.equal(canceledRequests,0);
+ window.confirm=()=>true;cancel.kwCatalog.can_final=false;await cancel.kwCancelFinal();assert.equal(canceledRequests,0);
+ cancel.kwCatalog.can_final=true;cancel.kwReview.note='미저장';await cancel.kwCancelFinal();assert.equal(canceledRequests,0);cancel.kwReview.note=oldNote;
+ await cancel.kwCancelFinal();window.confirm=confirm0;
+ assert.equal(sent.action,'cancel_final');assert.equal(sent.final_id,'final-review');assert.equal(sent.expected_revision,1);
+ assert.equal(cancel.kwReview.final,null);assert.equal(cancel.kwReview.note,oldNote);assert.equal(cancel.kwReview.expected_revision,2);
+ assert.equal(cancel.kwReview.cell_id,'i1:A');assert.equal(cancel.kwCatalog.gold.length,1);assert.deepEqual(Array.from(cancel.kwTraining),['i2']);
+ assert.equal(cancel.kwSlotState(cancel.kwRunData.cells['i1:A']),'판정됨');assert.equal(cancel.kwReviewDirty(),false);
+ cancel.kwReview.final={id:'final-again'};cancel.kwRequest=async()=>{throw Error('저장 충돌')};window.confirm=()=>true;
+ await cancel.kwCancelFinal();window.confirm=confirm0;assert.equal(cancel.kwReview.final.id,'final-again');assert.match(cancel.kwError,/저장 충돌/);assert.equal(cancel.kwMessage,'');
+ cancel.kwRequest=async()=>({ok:true,cell:{id:'i1:A',reviews:[{note:oldNote}],review_revision:3,final:null},revision:3});
+ cancel.kwOpenRun=async()=>false;window.confirm=()=>true;await cancel.kwCancelFinal();window.confirm=confirm0;
+ assert.equal(cancel.kwReview.final,null);assert.equal(cancel.kwReview.expected_revision,3);assert.equal(cancel.kwReview.note,oldNote);
+ assert.match(cancel.kwError,/최종 확정은 취소했지만/);assert.equal(cancel.kwMessage,'');assert.equal(cancel.kwReviewDirty(),false);
+ console.log('Keyword workspace client: persistence, validation, navigation and final cancellation passed');
 }
 main().catch(e=>{console.error(e);process.exitCode=1});
