@@ -88,6 +88,19 @@ def _catalog(team):
     return _get(CATALOG, team) or {'versions': [], 'runs': [], 'gold': {}, 'active': {}}
 
 
+def _current_gold(team, gold=None):
+    gold = _catalog(team)['gold'] if gold is None else gold
+    runs, current = {}, {}
+    for key, g in gold.items():
+        rid = g['run_id']
+        if rid not in runs:
+            runs[rid] = _get(_key('run', rid), team) or {}
+        final = (runs[rid].get('cells', {}).get(g['cell_id']) or {}).get('final')
+        if final and final['id'] == g['review_id']:
+            current[key] = g
+    return current
+
+
 def _version(ident, team):
     v = next((v for v in _catalog(team)['versions'] if v['id'] == ident), None)
     if not v:
@@ -123,7 +136,7 @@ def catalog(team=None):
     # 긴 프롬프트는 버전 선택 후 상세에서만 조회한다.
     return {'ok': True, 'versions': [{k: v for k, v in x.items() if k not in ('system', 'rules', 'review_system', 'guide')}
                                     for x in reversed(c['versions'])],
-            'runs': list(reversed(c['runs'])), 'gold': list(c['gold'].values()), 'active': c['active'],
+            'runs': list(reversed(c['runs'])), 'gold': list(_current_gold(team, c['gold']).values()), 'active': c['active'],
             'default_rules': cfg['keyword']['rules'], 'rules_by_target': {t: cfg[t]['rules'] for t in ER.CALLS}, 'reasons': REASONS}
 
 
@@ -219,6 +232,7 @@ def _items(body, team):
 def _prepare_items(body, team, target):
     items = _items(body, team)
     source = _get(_key('run', body['source_run']), team) if body.get('source_run') else None
+    golds = _current_gold(team) if target == 'sentence' and body.get('keyword_source') == 'gold' else {}
     for item in items:
         base_key = _digest([item['hash'], item['meta']])
         item['key'] = base_key
@@ -241,7 +255,7 @@ def _prepare_items(body, team, target):
                 raise ValueError('선택한 키워드 조합의 모든 결과가 완료되어야 합니다')
             keywords = copy.deepcopy(cell['refined']['keywords'])
         elif keyword_source == 'gold':
-            gold = _catalog(team)['gold'].get(base_key)
+            gold = golds.get(base_key)
             if not gold:
                 raise ValueError('이 콘텐츠의 키워드 정답이 없습니다 · 다른 입력 방식을 선택하세요')
             keywords = copy.deepcopy(gold['keywords'])
@@ -280,6 +294,7 @@ def start(body, team, actor):
         raise ValueError('동일 조합이 중복되었습니다')
     items = _prepare_items(body, team, target)
     c = _catalog(team)
+    golds = _current_gold(team, c['gold'])
     slots = [{'label': chr(65 + i), 'version': v} for i, v in enumerate(versions)]
     random.SystemRandom().shuffle(slots)
     for i, slot in enumerate(slots):
@@ -287,7 +302,7 @@ def start(body, team, actor):
     rid = _id()
     run = {'id': rid, 'target': target, 'created_at': time.time(), 'by': actor, 'status': 'running', 'revision': 0,
            'updated_at': time.time(), 'items': items, 'slots': slots, 'cells': {},
-           'gold_snapshot': {it['key']: copy.deepcopy(c['gold'][it['key']]) for it in items if it['key'] in c['gold']},
+           'gold_snapshot': {it['key']: copy.deepcopy(golds[it['key']]) for it in items if it['key'] in golds},
            'blind': body.get('blind', True) is not False, 'revealed': body.get('blind', True) is False,
            'dataset_id': _digest(items), 'source_run': body.get('source_run') or ''}
     with LOCK:
@@ -572,7 +587,9 @@ def confirm_gold(body, team, actor, can_final):
             'by': actor, 'at': time.time(), 'id': _id()}
     def save(c):
         existing = c['gold'].get(item['key'])
-        if body.get('expected_gold_id', '') != (existing or {}).get('id', ''):
+        expected = body.get('expected_gold_id', '')
+        if expected != (existing or {}).get('id', '') and (
+                expected or not existing or _current_gold(team, {item['key']: existing})):
             raise ValueError('기존 정답이 변경되었습니다 · 현재 정답을 확인하고 다시 반영하세요')
         # 개발에 노출된 콘텐츠는 평가셋으로 전환할 수 없다(버전 전체 계보 확인).
         if gold['partition'] == 'evaluation' and (item['hash'] in c.get(_training_field(target), []) or any(item['key'] in v.get('training_keys', []) for v in c['versions']) or item['key'] in c.get('training_keys', [])):
@@ -580,6 +597,25 @@ def confirm_gold(body, team, actor, can_final):
         c['gold'][item['key']] = gold
     _update(CATALOG, team, save, _catalog(team), guard=(_key('run', run['id']), run))
     return {'ok': True, 'gold': gold}
+
+
+def cancel_final(body, team, actor, can_final):
+    if not can_final:
+        raise ValueError('최종 검수 권한이 필요합니다')
+    def cancel(run):
+        cell = (run or {}).get('cells', {}).get(body.get('cell_id'))
+        if not cell or not cell.get('final'):
+            raise ValueError('취소할 최종 확정이 없습니다')
+        if body.get('expected_revision') != cell['review_revision'] or body.get('final_id') != cell['final']['id']:
+            raise ValueError('다른 검수가 저장되었습니다 · 결과를 다시 불러오세요')
+        cell.setdefault('final_cancellations', []).append({'review_id': cell['final']['id'], 'by': actor, 'at': time.time()})
+        cell['final'] = None
+        cell['review_revision'] += 1
+        run['revision'] += 1
+    saved = _update(_key('run', body.get('run_id')), team, cancel)
+    cell = saved['cells'][body['cell_id']]
+    return {'ok': True, 'cell': {k: cell[k] for k in ('id', 'reviews', 'review_revision', 'final')},
+            'revision': saved['revision']}
 
 
 def reveal(body, team):
@@ -722,6 +758,7 @@ def action(body, team=None, actor='', can_manage=False, can_final=False):
         if op == 'delete_run': return delete_run(body, team)
         if op == 'start': return start(body, team, actor)
         if op == 'review': return review(body, team, actor, can_final)
+        if op == 'cancel_final': return cancel_final(body, team, actor, can_final)
         if op == 'gold': return confirm_gold(body, team, actor, can_final)
         if op == 'reveal': return reveal(body, team)
         if op == 'compile': return compile_proposal(body, team, actor)

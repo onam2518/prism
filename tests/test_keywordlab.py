@@ -225,6 +225,87 @@ class KeywordLabTest(unittest.TestCase):
         b['no_keywords'] = True
         self.assertEqual(K._review_payload(b,cell,{})['keywords'],[])
 
+    def test_cancel_final_preserves_review_and_requires_reconfirmation_for_gold(self):
+        run = self.run_case(1)
+        cell = next(iter(run['cells'].values()))
+        b = self.final(run, cell)
+        gold = K.confirm_gold(b, 'a', 'tester', True)['gold']
+        before = K._get(K._key('run', run['id']), 'a')['cells'][cell['id']]
+        cancel = {'action': 'cancel_final', 'run_id': run['id'], 'cell_id': cell['id'],
+                  'expected_revision': 1, 'final_id': gold['review_id']}
+        for team, allowed, extra in [('a', False, {}), ('b', True, {}),
+                                     ('a', True, {'expected_revision': 0}), ('a', True, {'final_id': 'old'})]:
+            self.assertFalse(K.action(dict(cancel, **extra), team, 'tester', can_final=allowed)['ok'])
+        response = K.action(cancel, 'a', 'reviewer2', can_final=True)
+        self.assertTrue(response['ok'])
+        after = K._get(K._key('run', run['id']), 'a')['cells'][cell['id']]
+        self.assertIsNone(after['final'])
+        self.assertEqual(after['reviews'], before['reviews'])
+        self.assertEqual(after['review_revision'], 2)
+        self.assertEqual(after['final_cancellations'][0]['by'], 'reviewer2')
+        self.assertEqual(after['final_cancellations'][0]['review_id'], gold['review_id'])
+        self.assertEqual(K.catalog('a')['gold'], [])
+        self.assertEqual(K._catalog('a')['gold'][gold['item_key']], gold)
+        with self.assertRaisesRegex(ValueError, '최종 확정'):
+            K.confirm_gold(b, 'a', 'tester', True)
+        K.review(dict(b, expected_revision=2), 'a', 'tester', True)
+        self.assertEqual(K.catalog('a')['gold'], [])
+        replacement = K.confirm_gold(b, 'a', 'tester', True)['gold']
+        self.assertNotEqual(replacement['id'], gold['id'])
+        self.assertEqual(K.catalog('a')['gold'][0]['id'], replacement['id'])
+
+    def test_cancel_final_excludes_future_gold_inputs_but_preserves_training_history(self):
+        run = self.run_case(1)
+        cell = next(iter(run['cells'].values()))
+        b = self.final(run, cell)
+        gold = K.confirm_gold(b, 'a', 'tester', True)['gold']
+        version = run['slots'][0]['version']
+        request = {'version_id': version['id'], 'compiler_model': 'solar-pro3', 'gold_keys': [gold['item_key']]}
+        with patch.object(E, '_llm', return_value=(None, True, '')):
+            proposal = K.compile_proposal(request, 'a', 'tester')['proposal']
+        training = copy.deepcopy(K._catalog('a').get(K._training_field('keyword')))
+        with patch.object(K.threading, 'Thread'):
+            old = K.start({'slots': [{'model': version['model'], 'version_id': version['id']}],
+                           'source_run': run['id']}, 'a', 'tester')['id']
+        self.addCleanup(K.ACTIVE.discard, ('a', old))
+        K.cancel_final({'run_id': run['id'], 'cell_id': cell['id'], 'expected_revision': 1,
+                        'final_id': gold['review_id']}, 'a', 'tester', True)
+        with self.assertRaisesRegex(ValueError, '재확정'):
+            K.compile_proposal(request, 'a', 'tester')
+        with self.assertRaisesRegex(ValueError, '키워드 정답'):
+            K._prepare_items({'meta': self.meta, 'keyword_source': 'gold'}, 'a', 'sentence')
+        with patch.object(K.threading, 'Thread'):
+            new = K.start({'slots': [{'model': version['model'], 'version_id': version['id']}],
+                           'source_run': run['id']}, 'a', 'tester')['id']
+        self.addCleanup(K.ACTIVE.discard, ('a', new))
+        self.assertEqual(K._get(K._key('run', new), 'a')['gold_snapshot'], {})
+        self.assertEqual(K._get(K._key('run', old), 'a')['gold_snapshot'][gold['item_key']], gold)
+        self.assertEqual(K._catalog('a').get(K._training_field('keyword')), training)
+        self.assertEqual(K._get(K._key('proposal', proposal['id']), 'a')['rules'], proposal['rules'])
+
+    def test_cancel_final_keeps_gold_from_another_result_and_rejects_a_racing_review(self):
+        first = self.run_case(1)
+        a = next(iter(first['cells'].values()))
+        ga = K.confirm_gold(self.final(first, a), 'a', 'tester', True)['gold']
+        second = self.run_case(1)
+        b = next(iter(second['cells'].values()))
+        gb = K.confirm_gold(dict(self.final(second, b), expected_gold_id=ga['id']), 'a', 'tester', True)['gold']
+        K.cancel_final({'run_id': first['id'], 'cell_id': a['id'], 'expected_revision': 1,
+                        'final_id': ga['review_id']}, 'a', 'tester', True)
+        self.assertEqual(K.catalog('a')['gold'][0]['id'], gb['id'])
+        original = self.store.compare_report
+        def race(kind, expected, payload, team=None, guard=None):
+            changed = copy.deepcopy(expected)
+            changed['cells'][b['id']]['review_revision'] += 1
+            changed['cells'][b['id']]['final']['id'] = 'new-final'
+            original(kind, expected, changed, team=team)
+            return False
+        with patch.object(self.store, 'compare_report', side_effect=race):
+            with self.assertRaisesRegex(ValueError, '다른 검수'):
+                K.cancel_final({'run_id': second['id'], 'cell_id': b['id'], 'expected_revision': 1,
+                                'final_id': gb['review_id']}, 'a', 'tester', True)
+        self.assertEqual(K._get(K._key('run', second['id']), 'a')['cells'][b['id']]['final']['id'], 'new-final')
+
 
 class KeywordClientTest(unittest.TestCase):
     def test_client(self):
@@ -316,6 +397,18 @@ class SentenceLabTest(unittest.TestCase):
         run=self.sentence_run();gold=K.confirm_gold(self.sentence_final(run,'evaluation'),'a','tester',True)['gold']
         with self.assertRaisesRegex(ValueError,'개발용'):
             K.compile_proposal({'version_id':run['slots'][0]['version']['id'],'compiler_model':'solar-pro3','gold_keys':[gold['item_key']]},'a','tester')
+
+    def test_sentence_final_cancellation_preserves_keyword_gold(self):
+        keyword_run = self.run_case(1)
+        cell = next(iter(keyword_run['cells'].values()))
+        keyword_gold = K.confirm_gold(self.final(keyword_run, cell), 'a', 'tester', True)['gold']
+        run = self.sentence_run()
+        body = self.sentence_final(run)
+        gold = K.confirm_gold(body, 'a', 'tester', True)['gold']
+        result = K.cancel_final(dict(body, expected_revision=1, final_id=gold['review_id']), 'a', 'tester', True)
+        self.assertIsNone(result['cell']['final'])
+        self.assertEqual(result['cell']['reviews'][-1]['sentences'], gold['sentences'])
+        self.assertEqual(K.catalog('a')['gold'], [keyword_gold])
 
     def test_sentence_training_and_adoption_do_not_overwrite_keyword_state(self):
         kwrun=self.run_case(1)

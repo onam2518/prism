@@ -313,6 +313,15 @@ window.PRISM_APP_PARTS.push(() => ({
   },
   kwMetaList(v) {return Array.isArray(v) ? v.map(x=>typeof x==='string' ? x : (x && x.name) || '').filter(Boolean) : [];},
   kwInKeywords(name) {return this.kwCandidates(this.kwReviewCell()).some(k=>k.text.includes(name));},
+  kwApplySavedReview(saved, q, rid) {
+    Object.assign(this.kwRunData.cells[q.cell_id],saved.cell);this.kwRunData.revision=saved.revision;
+    q.expected_revision=saved.cell.review_revision;q.final=saved.cell.final;
+    this._kwSavedReview=this.kwReviewSnapshot();
+    if(this.kwCatalog?.gold) {
+      this.kwCatalog.gold=this.kwCatalog.gold.filter(g=>g.run_id!==rid || g.cell_id!==q.cell_id || g.review_id===q.final?.id);
+      this.kwTraining=this.kwTraining.filter(key=>this.kwDevelopmentGold().some(g=>g.item_key===key));
+    }
+  },
   async kwSaveReview(finalize=false) {
     if(this.kwBusy || !this.kwReview) return;
     this.kwError='';this.kwMessage='';
@@ -324,9 +333,7 @@ window.PRISM_APP_PARTS.push(() => ({
       const saved=await this.kwRequest('',{action:'review',run_id:rid,cell_id:q.cell_id,
         expected_revision:q.expected_revision,judgments:q.judgments,additions:q.additions,
         no_keywords:q.no_keywords,note:q.note,partition:q.partition,finalize});
-      Object.assign(this.kwRunData.cells[q.cell_id],saved.cell);this.kwRunData.revision=saved.revision;
-      q.expected_revision=saved.cell.review_revision;q.final=saved.cell.final;
-      this._kwSavedReview=this.kwReviewSnapshot();
+      this.kwApplySavedReview(saved,q,rid);
       if(!await this.kwOpenRun(rid)) {
         this.kwReviewError('판단은 저장했지만 결과를 다시 불러오지 못했습니다. 잠시 후 실험 기록을 다시 열어 주세요.');
         return;
@@ -337,6 +344,23 @@ window.PRISM_APP_PARTS.push(() => ({
     }catch(e){this.kwReviewError('저장 완료를 확인하지 못했습니다. '+e.message);}finally{this.kwBusy=false;}
   },
   kwCurrentGold() {return ((this.kwCatalog || {}).gold || []).find(g=>this.kwReview && g.item_key===this.kwReview.item.key);},
+  async kwCancelFinal() {
+    if(!this.kwReview?.final || !this.kwCatalog?.can_final || !this.kwCanLeaveReview()) return;
+    if(!window.confirm('이 결과의 최종 확정을 취소할까요? 판단과 메모는 보존합니다. 이 확정을 근거로 반영한 정답은 개선·새 실험에서 제외되며, 기존 프롬프트 버전과 실험 결과는 유지됩니다.')) return;
+    this.kwBusy=true;this.kwError='';this.kwMessage='';
+    try {
+      const q=this.kwReview, rid=this.kwRunId;
+      const saved=await this.kwRequest('',{action:'cancel_final',run_id:rid,cell_id:q.cell_id,
+        expected_revision:q.expected_revision,final_id:q.final.id});
+      this.kwApplySavedReview(saved,q,rid);
+      if(!await this.kwOpenRun(rid)) {
+        this.kwReviewError('최종 확정은 취소했지만 결과를 다시 불러오지 못했습니다. 잠시 후 실험 기록을 다시 열어 주세요.');
+        return;
+      }
+      this.kwMessage='최종 확정을 취소했습니다. 판단과 메모는 보존되며, 다시 사용하려면 최종 확정 후 정답셋에 반영하세요.';
+    } catch(e) {this.kwReviewError('확정 취소 완료를 확인하지 못했습니다. '+e.message);}
+    finally {this.kwBusy=false;}
+  },
   async kwSaveGold() {
     if(this.kwBusy || !this.kwReview) return;
     this.kwBusy=true;this.kwError='';
