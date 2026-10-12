@@ -9,9 +9,10 @@ async function main(){
  await a.kwRequest('',{action:'review'});assert.equal(sent.reviewer,'검수자');
  a.kwRunData={cells:{'key:A':{id:'key:A',status:'done',review_revision:2,refined:{keywords:[{text:'한국은행',kind:'single'}]},reviews:[],final:null}}};
  a.kwCatalog={versions:[],gold:[]};a.kwOpenReview({key:'key'},{label:'A'});assert.equal(a.kwReview.expected_revision,2);assert.equal(a.kwReview.judgments[0].verdict,'');assert.equal(a.kwTab,'run');
- a.kwRunId='run';a.kwOpenRun=async()=>{a.kwRunData.cells['key:A'].review_revision=3};
+ a.kwRunId='run';a.kwReview.judgments[0].verdict='accept';a.kwOpenRun=async()=>true;
+ a._afetch=async(url,opt)=>{sent=JSON.parse(opt.body);return{json:async()=>({ok:true,revision:1,cell:{id:'key:A',review_revision:3,reviews:[{judgments:sent.judgments}],final:null}})}};
  await a.kwSaveReview();assert.equal(sent.expected_revision,2);assert.equal(a.kwReview.expected_revision,3);
- a._afetch=async()=>({json:async()=>({ok:false,error:'저장 충돌'})});await a.kwSaveReview();assert.equal(a.kwError,'저장 충돌');assert.equal(a.kwBusy,false);
+ a._afetch=async()=>({json:async()=>({ok:false,error:'저장 충돌'})});await a.kwSaveReview();assert.match(a.kwError,/저장 충돌/);assert.equal(a.kwMessage,'');assert.equal(a.kwBusy,false);
 
  const b=window.PRISM_APP_PARTS[0]();
  assert.deepEqual(Array.from(b.kwTabs,t=>t[0]),['run','prompts']);
@@ -43,7 +44,7 @@ async function main(){
  draft.kwBusy=false;draft.kwCatalog.can_manage=false;draft.kwCreateVersion(1);assert.equal(draft.kwTab,'run');
  const markup=fs.readFileSync('prism/ui/19j-keywordlab.html','utf8');
  assert.match(markup,/x-bind:disabled="kwBusy \|\| !kwCatalog\?\.can_manage">새 버전 만들기/);
- const c=window.PRISM_APP_PARTS[0]();c.kwRunData={id:'old'};c.kwReview={};await c.kwOpenRun('');assert.equal(c.kwRunData,null);assert.equal(c.kwReview,null);
+ const c=window.PRISM_APP_PARTS[0]();c.kwRunData={id:'old'};c.kwReview={};c._kwSavedReview=c.kwReviewSnapshot();await c.kwOpenRun('');assert.equal(c.kwRunData,null);assert.equal(c.kwReview,null);
  b.kwCatalog.rules_by_target={keyword:'keyword rules',sentence:'preserved sentence rules'};
  b.kwTargetChange('sentence');assert.equal(b.kwDraft.rules,'preserved sentence rules');assert.equal(b.kwSlots[0].version_id,'');assert.equal(b.kwRunData,null);
  b.kwChooseMode('single');b.kwSlots[0]={model:'m1',version_id:'sv1'};b.kwLead='리드문';b.kwEntities='';b.kwSource='direct';
@@ -76,6 +77,36 @@ async function main(){
  const e=window.PRISM_APP_PARTS[0]();e.kwCatalog={runs:[{id:'r1',n:2,created_at:1}]};e.kwRunId='r1';e.kwRunData={};e.kwReview={};
  e.kwRequest=async(q,data)=>{sent=data;return{ok:true}};e.kwLoad=async()=>{};const c0=window.confirm;window.confirm=()=>true;
  await e.kwDeleteRun();window.confirm=c0;assert.equal(sent.action,'delete_run');assert.equal(sent.run_id,'r1');assert.equal(e.kwRunId,'');assert.equal(e.kwRunData,null);assert.equal(e.kwReview,null);
- console.log('Keyword workspace client: required selection, review identity, revision and failures passed');
+ // 저장 실패와 재조회 실패를 구분하고, 서버가 확인한 판단을 이전 조회로 덮지 않는다.
+ const f=window.PRISM_APP_PARTS[0]();f.kwCatalog={};f.kwRunId='r';
+ f.kwRunData={id:'r',revision:0,status:'done',items:it,slots:[sl[0]],cells:Object.fromEntries(it.map(i=>[i.key+':A',cell(i.key+':A','done',[])]))};
+ f.kwOpenReview(it[0],sl[0]);let requests=0;
+ f.kwRequest=async()=>{requests++;throw Error('통신 실패');};
+ await f.kwSaveReview();assert.match(f.kwError,/1번째 키워드/);assert.equal(requests,0);
+ f.kwReview.judgments[0].verdict='edit';f.kwReview.note='검수 메모';
+ await f.kwSaveReview();assert.match(f.kwError,/사유/);assert.equal(requests,0);
+ f.kwReview.judgments[0].reason='표현 문제';
+ const dirty=f.kwReviewSnapshot();
+ assert.equal(f.kwReviewGo(1),false);f.kwCloseReview();f.kwChangeTab('prompts');f.kwTargetChange('sentence');
+ await f.kwOpenRun('other');assert.equal(f.kwRunId,'r');assert.equal(f.kwTab,'run');assert.equal(f.kwTarget,'keyword');assert.equal(f.kwReviewSnapshot(),dirty);
+ let prevented=false;f.kwBeforeUnload({preventDefault(){prevented=true}});assert.equal(prevented,true);
+ await f.kwSaveReview();assert.match(f.kwError,/통신 실패/);assert.equal(f.kwReviewSnapshot(),dirty);assert.equal(f.kwReviewDirty(),true);
+ let finishPost;f.kwRequest=async(query,data)=>{
+   if(!data) throw Error('재조회 실패');
+   await new Promise(resolve=>finishPost=resolve);
+   return {ok:true,revision:1,cell:{id:data.cell_id,review_revision:1,reviews:[{judgments:data.judgments,additions:[],no_keywords:false,note:data.note}],final:null}};
+ };
+ const saving=f.kwSaveReview();assert.equal(f.kwBusy,true);assert.equal(f.kwReviewGo(1),false);f.kwCloseReview();assert.equal(f.kwReview.cell_id,'i1:A');
+ finishPost();await saving;assert.equal(f.kwReview.cell_id,'i1:A');assert.equal(f.kwReviewDirty(),false);assert.match(f.kwError,/판단은 저장했지만/);assert.equal(f.kwMessage,'');
+ const stale=JSON.parse(JSON.stringify(f.kwRunData));stale.revision=0;stale.cells['i1:A'].reviews=[];stale.cells['i1:A'].review_revision=0;
+ f.kwRequest=async()=>({ok:true,run:stale});await f.kwOpenRun('r');
+ assert.equal(f.kwRunData.cells['i1:A'].review_revision,1);assert.equal(f.kwRunData.cells['i1:A'].reviews[0].note,'검수 메모');
+ assert.equal(f.kwReviewGo(1),true);assert.equal(f.kwReviewGo(-1),true);assert.equal(f.kwReview.note,'검수 메모');assert.equal(f.kwReview.judgments[0].verdict,'edit');
+ f.kwReview.note='아직 저장하지 않은 메모';const savedReviews=JSON.stringify(f.kwRunData.cells['i1:A'].reviews);
+ window.confirm=()=>false;await f.kwDiscardReview();assert.equal(f.kwReview.note,'아직 저장하지 않은 메모');
+ window.confirm=()=>true;await f.kwDiscardReview();window.confirm=confirm0;
+ assert.equal(f.kwReview,null);assert.equal(JSON.stringify(f.kwRunData.cells['i1:A'].reviews),savedReviews);
+ assert.match(markup,/x-on:mousedown.self="kwCloseReview\(\)"/);assert.match(markup,/kwBeforeUnload\(\$event\)/);
+ console.log('Keyword workspace client: selection, persistence, validation and navigation passed');
 }
 main().catch(e=>{console.error(e);process.exitCode=1});
