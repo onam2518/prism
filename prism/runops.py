@@ -769,9 +769,14 @@ def run_batch(file_bytes: bytes, filename: str, purpose: str = "", team=None,
         jid = "batch:" + time.strftime("%H%M%S")     # 실행 큐 등록(진행률·ETA)
         _SV._job_begin(jid, (filename or "엑셀"), "엑셀 일괄 추출", len(contents))
         _SV._INGEST_STATE[jid]["hashes"] = [_bch(c) for c in contents]
+        # ponytail: 동시 4건 고정 · 제공자 한도(429)가 잦으면 config 값으로 뺀다
+        from concurrent.futures import ThreadPoolExecutor
+        pool = ThreadPoolExecutor(max_workers=4)
+        futs = [pool.submit(PIPE.extract, c, llm, legal=cfg.legal_enabled,
+                            quality=cfg.quality_stage) for c in contents]
         try:
-            for c in contents:
-                out = PIPE.extract(c, llm, legal=cfg.legal_enabled, quality=cfg.quality_stage)
+            for c, fut in zip(contents, futs):     # 입력 순서대로 받아 원장·진행률은 이 스레드에서만 기록
+                out = fut.result()
                 # 비용·실패 원장: 이 경로는 run_pipeline 을 안 타므로 여기서 직접 기록 —
                 # 종전엔 엑셀 일괄 추출의 실키 지출·402 실패가 원장에 한 건도 안 남았다.
                 _log_run_ledgers(c, out, mock=llm.mock, team=team, content_hash=_bch(c))
@@ -785,8 +790,12 @@ def run_batch(file_bytes: bytes, filename: str, purpose: str = "", team=None,
                               "grade": (out.get("quality_meta") or {}).get("finalGrade", "")})
                 _SV._INGEST_STATE[jid]["done"] += 1
         except Exception as e:
+            for f in futs:                         # 중단 시 아직 시작 안 한 건은 호출하지 않는다(과금 방지)
+                f.cancel()
             _SV._job_end(jid, False, f"{len(results)}건 추출 후 중단 · {str(e)[:80]}")
             raise
+        finally:
+            pool.shutdown(wait=False)
         if pairs:
             store_save(pairs, source="배치", team=team)  # 영속 저장(단일 트랜잭션 배치)
         skip_note = f" · 기존 실행완료 {skipped_done}건 건너뜀" if skipped_done else ""

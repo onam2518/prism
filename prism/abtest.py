@@ -23,8 +23,9 @@ PRESETS = {
     "yellow":   H.Methodology(name="yellow", yellow=True),                    # YELLOW 사람검수 게이트
     "no-emb":   H.Methodology(name="no-emb", embed_categories=False),         # 임베딩 카테고리 off
     "parallel": H.Methodology(name="parallel", parallel_calls=True),          # 4호출 동시(=현재 기본)
-    "sequential": H.Methodology(name="sequential", parallel_calls=False),     # 순차 회귀 비교용
-    "stage-parallel": H.Methodology(name="stage-parallel", parallel_quality_item=True),  # 품질∥아이템 동시(지연 A/B)
+    "sequential": H.Methodology(name="sequential", parallel_calls=False,
+                                parallel_quality_item=False),                 # 순차 회귀 비교용
+    "stage-parallel": H.Methodology(name="stage-parallel", parallel_quality_item=True),  # 품질∥아이템 동시(=현재 기본)
 }
 
 
