@@ -48,9 +48,9 @@ class Methodology:
     # 산출은 순차와 동일하고 트레이스도 ①②③④ 순으로 적재된다.
     # 순차 회귀 비교는 abtest 프리셋 "sequential".
     parallel_calls: bool = True
-    # quality ∥ item 스테이지 동시 실행(A/B 검증용 · 기본 off): 게이트는 사후 적용이라 산출은
-    # 순차와 동일, 트레이드오프 = R(비-YELLOW) 판정 시 아이템 4호출 비용 낭비. 승격은 실측 후.
-    parallel_quality_item: bool = False
+    # quality ∥ item 스테이지 동시 실행(기본 on · 2026-10-13): 2026-09-08 게이트 폐지로 아이템은
+    # 등급과 무관하게 전건 실행하므로 동시 실행해도 산출·비용이 순차와 같다. 순차 비교는 abtest "sequential".
+    parallel_quality_item: bool = True
     stages: tuple = ("dispatch", "legal", "quality", "item")   # assemble 은 항상 종단
 
     def to_dict(self) -> dict:
@@ -267,8 +267,7 @@ def run(content_dict: dict, llm, methodology: Methodology = None, *,
 
 
 def _run_quality_item_parallel(ctx: HCtx):
-    """quality ∥ item 동시 실행(방법론 옵션): 게이트를 사후 적용 · R(비-YELLOW) 판정이면
-    item 산출을 폐기해 산출 파리티를 유지한다(그 콜 비용 낭비가 트레이드오프).
+    """quality ∥ item 동시 실행(기본). 아이템은 등급과 무관하게 보존한다(2026-09-08 게이트 폐지).
     트레이스는 quality → item 순서로 병합(결정론)."""
     import copy
     import threading
