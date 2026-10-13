@@ -14,6 +14,17 @@ from prism import entrefine as ER
 
 
 class EntRefineTest(unittest.TestCase):
+    def test_model_failure_guidance_preserves_kind_without_raw_response(self):
+        for kind, hint in (("quota", "프로젝트 지출 한도"), ("billing", "크레딧"),
+                           ("auth", "API 키"), ("timeout", "응답 시간"), ("rate", "rate")):
+            with self.subTest(kind=kind):
+                llm = types.SimpleNamespace(complete_json=lambda *a, **k: ({"_fail": "private upstream response", "_fail_kind": kind}, None))
+                with self.assertRaises(ValueError) as error:
+                    ER._call(llm, "system", "user", "keyword_meta_compile")
+                self.assertIn(hint, str(error.exception))
+                self.assertIn(kind, str(error.exception))
+                self.assertNotIn("private upstream", str(error.exception))
+
     def test_validate_guards(self):
         names = ["한국은행", "이창용", "기자 홍길동", "삼성"]
         canon = {"삼성": "삼성그룹"}
