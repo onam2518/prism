@@ -1,6 +1,6 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 async function main(){
- const window={};vm.runInNewContext(fs.readFileSync('prism/vendor/app-24-keywordlab.js','utf8'),{window,clearTimeout,setTimeout});
+ const window={};vm.runInNewContext(fs.readFileSync('prism/vendor/app-24-keywordlab.js','utf8'),{window,clearTimeout,setTimeout,crypto:require('node:crypto')});
  const a=window.PRISM_APP_PARTS[0]();a._authHeaders=()=>({});a.reviewer='검수자';
  assert.equal(a.kwReady(),false);a.kwChooseMode('single');a.kwSlots[0]={model:'solar',version_id:'v1'};
  assert.equal(a.kwReady(),false);a.kwLead='한국은행이 금리를 인하했다';a.kwEntities='한국은행';assert.equal(a.kwReady(),true);
@@ -130,6 +130,27 @@ async function main(){
  cancel.kwOpenRun=async()=>false;window.confirm=()=>true;await cancel.kwCancelFinal();window.confirm=confirm0;
  assert.equal(cancel.kwReview.final,null);assert.equal(cancel.kwReview.expected_revision,3);assert.equal(cancel.kwReview.note,oldNote);
  assert.match(cancel.kwError,/최종 확정은 취소했지만/);assert.equal(cancel.kwMessage,'');assert.equal(cancel.kwReviewDirty(),false);
- console.log('Keyword workspace client: persistence, validation, navigation and final cancellation passed');
+ const done=window.PRISM_APP_PARTS[0]();done.kwRunId='r';done.kwCatalog={can_final:true,gold:[]};
+ done.kwRunData={id:'r',revision:0,items:[it[0]],slots:[sl[0]],cells:{'i1:A':cell('i1:A','done',[])}};
+ done.kwOpenReview(it[0],sl[0]);done.kwReview.judgments[0].verdict='accept';let completeCalls=0,requestId;
+ done.kwRequest=async(query,data)=>{
+   completeCalls++;assert.equal(data.action,'complete_review');
+   if(completeCalls===1){requestId=data.request_id;throw Error('응답 유실');}
+   assert.equal(data.request_id,requestId);
+   const final={id:'final-done',partition:data.partition};
+   return {ok:true,revision:1,cell:{id:data.cell_id,review_revision:1,final,reviews:[{...data,id:final.id}]},
+     gold:{id:'gold-done',item_key:'i1',run_id:'r',cell_id:'i1:A',review_id:final.id,partition:data.partition,keywords:[{text:'한국은행 금리'}]}};
+ };
+ await done.kwCompleteReview();assert.equal(completeCalls,0);assert.match(done.kwError,/용도/);
+ done.kwReview.partition='evaluation';const pending=done.kwReviewSnapshot();
+ await done.kwCompleteReview();assert.equal(completeCalls,1);assert.equal(done.kwReviewSnapshot(),pending);assert.equal(done.kwReviewDirty(),true);
+ await done.kwCompleteReview();assert.equal(completeCalls,2);assert.equal(done.kwCompletionDone(),true);assert.equal(done.kwReviewDirty(),false);
+ assert.equal(done.kwReview.cell_id,'i1:A');assert.match(done.kwMessage,/평가용/);assert.equal(done.kwCatalog.gold[0].id,'gold-done');
+ await done.kwCompleteReview();assert.equal(completeCalls,2);assert.equal(done.kwReview.expected_revision,1);
+ done.kwReview.note='수정';assert.equal(done.kwCompletionDone(),false);
+ assert.equal(markup.includes('kwSaveGold()'),false);assert.equal(markup.includes('kwSaveReview(true)'),false);
+ assert.match(markup,/검수 완료·정답셋 저장/);assert.match(markup,/name="kw-gold-partition" value="evaluation"/);
+ assert.match(markup,/<fieldset class="detailview__eval" x-bind:disabled="kwBusy"/);
+ console.log('Keyword workspace client: persistence, completion retries, validation, navigation and final cancellation passed');
 }
 main().catch(e=>{console.error(e);process.exitCode=1});

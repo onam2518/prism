@@ -1025,8 +1025,10 @@ class Store:
         except Exception:
             return None
 
-    def compare_report(self, kind, expected, payload, team=None, guard=None):
+    def compare_report(self, kind, expected, payload, team=None, guard=None, guard_payload=None):
         """읽은 스냅샷이 그대로일 때만 교체한다. 최초 생성도 동일 잠금으로 보호."""
+        if guard_payload is not None and (not guard or guard[0] == kind):
+            raise ValueError("서로 다른 두 기록이 필요합니다")
         c = self._conn()
         try:
             c.execute("BEGIN IMMEDIATE")
@@ -1037,6 +1039,10 @@ class Store:
             c.execute("INSERT INTO reports(kind,team,payload,ts) VALUES(?,?,?,?) "
                       "ON CONFLICT(kind,team) DO UPDATE SET payload=excluded.payload, ts=excluded.ts",
                       (kind, team or "", json.dumps(payload, ensure_ascii=False), time.time()))
+            if guard_payload is not None:
+                c.execute("INSERT INTO reports(kind,team,payload,ts) VALUES(?,?,?,?) "
+                          "ON CONFLICT(kind,team) DO UPDATE SET payload=excluded.payload, ts=excluded.ts",
+                          (guard[0], team or "", json.dumps(guard_payload, ensure_ascii=False), time.time()))
             c.commit()
             return True
         except Exception:
