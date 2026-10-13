@@ -1915,11 +1915,16 @@ class SupabaseStore:
         rows = self._get("reports", f"select=payload&kind=eq.{urllib.parse.quote(kind)}&team_key=eq.{tq}")
         return rows[0]["payload"] if rows else None
 
-    def compare_report(self, kind, expected, payload, team=None, guard=None):
-        return self._req("POST", "rpc/prism_compare_report", body={
+    def compare_report(self, kind, expected, payload, team=None, guard=None, guard_payload=None):
+        if guard_payload is not None and (not guard or guard[0] == kind):
+            raise ValueError("서로 다른 두 기록이 필요합니다")
+        body = {
             "p_kind": kind, "p_team_key": team or "", "p_expected": expected,
             "p_payload": payload, "p_guard_kind": guard[0] if guard else None,
-            "p_guard_expected": guard[1] if guard else None}) is True
+            "p_guard_expected": guard[1] if guard else None}
+        if guard_payload is not None:
+            body["p_guard_payload"] = guard_payload
+        return self._req("POST", "rpc/prism_compare_report" + ("_pair" if guard_payload is not None else ""), body=body) is True
 
     # ── 조회 스테이징(metaquery) · SQLite Store 와 동일 계약 · 표 prism_mq_stage ──
     @staticmethod
