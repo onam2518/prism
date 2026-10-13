@@ -423,7 +423,12 @@ def _canon(names: list) -> dict:
 def _call(llm, system: str, user: str, tag: str):
     obj, res = llm.complete_json(system, user, tag=tag)
     if isinstance(obj, dict) and obj.get("_fail"):
-        raise ValueError("모델 호출 실패 · " + str(obj.get("_fail_kind") or ""))
+        kind = str(obj.get("_fail_kind") or "unknown")
+        hint = {"quota": "연결된 모델 제공자의 프로젝트 지출 한도를 초과했습니다. 한도를 확인한 뒤 다시 실행하세요.",
+                "billing": "연결된 모델 제공자의 크레딧이 부족합니다. 잔액을 확인한 뒤 다시 실행하세요.",
+                "auth": "연결된 모델 제공자의 인증에 실패했습니다. API 키를 확인하세요.",
+                "timeout": "모델 응답 시간이 초과되었습니다. 잠시 후 다시 실행하세요."}.get(kind, "")
+        raise ValueError("모델 호출 실패 · " + (hint + " (" + kind + ")" if hint else kind))
     return obj, {"in": getattr(res, "in_tok", 0), "out": getattr(res, "out_tok", 0),
                   "cost_usd": getattr(res, "cost_usd", None)}
 

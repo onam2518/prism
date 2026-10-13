@@ -15,7 +15,7 @@ async function main(){
  a._afetch=async()=>({json:async()=>({ok:false,error:'저장 충돌'})});await a.kwSaveReview();assert.match(a.kwError,/저장 충돌/);assert.equal(a.kwMessage,'');assert.equal(a.kwBusy,false);
 
  const b=window.PRISM_APP_PARTS[0]();
- assert.deepEqual(Array.from(b.kwTabs,t=>t[0]),['run','prompts']);
+ assert.deepEqual(Array.from(b.kwTabs,t=>t[0]),['run','prompts','improve']);
  b.kwCatalog={can_manage:true,runs:[{id:'one',n:1},{id:'many',n:3}],versions:[],default_rules:'기본 규칙'};
  b.kwChooseMode('compare');assert.equal(b.kwCount,2);
  b.kwCount=3;b.kwSlots=[{model:'m1',version_id:'v1'},{model:'m2',version_id:'v2'},{model:'m3',version_id:'v3'}];
@@ -152,5 +152,27 @@ async function main(){
  assert.match(markup,/검수 완료·정답셋 저장/);assert.match(markup,/name="kw-gold-partition" value="evaluation"/);
  assert.match(markup,/<fieldset class="detailview__eval" x-bind:disabled="kwBusy"/);
  console.log('Keyword workspace client: persistence, completion retries, validation, navigation and final cancellation passed');
+ // 개선 실행 조건과 요청 중 상태, 실패 후 재시도, 결과 가져오기를 검증한다.
+ const improve=window.PRISM_APP_PARTS[0]();improve.kwTab='improve';
+ improve.kwCatalog={can_manage:true,versions:[{id:'base',target:'keyword'}],gold:Array.from({length:21},(_,i)=>({item_key:'dev'+i,partition:'development'}))};
+ improve.kwLoopVersion='base';improve.kwCompiler='timely|claude-fable-5';
+ assert.match(improve.kwImproveIssue(),/1~20/);
+ improve.kwTraining=['dev0'];assert.equal(improve.kwImproveIssue(),'');assert.match(improve.kwImproveIssue(true),/평가용/);
+ improve.kwTraining=improve.kwCatalog.gold.map(g=>g.item_key);assert.match(improve.kwImproveIssue(),/1~20/);
+ improve.kwTraining=['stale'];assert.match(improve.kwImproveIssue(),/변경/);improve.kwTraining=['dev0'];
+ improve.kwCatalog.gold.push({item_key:'eval',partition:'evaluation'});improve.kwEvaluation=['eval'];
+ improve.kwTuneRounds=0;assert.match(improve.kwImproveIssue(true),/1~10/);improve.kwTuneRounds=3;
+ assert.equal(improve.kwImproveIssue(true),'');improve.kwCatalog.tuning={status:'running'};assert.match(improve.kwImproveIssue(),/실행 중/);improve.kwCatalog.tuning=null;
+ const proposal={id:'p',target:'keyword',parent_id:'base',model:'solar-pro4',rules:'완성 규칙',changes:[{reason:'누락',change:'주제 포함'}]};
+ let finish,focus;improve.kwFocus=id=>{focus=id};improve.kwRequest=async(q,data)=>{sent=data;return new Promise(resolve=>{finish=resolve})};
+ const compilePending=improve.kwCompile();assert.equal(improve.kwBusy,true);assert.equal(improve.kwImproving,'manual');assert.equal(sent.compiler_model,'timely|claude-fable-5');
+ await improve.kwCompile();finish({ok:true,proposal});await compilePending;
+ assert.equal(improve.kwBusy,false);assert.equal(improve.kwImproving,'');assert.equal(improve.kwProposal,proposal);assert.equal(focus,'kw-proposal-result');
+ improve.kwRequest=async()=>{throw new Error('모델 호출 실패 · timeout')};await improve.kwCompile();
+ assert.match(improve.kwError,/timeout/);assert.equal(improve.kwProposal,proposal);assert.equal(improve.kwTraining[0],'dev0');assert.equal(focus,'kw-improve-status');assert.equal(improve.kwBusy,false);
+ improve.kwUseProposal();assert.equal(improve.kwTab,'prompts');assert.equal(focus,'kw-version-draft');assert.equal(improve.kwDraft.rules,proposal.rules);assert.equal(improve.kwDraft.proposal_id,'p');
+ improve.kwTab='improve';improve.kwLoad=async()=>{};
+ improve.kwRequest=async()=>({ok:true,tuning:{status:'running'}});await improve.kwStartTuning();assert.equal(improve.kwCatalog.tuning.status,'running');assert.equal(improve.kwImproving,'');assert.match(improve.kwMessage,/시작했습니다/);
+
 }
 main().catch(e=>{console.error(e);process.exitCode=1});
