@@ -851,6 +851,25 @@ def save_version(body, team):
     return {'ok': True}
 
 
+def delete_gold(body, team, actor):
+    """정답 삭제 · 지운 정답은 gold_deleted 에 남긴다(되살릴 근거) · 실행 중 오토파일럿이 쓰는 정답은 막는다.
+    실험의 검수·최종 확정 기록은 그대로 두므로 같은 결과를 다시 확정하면 정답으로 돌아온다."""
+    keys = body.get('item_keys')
+    if not isinstance(keys, list) or not 1 <= len(keys) <= 50 or not all(isinstance(k, str) for k in keys) or len(set(keys)) != len(keys):
+        raise ValueError('삭제할 정답을 1~50개 선택하세요')
+    from . import keywordtune
+    tuning = keywordtune.status(team)
+    if tuning and tuning['status'] == 'running' and set(keys) & set(tuning['gold_keys'] + tuning['evaluation_keys']):
+        raise ValueError('실행 중인 오토파일럿이 쓰는 정답은 삭제할 수 없습니다')
+    def change(c):
+        if any(k not in c['gold'] for k in keys):
+            raise ValueError('이미 삭제되었거나 없는 정답이 있습니다 · 다시 불러오세요')
+        for k in keys:
+            c.setdefault('gold_deleted', []).append(dict(c['gold'].pop(k), deleted_by=actor, deleted_at=time.time()))
+    _update(CATALOG, team, change, _catalog(team))
+    return {'ok': True, 'deleted': len(keys)}
+
+
 def delete_version(body, team):
     """저장한 버전 삭제 · 실험 기록은 실행 시 복사한 사본을 쓰므로 그대로 남는다."""
     ident = body.get('version_id')
@@ -905,7 +924,7 @@ def action(body, team=None, actor='', can_manage=False, can_final=False):
         return {'ok': False, 'error': '요청 형식을 확인하세요'}
     try:
         op = body.get('action')
-        if op in ('version', 'delete', 'delete_run', 'start', 'compile', 'save_version', 'reveal', 'tune_start', 'tune_stop') and not can_manage:
+        if op in ('version', 'delete', 'delete_run', 'start', 'compile', 'save_version', 'delete_gold', 'reveal', 'tune_start', 'tune_stop') and not can_manage:
             raise ValueError('실험 관리 권한이 필요합니다')
         if op in ('tune_start', 'tune_stop'):
             from . import keywordtune
@@ -921,6 +940,7 @@ def action(body, team=None, actor='', can_manage=False, can_final=False):
         if op == 'reveal': return reveal(body, team)
         if op == 'compile': return compile_proposal(body, team, actor)
         if op == 'save_version': return save_version(body, team)
+        if op == 'delete_gold': return delete_gold(body, team, actor)
         raise ValueError('지원하지 않는 작업입니다')
     except (ValueError, TypeError, KeyError) as exc:
         return {'ok': False, 'error': str(exc)}

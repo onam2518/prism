@@ -547,6 +547,27 @@ window.PRISM_APP_PARTS.push(() => ({
     finally{this.kwBusy=false;this.kwImproving='';}
     if(this.kwTab==='improve')this.kwFocus(this.kwError ? 'kw-improve-status' : 'kw-proposal-result');
   },
+  // 정답 목록 선택 삭제 · 선택은 개선·평가 선택과 같은 체크박스를 쓴다
+  async kwDeleteGold(partition) {
+    const field=partition==='development' ? 'kwTraining' : 'kwEvaluation', keys=[...this[field]];
+    if(this.kwBusy || !keys.length || !window.confirm('선택한 정답 '+keys.length+'개를 삭제합니다.\n실험의 검수 기록은 남으며, 같은 결과를 다시 확정하면 정답으로 돌아옵니다.')) return;
+    this.kwBusy=true;this.kwError='';
+    try {await this.kwRequest('',{action:'delete_gold',item_keys:keys});this[field]=[];await this.kwLoad();this.kwMessage='정답 '+keys.length+'개 삭제 완료';}
+    catch(e){this.kwError=e.message;}finally{this.kwBusy=false;}
+  },
+  // 정답 목록 CSV · 선택한 정답이 있으면 그것만, 없으면 해당 용도 전체
+  kwDownloadGold(partition) {
+    const all=partition==='development' ? this.kwDevelopmentGold() : this.kwEvaluationGold();
+    const picked=partition==='development' ? this.kwTraining : this.kwEvaluation;
+    const rows=picked.length ? all.filter(g=>picked.includes(g.item_key)) : all;
+    const esc=v=>{let t=String(v==null ? '' : v);if(/^[=+\-@\t\r]/.test(t))t="'"+t;return '"'+t.replace(/"/g,'""')+'"';};   // 수식 주입 차단
+    const out=[['콘텐츠','카테고리','확정 '+this.kwTargetLabel(),'용도','확정자','확정 일시','콘텐츠 해시']];
+    for(const g of rows) out.push([g.title,this.kwMetaList(g.meta?.content_category).map(c=>this.catKo(c)).join(' · '),this.kwAnswers(g).map(k=>k.text).join(' · '),
+      partition==='development' ? '개선용' : '평가용',g.by,g.at ? this.kwDate(g.at) : '',g.content_hash]);
+    const day=new Date(Date.now()+9*3600e3).toISOString().slice(0,10).replace(/-/g,'');   // KST
+    const u=URL.createObjectURL(new Blob(['\ufeff'+out.map(r=>r.map(esc).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'})), a=document.createElement('a');
+    a.href=u;a.download=this.kwTarget+'_gold_'+day+'_'+(partition==='development' ? '개선용' : '평가용')+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(u),60000);
+  },
   kwShowVersion(v) {
     this.kwVersion=(this.kwCatalog?.versions || []).find(x=>x.id===v?.id) || v || null;
     this.kwChangeTab('prompts');
