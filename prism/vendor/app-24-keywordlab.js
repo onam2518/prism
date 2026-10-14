@@ -89,10 +89,10 @@ window.PRISM_APP_PARTS.push(() => ({
     if(new Set(slots.map(s=>s.version_id)).size!==slots.length) return '서로 다른 모델·프롬프트 조합을 선택하세요';
     if(this.kwSource==='direct' && (!this.kwLead.trim() || (this.kwTarget==='keyword' && !this.kwSplit(this.kwEntities).length))) return this.kwTarget==='sentence' ? '리드문을 입력하세요' : '리드문과 엔티티를 입력하세요';
     if(this.kwSource==='excel' && !this.kwExcel?.rows?.length) return '엑셀 파일을 올려 반영할 콘텐츠를 확인하세요';
-    if(this.kwSource==='sample' && (!Number.isInteger(this.kwSample) || this.kwSample<1 || this.kwSample>30)) return '샘플 수는 1~30건으로 입력하세요';
+    if(this.kwSource==='sample' && (!Number.isInteger(this.kwSample) || this.kwSample<1 || this.kwSample>100)) return '샘플 수는 1~100건으로 입력하세요';
     if(this.kwSource==='hash') {
       const hashes=this.kwHashes.split(/[\s,]+/).filter(Boolean);
-      if(!hashes.length || hashes.length>30 || new Set(hashes).size!==hashes.length) return '중복 없이 콘텐츠 해시를 1~30개 입력하세요';
+      if(!hashes.length || hashes.length>100 || new Set(hashes).size!==hashes.length) return '중복 없이 콘텐츠 해시를 1~100개 입력하세요';
     }
     if(this.kwSource==='reuse' && !this.kwReusableRuns().some(r=>r.id===this.kwReuse)) return '입력을 재사용할 실험을 선택하세요';
     if(this.kwTarget==='sentence') {
@@ -141,7 +141,7 @@ window.PRISM_APP_PARTS.push(() => ({
       if(this.kwRunId!==id) return false;
       if(this.kwRunData?.id===id && r.run.revision<this.kwRunData.revision) return true;
       this.kwRunData=r.run;
-      if(r.run.status==='running') this._kwTimer=setTimeout(()=>this.kwOpenRun(id),1800);
+      if(r.run.status==='running') this._kwTimer=setTimeout(()=>this.kwOpenRun(id),r.run.items.length>30 ? 5000 : 1800);   // 큰 실험은 기록이 커서 덜 자주
       return true;
     } catch(e) {this.kwError=e.message;return false;}
   },
