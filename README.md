@@ -147,7 +147,7 @@ prism/serve.py (stdlib http.server)
 | `PRISM_DB` | SQLite 경로 (기본 `prism.db` · Docker는 `/data/prism.db`) |
 | `UPSTAGE_API_KEY` | Upstage Solar 직접 연결 키 |
 | `PRISM_BASE_URL` / `PRISM_API_KEY` | 임의 OpenAI 호환 엔드포인트·키 |
-| `PRISM_MODEL` | 기본 실행 모델 |
+| `PRISM_MODEL` | 기본 실행 모델(설정 파일에 모델이 없을 때만 · 화면에서 저장한 사용 모델이 우선) |
 | `PRISM_CONCURRENCY` / `PRISM_RPM` / `PRISM_TPM` | 동시성·분당 요청·분당 토큰 제한 |
 | `PRISM_PROMPT_CACHE` | 프롬프트 캐싱 옵트인(`1`=요청에 `prompt_cache_key` 전송 · 기본 꺼짐 · `0` 으로 끔) |
 | `PRISM_PRICE_CACHE_READ` | 캐시 읽기 단가(USD/1M) · 미설정이면 캐시 토큰도 정가로 계산 |

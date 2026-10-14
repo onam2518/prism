@@ -471,7 +471,8 @@ class TestSettingsScreen(unittest.TestCase):
         self.assertTrue(fn)
         self.assertIn("stageModels", fn)
         self.assertIn("judge", fn)
-        self.assertIn("textModel", fn)
+        self.assertIn("runModel", fn)                     # 실행 모델 규칙은 runModel 한 곳
+        self.assertIn("textModel", _fn(self.js, "runModel"))
 
     def test_list_comes_from_the_server(self):
         """선택지를 화면에서 따로 만들면 서버가 인정하지 않는 모델을 고를 수 있게 된다."""

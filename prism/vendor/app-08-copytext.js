@@ -141,19 +141,27 @@ window.PRISM_APP_PARTS.push(() => ({
       async saveTextSlot() {
         this.slotMsg = '저장 중…';
         const payload = { text_provider: this.textProvider };
+        const m0 = this.isRouter(this.textProvider) ? this.textModel : this.cfgModel;
         if (this.isRouter(this.textProvider)) payload.text_model = this.textModel;
         else if (this.cfgModel) payload.model = this.cfgModel;
         try { const r = await this._afetch('/config', { method: 'POST', headers: this._authHeaders(),
-            body: JSON.stringify(payload) }); this.cfg = await r.json(); this.slotMsg = '✓ 적용됨'; }
+            body: JSON.stringify(payload) }); this.cfg = await r.json();
+          // 화면 값은 서버가 실제로 쓰는 값으로 되돌린다(고른 값과 실행 값이 갈라져 보이지 않게)
+          this.textProvider = this.cfg.textProvider || this.textProvider;
+          this.textModel = this.cfg.textModel || ''; this.cfgModel = this.cfg.model || '';
+          this.slotMsg = this.runModel === m0 ? '✓ 적용됨' : ('적용 안 됨 · 현재 실행 모델 ' + (this.runModel || '없음')); }
         catch (e) { this.slotMsg = '오류: ' + e; }
       },
       // 지금 품질 판정에 쓰이는 모델. 단계 모델(judge)을 따로 지정했으면 그것이고,
       // 아니면 실행 모델이다(라우터 슬롯이면 그쪽 모델 id).
-      get judgeModel() {
+      // 모델을 지정하지 않은 실행이 실제로 쓰는 모델(서버 make_text_llm 과 같은 규칙)
+      get runModel() {
         const c = this.cfg || {};
-        const sm = c.stageModels || {};
-        const run = this.isRouter(c.textProvider) ? (c.textModel || c.model || '') : (c.model || '');
-        return String((sm.judge || '') || run || '').trim();
+        return String(this.isRouter(c.textProvider) ? (c.textModel || c.model || '') : (c.model || '')).trim();
+      },
+      get judgeModel() {
+        const sm = (this.cfg || {}).stageModels || {};
+        return String((sm.judge || '') || this.runModel || '').trim();
       },
       // 검수 보조가 판정 모델과 같아졌나. 알려만 주고 막지 않는다(판단은 사람이 한다).
       get assistSameAsJudge() {

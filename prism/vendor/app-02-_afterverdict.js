@@ -101,7 +101,7 @@ window.PRISM_APP_PARTS.push(() => ({
       get questActive() { const d = this.arenaData; return !!(d && d.next_batch_at && d.next_batch_at * 1000 > Date.now()); },
       async runBulk() {
         if (this.bulkScope === 'all' && this.questActive) { this.bulkMsg = '퀘스트 진행 중 · 전체 재실행은 반영 후 가능합니다'; return; }
-        const mname = this.textModel || this.cfg.model || '기본 모델';
+        const mname = this.runModel || '기본 모델';
         if (!(await this.dsConfirm((this.bulkScope === 'pending' ? ('미실행 콘텐츠 ' + this.pendingCount + '건을 ') : '모든 콘텐츠를 ') + mname + ' 로 실행합니다(건당 비용 발생 · 기존 초안은 이력 보존) · 진행할까요?', { ok: '실행' }))) return;
         this.bulkBusy = true; this.bulkMsg = '';
         try {
