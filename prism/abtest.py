@@ -12,6 +12,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 
 from . import harness as H
+from . import meta_contract as MC
 from . import metaeval as ME
 
 
@@ -94,7 +95,8 @@ def intent_got(out) -> list:
         v = [v]
     elif not isinstance(v, (list, tuple)):
         v = []
-    return list(dict.fromkeys(s for s in (str(x).strip() for x in v if x is not None) if s))
+    return list(dict.fromkeys(s for s in (str(x).strip() for x in v if x is not None)
+                              if s and s != MC.FAIL_CATEGORY))    # 호출 실패 대체값은 예측이 아니다
 
 
 def intent_tally(acc: dict, exp: dict, out) -> None:

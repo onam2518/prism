@@ -1379,9 +1379,9 @@ def content_categories(team=None) -> dict:
         for r in _SV.results_rows(team=team, body=False) or []:   # 서비스명·분류만(본문 불필요)
             ch = _row_key(r.get("content_ref") or {})
             cats = dict.fromkeys(c.split("/")[0].strip()
-                                 for c in MC.category_paths((r.get("item_meta") or {}).get("content_category")))
+                                 for c in MC.real_categories((r.get("item_meta") or {}).get("content_category")))
             if ch:
-                out[ch] = [c for c in cats if c and c != "Unclassified"]
+                out[ch] = [c for c in cats if c]
         return out
     return _SV._agg_cached(("crewcats", team), _calc, ttl=60.0)
 

@@ -211,7 +211,7 @@ def final_review_queue(team=None, reviewer: str = "", offset=0, limit=200, reaso
         bw = sum(weights.get(v.get("reviewer_id") or v.get("reviewer"), 1.0)
                  for v in fb.get("verdicts", []) if v.get("verdict") == "bad")
         im = r.get("item_meta") or {}
-        cats = [c for c in (MC.category_paths(im.get("content_category")) or []) if c and c != "Unclassified"]
+        cats = MC.real_categories(im.get("content_category"))
         agreed = fb.get("good", 0) >= min_good and gw > bw
         # 승격 게이트(build_golden_from_reviews)와 동일 판정: 등급(G/R)과 분류가 모두 있어야
         # '다음 학습 반영 때 승격'이 성립한다. 등급 공백(judge 실패·보류)을 승격 예정으로
@@ -807,6 +807,8 @@ def patch_content_meta(content_hash, patch, team=None, reviewer="") -> dict:
     for key in ("intent", "content_category"):
         if key in patch and not isinstance(patch[key], list):
             return {"ok": False, "error": "인텐트·카테고리는 목록이어야 합니다"}
+        if key in patch:
+            patch[key] = MC.drop_fail(patch[key])          # 실패 대체값은 확정값이 될 수 없다
     grade = patch.pop("finalGrade", None)
     reasons = patch.pop("reasons", None)
     if "entities" in patch:                        # 엔티티 교정: 문자열 목록으로 정규화(공백·빈 값·None 제거 · 중복 제거 · 순서 보존)

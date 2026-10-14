@@ -495,7 +495,7 @@ def build_golden_from_reviews(team=None) -> dict:
                               "service": content.get("displayServiceName", ""), "reason": "grade"})
             continue
         grade = qm.get("finalGrade", "")
-        cats = [c for c in (im.get("content_category") or []) if c and c != "Unclassified"]
+        cats = MC.real_categories(im.get("content_category"))
         # R 은 하네스가 아이템 메타를 폐기(harness._assemble)해 분류가 영구 공백이다 → 분류 요건 면제.
         # 요구하면 기대 R 행이 한 건도 골든에 못 들어가 유해 미탐률 분모가 늘 0(측정 불가)이 된다.
         if not cats and grade != "R":                 # 카테고리 공백 → 골든 미확정(채워야 함)
@@ -593,8 +593,7 @@ def promotion_pending(team=None) -> dict:
         agreed = fv == "good" or (fb.get("good", 0) >= min_good and gw > bw)
         grade = (r.get("quality_meta") or {}).get("finalGrade", "")
         grade_ok = grade in ("G", "R")
-        cats = [c for c in ((r.get("item_meta") or {}).get("content_category") or [])
-                if c and c != "Unclassified"]
+        cats = MC.real_categories((r.get("item_meta") or {}).get("content_category"))
         if agreed and grade_ok and (cats or grade == "R"):   # R 은 분류 요건 면제(승격 게이트와 동일)
             out["promote"] += 1
         elif agreed and not grade_ok:
