@@ -234,6 +234,7 @@
         <template x-if="polTab==='category'">
           <div style="display:flex;flex-direction:column;gap:10px">
             <div class="text-xs text-muted">공식 표기는 영문(IAB Content Taxonomy 기반) · 한글은 표시용 병기 · 예시는 초안(팀 확정 대상)</div>
+            <div class="text-xs text-muted"><b>ETC_OUT</b> · 사전 값이 아닙니다 · 모델 호출이 실패하면 빈 값 대신 붙는 대체값으로, 검수 때 올바른 카테고리로 고쳐 주세요</div>
             <template x-for="g in polCatGroups()" x-bind:key="'pg'+g.t1">
               <div class="polsec">
                 <div class="polsec__hd" x-bind:data-pol="g.t1" x-bind:class="polHl===g.t1 ? 'is-hl' : ''"><b style="cursor:pointer" x-on:click="polShowMatch('category', g.t1, catBoth(g.t1))" data-tip="이 대분류로 분류된 콘텐츠 보기" data-tip-pos="top" x-text="catBoth(g.t1)"></b></div>
@@ -257,6 +258,7 @@
         <template x-if="polTab==='intent'">
           <div style="display:flex;flex-direction:column;gap:10px">
             <div class="text-xs text-muted">2026-09-22 부터 68개 값 전부를 출처와 무관하게 부여합니다 · 묶음(①·②·③)은 읽기 편의용 표시입니다</div>
+            <div class="text-xs text-muted"><b>ETC_OUT</b> · 사전 값이 아닙니다 · 모델 호출이 실패하면 빈 값 대신 붙는 대체값으로, 검수 때 올바른 인텐트로 고쳐 주세요</div>
             <template x-for="g in polIntentGroups()" x-bind:key="'pig'+g.label">
               <div class="polsec">
                 <div class="polsec__hd"><b x-text="g.label"></b> <span class="text-xs text-muted" x-text="g.note"></span></div>

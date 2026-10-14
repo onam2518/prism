@@ -186,7 +186,7 @@ window.PRISM_APP_PARTS.push(() => ({
         if (parts.length === 1) return t1k[parts[0]] || t2k[parts[0]] || parts[0];
         return (t1k[parts[0]] || parts[0]) + ' / ' + (t2k[parts[1]] || parts[1]);
       },
-      catBoth(v) { const k = this.catKo(v); return (k && k !== v) ? (k + ' (' + v + ')') : v; },   // 병기(한글/영문순)
+      catBoth(v) { if (v === 'ETC_OUT') return '호출 실패 (ETC_OUT)'; const k = this.catKo(v); return (k && k !== v) ? (k + ' (' + v + ')') : v; },   // 병기(한글/영문순)
       // 품질 사유 병기(한글/영문순 · UI·도움말 공용): 값·저장은 영문 키 유지, 렌더만 변환
       reasonBoth(v) {
         if (!v) return v;
@@ -198,6 +198,7 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       termDef(kind, val) {
         val = String(val == null ? '' : val).replace(/\s*\(\d+\)\s*$/, '');   // '값 (건수)' 형태 정규화
+        if (val === 'ETC_OUT' || val === '호출 실패 (ETC_OUT)') return 'ETC_OUT · 사전 값이 아닙니다 · 모델 호출이 실패해 시스템이 붙인 대체값 · 올바른 값으로 고쳐 저장하면 바뀝니다(그대로 저장해도 확정되지 않음)';   // 호출 실패 대체값(2026-10-14 · meta_contract.FAIL_CATEGORY)
         if (kind === 'intent') return this.INTENT_DEF[val] || ('인텐트 · ' + val);
         if (kind === 'reason') {
           const d = this.dictData;
