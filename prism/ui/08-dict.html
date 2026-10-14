@@ -139,11 +139,11 @@
                 <li>호출 뒤 <b>기계 검증</b>: 사전 불일치 값 드롭 · 전량 드롭 시 1회 재요청 · 엔티티는 개수 상한 없이 대표성 순(복합 명사는 원형 유지)</li>
                 <li>모델 입력은 <b>제목·본문</b>만입니다(서비스명은 수집·저장에만 유지)<ul><li>발행 키(item_unique_key·service_code·cp_type)는 모델에 보내지 않고 발행·라우팅 정보로 함께 저장합니다</li></ul></li>
               </ul>
-              <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+              <div class="ds-segmented" role="group" aria-label="계약 원문 호출" style="flex-wrap:wrap;margin-bottom:8px">
                 <template x-for="cl in (cfg.metaCalls||[])" x-bind:key="'ct'+cl">
-                  <button type="button" class="srcfilter__chip" x-bind:class="contractCall===cl ? 'sel' : ''" x-on:click="contractCall=cl" x-text="callLabel(cl)"></button>
+                  <button type="button" class="ds-segmented__item" x-bind:aria-pressed="contractCall===cl ? 'true' : 'false'" x-on:click="contractCall=cl" x-text="callLabel(cl)"></button>
                 </template>
-                <button type="button" class="srcfilter__chip" x-bind:class="contractCall==='examples' ? 'sel' : ''" x-on:click="contractCall='examples'">골드 예시</button>
+                <button type="button" class="ds-segmented__item" x-bind:aria-pressed="contractCall==='examples' ? 'true' : 'false'" x-on:click="contractCall='examples'">골드 예시</button>
               </div>
               <div class="codeblock"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>계약 원문 · 읽기 전용<span class="codeblock__stage" x-text="contractCall==='examples' ? '골드 예시' : callLabel(contractCall)"></span></div><textarea readonly spellcheck="false" x-bind:value="contractText"></textarea></div>
             </div></section>
@@ -153,9 +153,9 @@
                 <li>계열별 쿡북 관례(GPT 출력 계약 · Gemini 스키마 재명시 · Claude 배경 제공 · Solar CRITICAL+자가 검증)를 이 래퍼가 담당합니다</li>
                 <li>플레이스홀더 <b>{ROLE} {SCHEMA} {RULES} {EXAMPLES} {SELF_CHECK} {LEARNED}</b> 위치에 계약 요소가 삽입됩니다<ul><li>비우고 저장하면 기본 래퍼로 복원됩니다</li></ul></li>
               </ul>
-              <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+              <div class="ds-segmented" role="group" aria-label="쿡북 래퍼 계열" style="flex-wrap:wrap;margin-bottom:8px">
                 <template x-for="f in ['gpt','gemini','claude','solar']" x-bind:key="'fw'+f">
-                  <button type="button" class="srcfilter__chip" x-bind:class="wrapFam===f ? 'sel' : ''" x-on:click="wrapFam=f; syncWrapDraft()" x-text="f"></button>
+                  <button type="button" class="ds-segmented__item" x-bind:aria-pressed="wrapFam===f ? 'true' : 'false'" x-on:click="wrapFam=f; syncWrapDraft()" x-text="f"></button>
                 </template>
               </div>
               <div class="codeblock"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>계열 래퍼 템플릿<span class="codeblock__stage" x-text="wrapFam + ((cfg.familyWrappers||{})[wrapFam] ? ' · 수정됨' : ' · 기본')"></span></div><textarea x-model="wrapDraft" spellcheck="false" placeholder="이 계열의 래퍼 템플릿을 수정하세요"></textarea></div>
@@ -188,7 +188,7 @@
             </div></section>
           <section class="panel"><div class="panel-hd"><b>추론 강도</b><span class="meta">전 단계 공통 · 선택 시 즉시 저장</span></div>
             <div class="panel-bd">
-              <div class="ds-segmented" style="max-width:300px">
+              <div class="ds-segmented" role="group" aria-label="추론 강도" style="max-width:300px">
                 <template x-for="o in reasoningOpts" x-bind:key="o.id"><button type="button" class="ds-segmented__item" x-bind:aria-pressed="reasoning === o.id ? 'true' : 'false'" x-on:click="setReasoning(o.id)" x-text="o.label"></button></template>
               </div>
             </div></section>

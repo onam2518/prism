@@ -8,10 +8,10 @@
         <div class="w-full">
         <section class="panel"><div class="panel-hd"><b>실행 큐 · 이력</b><span class="meta" x-text="(runningCount ? (runningCount + ' 실행중') : '대기 없음')"></span>
           <!-- 자동/수동 구분 필터 -->
-          <span class="ml-auto" style="display:flex;gap:6px">
-            <button type="button" class="srcfilter__chip" x-bind:class="queueTrig==='' ? 'sel' : ''" x-on:click="queueTrig=''">전체</button>
-            <button type="button" class="srcfilter__chip" x-bind:class="queueTrig==='auto' ? 'sel' : ''" x-on:click="queueTrig='auto'">자동</button>
-            <button type="button" class="srcfilter__chip" x-bind:class="queueTrig==='manual' ? 'sel' : ''" x-on:click="queueTrig='manual'">수동</button>
+          <span class="ml-auto ds-segmented" role="group" aria-label="실행 방식">
+            <button type="button" class="ds-segmented__item" x-bind:aria-pressed="queueTrig==='' ? 'true' : 'false'" x-on:click="queueTrig=''">전체</button>
+            <button type="button" class="ds-segmented__item" x-bind:aria-pressed="queueTrig==='auto' ? 'true' : 'false'" x-on:click="queueTrig='auto'">자동</button>
+            <button type="button" class="ds-segmented__item" x-bind:aria-pressed="queueTrig==='manual' ? 'true' : 'false'" x-on:click="queueTrig='manual'">수동</button>
           </span>
         </div>
           <div class="panel-bd">

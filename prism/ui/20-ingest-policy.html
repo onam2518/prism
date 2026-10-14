@@ -182,13 +182,13 @@
           <button type="button" class="ds-badge" x-bind:class="{intent:'ds-badge--intent',category:'ds-badge--category',reason:'ds-badge--reason',grade:(x.v==='G'?'ds-badge--success':'ds-badge--error')}[x.kind]" style="cursor:pointer" x-bind:data-tip="termDef(x.kind, x.v) + ' · 눌러서 기준 보기'" data-tip-pos="top" x-on:click="polShow(x.kind, x.v)" x-text="polCtxLabel(x)"></button>
         </template>
       </div>
-      <span class="srcfilter" style="display:flex;gap:var(--ds-space-1)" x-show="!polMatch">
-        <button type="button" class="srcfilter__chip" x-bind:class="polTab==='intent'?'sel':''" x-on:click="polTab='intent'; polHl=''; polMatch=null; polSave()">인텐트</button>
-        <button type="button" class="srcfilter__chip" x-bind:class="polTab==='category'?'sel':''" x-on:click="polTab='category'; polHl=''; polMatch=null; polSave()">카테고리</button>
-        <button type="button" class="srcfilter__chip" x-bind:class="polTab==='quality'?'sel':''" x-on:click="polTab='quality'; polHl=''; polMatch=null; polSave()">품질 사유</button>
-        <button type="button" class="srcfilter__chip" x-bind:class="polTab==='grade'?'sel':''" x-on:click="polTab='grade'; polHl=''; polMatch=null; polSave()">등급</button>
-        <button type="button" class="srcfilter__chip" x-bind:class="polTab==='keyword-guide'?'sel':''" x-on:click="polTab='keyword-guide'; polHl=''; polMatch=null; polSave()">키워드 정답셋</button>
-      </span>
+      <div class="ds-segmented" role="group" aria-label="정책 종류" style="flex-wrap:wrap" x-show="!polMatch">
+        <button type="button" class="ds-segmented__item" x-bind:aria-pressed="polTab==='intent' ? 'true' : 'false'" x-on:click="polTab='intent'; polHl=''; polMatch=null; polSave()">인텐트</button>
+        <button type="button" class="ds-segmented__item" x-bind:aria-pressed="polTab==='category' ? 'true' : 'false'" x-on:click="polTab='category'; polHl=''; polMatch=null; polSave()">카테고리</button>
+        <button type="button" class="ds-segmented__item" x-bind:aria-pressed="polTab==='quality' ? 'true' : 'false'" x-on:click="polTab='quality'; polHl=''; polMatch=null; polSave()">품질 사유</button>
+        <button type="button" class="ds-segmented__item" x-bind:aria-pressed="polTab==='grade' ? 'true' : 'false'" x-on:click="polTab='grade'; polHl=''; polMatch=null; polSave()">등급</button>
+        <button type="button" class="ds-segmented__item" x-bind:aria-pressed="polTab==='keyword-guide' ? 'true' : 'false'" x-on:click="polTab='keyword-guide'; polHl=''; polMatch=null; polSave()">키워드 정답셋</button>
+      </div>
       <input type="text" class="field" placeholder="정책 검색 (값·기준 텍스트)" x-model="polQ" x-show="!polMatch && polTab!=='keyword-guide'">
       <!-- 값 클릭 → 매칭 콘텐츠 목록(정책 목록 대체 · 같은 스크롤 영역) · 콘텐츠 클릭 = 상세를 나란히 오픈 -->
       <div class="polmatch" x-show="polMatch" x-cloak>
@@ -353,16 +353,16 @@
         <div class="detailview__content">
           <!-- 원문 링크가 있으면 좌측 패널을 '추출 텍스트 ↔ 원문 페이지' 탭으로 전환(검수자 대조 편의) -->
           <div class="dvc__viewtabs" x-show="detail && detail.url" x-cloak>
-            <span class="srcfilter" style="display:inline-flex;gap:var(--ds-space-1)">
-              <button type="button" class="srcfilter__chip" x-bind:class="dvcView()==='text'?'sel':''" x-on:click="setDvcView('text')">추출 텍스트</button>
-              <button type="button" class="srcfilter__chip" x-bind:class="dvcView()==='web'?'sel':''" x-on:click="setDvcView('web')">원문 페이지</button>
-            </span>
+            <div class="ds-segmented" role="group" aria-label="보기 전환">
+              <button type="button" class="ds-segmented__item" x-bind:aria-pressed="dvcView()==='text' ? 'true' : 'false'" x-on:click="setDvcView('text')">추출 텍스트</button>
+              <button type="button" class="ds-segmented__item" x-bind:aria-pressed="dvcView()==='web' ? 'true' : 'false'" x-on:click="setDvcView('web')">원문 페이지</button>
+            </div>
             <!-- 배율 3단계: 작게(50)·보통(75)·크게(100) · 축소하면 한 화면에 더 담긴다 · 선택은 기억 -->
-            <span class="srcfilter" style="display:inline-flex;gap:var(--ds-space-1);margin-left:auto" x-show="dvcView()==='web'" x-cloak>
+            <div class="ds-segmented" role="group" aria-label="배율" style="margin-left:auto" x-show="dvcView()==='web'" x-cloak>
               <template x-for="o in [{z:50,t:'작게'},{z:75,t:'보통'},{z:100,t:'크게'}]" x-bind:key="'dz'+o.z">
-                <button type="button" class="srcfilter__chip" x-bind:class="dvcZoom===o.z?'sel':''" x-on:click="setDvcZoom(o.z)" x-bind:data-tip="o.z+'%'" data-tip-pos="top" x-text="o.t"></button>
+                <button type="button" class="ds-segmented__item" x-bind:aria-pressed="dvcZoom===o.z ? 'true' : 'false'" x-on:click="setDvcZoom(o.z)" x-bind:data-tip="o.z+'%'" data-tip-pos="top" x-text="o.t"></button>
               </template>
-            </span>
+            </div>
           </div>
           <div class="dvc__service" x-text="detail && (detail.service || '·')"></div>
           <h2 class="dvc__title" x-text="detail && (detail.title || '(제목 없음)')"></h2>
