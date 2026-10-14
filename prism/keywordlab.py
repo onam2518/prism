@@ -133,7 +133,7 @@ def _guide(model):
 
 
 def catalog(team=None):
-    from . import keywordtune
+    from . import keywordtune, sheetsync
     c = _catalog(team)
     cfg = ER.get_config(team)
     # 긴 프롬프트는 버전 선택 후 상세에서만 조회한다.
@@ -141,7 +141,7 @@ def catalog(team=None):
                                     for x in reversed(c['versions'])],
             'runs': list(reversed(c['runs'])), 'gold': list(_current_gold(team, c['gold']).values()),
             'default_rules': cfg['keyword']['rules'], 'rules_by_target': {t: cfg[t]['rules'] for t in ER.CALLS},
-            'reasons': REASONS, 'tuning': keywordtune.status(team)}
+            'reasons': REASONS, 'tuning': keywordtune.status(team), 'sheet': sheetsync.public_config(team)}
 
 
 def create_version(body, team, actor):
@@ -194,6 +194,16 @@ def _item(content, meta, hash_=''):
 
 
 def _items(body, team):
+    if isinstance(body.get('sheet'), dict):          # 화면 미리보기는 믿지 않고 서버에서 다시 읽어 고른다
+        from . import sheetsync
+        rows = sheetsync.fetch_rows(team)
+        targets, skipped = sheetsync.select(rows, body['sheet'].get('include_pending') is True)
+        if not targets:
+            raise ValueError('처리할 행이 없습니다')
+        body['sheet'].update(read=len(rows), skipped=len(skipped))
+        empty = {'summary': '', 'entities': [], 'intent': [], 'content_category': []}
+        return [dict(_item(t['content'], empty, t['hash']), title=t['title'] or f"시트 {t['row']}행", sheet_row=t['row'], content=t['content'])
+                for t in targets]
     if 'gold_keys' in body:
         keys = body['gold_keys']
         if not isinstance(keys, list) or not 1 <= len(keys) <= MAX_ITEMS or not all(isinstance(k, str) for k in keys) or len(set(keys)) != len(keys):
@@ -321,7 +331,7 @@ def _prepare_items(body, team, target):
         if 'canon' not in item:
             item['canon'] = ER._canon(ER.MC.entity_names(item['meta'].get('entities')))
         if target == 'keyword':
-            if not ER.MC.entity_names(item['meta'].get('entities')):
+            if 'sheet_row' not in item and not ER.MC.entity_names(item['meta'].get('entities')):   # 시트 행은 메타를 실행 중에 만든다
                 raise ValueError('콘텐츠마다 엔티티가 필요합니다')
             item.pop('keywords', None)
             continue
@@ -374,6 +384,10 @@ def start(body, team, actor, background=True, gold_snapshot=None, should_stop=No
         versions.append(v)
     if len({v['id'] for v in versions}) != len(versions):
         raise ValueError('동일 조합이 중복되었습니다')
+    if body.get('sheet') is not None:
+        if not isinstance(body['sheet'], dict) or len(versions) != 1 or target != 'keyword':
+            raise ValueError('구글 시트 연동은 단일 모델 · 핵심 키워드 실험에서만 쓸 수 있습니다')
+        body = dict(body, sheet=dict(body['sheet']))
     items = _prepare_items(body, team, target)
     c = _catalog(team)
     golds = _current_gold(team, c['gold']) if gold_snapshot is None else gold_snapshot
@@ -387,6 +401,10 @@ def start(body, team, actor, background=True, gold_snapshot=None, should_stop=No
            'gold_snapshot': {it['key']: copy.deepcopy(golds[it['key']]) for it in items if it['key'] in golds},
            'blind': body.get('blind', True) is not False, 'revealed': body.get('blind', True) is False,
            'dataset_id': _digest(items), 'source_run': body.get('source_run') or ''}
+    if isinstance(body.get('sheet'), dict):
+        run['sheet'] = {'read': body['sheet']['read'], 'targets': len(items), 'skipped': body['sheet']['skipped'],
+                        'include_pending': body['sheet'].get('include_pending') is True, 'meta_model': '', 'meta_failed': 0,
+                        'written': 0, 'write_error': '', 'written_at': None}
     with LOCK:
         ACTIVE.add((team, rid))                    # 기록 저장보다 먼저: 갓 시작한 실행을 _settle 이 중단으로 오인하지 않게
     _update(_key('run', rid), team, lambda target: target.update(run), {})
@@ -448,8 +466,11 @@ def _run(rid, team, should_stop=None):
         _update(key, team, save)
     try:
         try:
+            if 'sheet' in run:
+                run = _sheet_meta(rid, team, run, should_stop)
             with ThreadPoolExecutor(max_workers=3) as pool:
-                list(pool.map(one, [(it, slot) for it in run['items'] for slot in run['slots']]))
+                list(pool.map(one, [(it, slot) for it in run['items'] for slot in run['slots']
+                                    if it['key'] + ':' + slot['label'] not in run['cells']]))   # 메타 실패 칸은 건너뜀
         finally:
             if pending:                              # 남은 칸은 중단돼도 저장(이미 낸 모델 호출 결과 보존)
                 flush(dict(pending))
@@ -459,6 +480,78 @@ def _run(rid, team, should_stop=None):
     finally:
         with LOCK:
             ACTIVE.discard((team, rid))
+        if 'sheet' in run:
+            sheet_write({'id': rid}, team)
+
+
+def _sheet_meta(rid, team, run, should_stop=None):
+    """시트 행: 콘텐츠 등록 → 운영 경로로 메타 4종 생성(DB 미검수 저장) → 문항 키·해시를 실제 메타로 고정."""
+    from . import runops
+    from .meta_contract import FIELDS, drop_fail
+    mock = bool(getattr(getattr(_SV, 'Handler', None), 'server_mock', False))
+    label, items = run['slots'][0]['label'], run['items']
+    added = runops.add_contents([it['content'] for it in items], team=team, source='구글 시트')
+    if added.get('error'):
+        raise ValueError(added['error'])
+    def meta(it):
+        if should_stop and should_stop():
+            raise ValueError('실행 중지 요청')
+        try:
+            res = runops.run_pipeline(dict(it['content']), mock=mock, team=team, persist=True)
+            if res.get('error'):
+                return it, None, '', res['error']
+            im = res['output'].get('item_meta') or {}
+            calls = (im.get('run_manifest') or {}).get('calls') or {}
+            model = (calls.get('summary') or {}).get('model') or ('mock' if res.get('mock') else '운영 기본')
+            # 호출 실패 대체값(ETC_OUT)은 '분류 없음' · 키워드 입력·시트 칸에선 뺀다(DB 원본은 유지)
+            m = {k: im.get(k) or ([] if k != 'summary' else '') for k in FIELDS}
+            m['intent'], m['content_category'] = drop_fail(m['intent']), drop_fail(m['content_category'])
+            return it, m, model, '' if ER.MC.entity_names(m['entities']) else '메타 생성 결과에 엔티티가 없습니다'
+        except Exception as exc:
+            return it, None, '', '메타 생성 실패: ' + str(exc)[:300]
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        done = list(pool.map(meta, items))
+    failed, models = {}, []
+    for it, m, model, error in done:
+        if m is not None:
+            it['meta'], it['canon'] = m, ER._canon(ER.MC.entity_names(m['entities']))
+            it['key'] = _digest([it['hash'], m])
+            models.append(model)
+        if error:
+            cid = it['key'] + ':' + label
+            failed[cid] = {'id': cid, 'item_key': it['key'], 'slot': label, 'review_revision': 0, 'reviews': [],
+                           'final': None, 'status': 'failed', 'error': error[:500], 'elapsed_ms': 0}
+    keys, dataset = [it['key'] for it in items], _digest(items)
+    def save(r):
+        r['items'], r['dataset_id'] = items, dataset
+        r['cells'].update(failed)
+        r['sheet'].update(meta_failed=len(failed), meta_model=', '.join(sorted(set(models))))
+        r['updated_at'] = time.time()
+        r['revision'] += 1
+    run = _update(_key('run', rid), team, save)
+    def relink(c):
+        for x in c['runs']:
+            if x['id'] == rid:
+                x.update(item_keys=keys, dataset_id=dataset)
+    _update(CATALOG, team, relink, _catalog(team))
+    return run
+
+
+def sheet_write(body, team):
+    """실험 결과를 시트에 (다시) 기재 · 실패해도 실험은 그대로 두고 write_error 에만 남긴다."""
+    from . import sheetsync
+    key = _key('run', body.get('id'))
+    run = _get(key, team)
+    if not run or 'sheet' not in run:
+        raise ValueError('구글 시트에서 시작한 실험이 아닙니다')
+    try:
+        written, error = sheetsync.write(team, sheetsync.updates_of(run)), ''
+    except Exception as exc:
+        written, error = 0, str(exc)[:300] if isinstance(exc, ValueError) else '시트 기재에 실패했습니다'
+    def save(r):
+        r['sheet'].update(write_error=error, **({'written': written, 'written_at': time.time()} if not error else {}))
+    run = _update(key, team, save)
+    return {'ok': not error, 'sheet': run['sheet'], **({'error': error} if error else {})}
 
 
 def _settle(rid, team):
@@ -1031,7 +1124,8 @@ def action(body, team=None, actor='', can_manage=False, can_final=False):
         return {'ok': False, 'error': '요청 형식을 확인하세요'}
     try:
         op = body.get('action')
-        if op in ('version', 'delete', 'delete_run', 'start', 'compile', 'save_version', 'delete_gold', 'reveal', 'tune_start', 'tune_stop') and not can_manage:
+        if op in ('version', 'delete', 'delete_run', 'start', 'compile', 'save_version', 'delete_gold', 'reveal', 'tune_start', 'tune_stop',
+                  'sheet_config', 'sheet_preview', 'sheet_write') and not can_manage:
             raise ValueError('실험 관리 권한이 필요합니다')
         if op in ('tune_start', 'tune_stop'):
             from . import keywordtune
@@ -1049,6 +1143,10 @@ def action(body, team=None, actor='', can_manage=False, can_final=False):
         if op == 'save_version': return save_version(body, team)
         if op == 'parse_excel': return parse_excel(body)
         if op == 'delete_gold': return delete_gold(body, team, actor)
+        if op in ('sheet_config', 'sheet_preview'):
+            from . import sheetsync
+            return sheetsync.save_config(body, team) if op == 'sheet_config' else sheetsync.preview(body, team)
+        if op == 'sheet_write': return sheet_write(body, team)
         raise ValueError('지원하지 않는 작업입니다')
     except (ValueError, TypeError, KeyError) as exc:
         return {'ok': False, 'error': str(exc)}
