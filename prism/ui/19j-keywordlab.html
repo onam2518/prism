@@ -313,7 +313,7 @@
         <ul class="ds-bullets"><li>선택한 정답과 판단 사유를 개선안 작성에 사용합니다<ul><li>최대 20개까지 선택할 수 있습니다</li><li x-show="!kwDevelopmentGold().length">실행 결과를 검수하고 개선용 정답으로 저장하세요</li></ul></li></ul>
         <section class="kwl-browser" x-data="{ query:'', category:'', selectedOnly:false, rows:[] }" x-effect="rows=kwGoldRows('development',query,category,selectedOnly)" aria-label="개선용 정답 목록">
         <section class="filterbar control-row" aria-label="개선용 정답 검색·필터">
-          <input class="field" type="search" aria-label="개선용 정답 검색" placeholder="제목·카테고리·정답 검색" x-model.debounce.150ms="query">
+          <input class="field" style="flex:0 1 240px" type="search" aria-label="개선용 정답 검색" placeholder="제목·카테고리·정답 검색" x-model.debounce.150ms="query">
           <section class="fpop" x-data="{ fpOpen:false, fpBox:{} }" x-on:keydown.escape="fpOpen=false" x-on:click.outside="fpOpen=false" x-on:scroll.window="fpOpen=false" x-on:resize.window="fpOpen=false">
             <button type="button" class="fpop__btn" x-bind:class="{ 'is-open':fpOpen, 'is-on':Boolean(category)+Number(selectedOnly) }" x-on:click="fpOpen=!fpOpen; if(fpOpen) fpBox=mpMenuBox($el)" x-bind:aria-expanded="fpOpen" aria-haspopup="dialog" aria-label="개선용 정답 필터">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
@@ -327,6 +327,10 @@
           </section>
           <span class="text-xs text-muted tnum" role="status" x-text="rows.length+' / '+kwDevelopmentGold().length+'건'"></span>
           <span class="ds-badge ds-badge--neutral">최근 확정순</span>
+          <span class="ml-auto control-row">
+            <button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-bind:disabled="!kwGoldRows('development','','',false).length" x-on:click="kwDownloadGold('development')" x-text="kwTraining.length ? '선택 다운로드' : '전체 다운로드'"></button>
+            <button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" x-show="kwCatalog?.can_manage" x-bind:disabled="kwBusy || !kwTraining.length || kwCatalog?.tuning?.status==='running'" x-on:click="kwDeleteGold('development')" x-text="'선택 삭제'+(kwTraining.length ? ' '+kwTraining.length+'개' : '')"></button>
+          </span>
         </section>
         <section class="overflow-auto kwl-wrap" tabindex="0" aria-label="개선용 정답 표 · 가로·세로 스크롤">
           <table class="ds-table kwl-table"><thead><tr><th scope="col" class="kwl-select">선택</th><th scope="col">콘텐츠</th><th scope="col">카테고리</th><th scope="col" x-text="'확정 '+kwTargetLabel()"></th><th scope="col">확정자 · 일시</th></tr></thead><tbody>
@@ -350,7 +354,7 @@
         <ul class="ds-bullets"><li>개선 전후 프롬프트를 이 정답으로 평가합니다<ul><li>키워드 표기·구성이 완전히 일치해야 맞힌 것으로 셉니다 · 순서는 보지 않습니다</li><li>평가용 정답은 개선안 작성에 쓰지 않습니다</li><li x-show="!kwEvaluationGold().length">검수 완료 시 평가용으로 저장하세요</li></ul></li></ul>
         <section class="kwl-browser" x-data="{ query:'', category:'', selectedOnly:false, rows:[] }" x-effect="rows=kwGoldRows('evaluation',query,category,selectedOnly)" aria-label="평가용 정답 목록">
         <section class="filterbar control-row" aria-label="평가용 정답 검색·필터">
-          <input class="field" type="search" aria-label="평가용 정답 검색" placeholder="제목·카테고리·정답 검색" x-model.debounce.150ms="query">
+          <input class="field" style="flex:0 1 240px" type="search" aria-label="평가용 정답 검색" placeholder="제목·카테고리·정답 검색" x-model.debounce.150ms="query">
           <section class="fpop" x-data="{ fpOpen:false, fpBox:{} }" x-on:keydown.escape="fpOpen=false" x-on:click.outside="fpOpen=false" x-on:scroll.window="fpOpen=false" x-on:resize.window="fpOpen=false">
             <button type="button" class="fpop__btn" x-bind:class="{ 'is-open':fpOpen, 'is-on':Boolean(category)+Number(selectedOnly) }" x-on:click="fpOpen=!fpOpen; if(fpOpen) fpBox=mpMenuBox($el)" x-bind:aria-expanded="fpOpen" aria-haspopup="dialog" aria-label="평가용 정답 필터">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
@@ -364,6 +368,10 @@
           </section>
           <span class="text-xs text-muted tnum" role="status" x-text="rows.length+' / '+kwEvaluationGold().length+'건'"></span>
           <span class="ds-badge ds-badge--neutral">최근 확정순</span>
+          <span class="ml-auto control-row">
+            <button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-bind:disabled="!kwGoldRows('evaluation','','',false).length" x-on:click="kwDownloadGold('evaluation')" x-text="kwEvaluation.length ? '선택 다운로드' : '전체 다운로드'"></button>
+            <button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" x-show="kwCatalog?.can_manage" x-bind:disabled="kwBusy || !kwEvaluation.length || kwCatalog?.tuning?.status==='running'" x-on:click="kwDeleteGold('evaluation')" x-text="'선택 삭제'+(kwEvaluation.length ? ' '+kwEvaluation.length+'개' : '')"></button>
+          </span>
         </section>
         <section class="overflow-auto kwl-wrap" tabindex="0" aria-label="평가용 정답 표 · 가로·세로 스크롤">
           <table class="ds-table kwl-table"><thead><tr><th scope="col" class="kwl-select">선택</th><th scope="col">콘텐츠</th><th scope="col">카테고리</th><th scope="col" x-text="'확정 '+kwTargetLabel()"></th><th scope="col">확정자 · 일시</th></tr></thead><tbody>

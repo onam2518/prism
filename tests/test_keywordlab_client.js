@@ -190,6 +190,9 @@ async function main(){
  improve.kwRequest=async(q,data)=>{sent=data;return {ok:true}};await improve.kwSaveCandidate();
  assert.equal(sent.action,'save_version');assert.equal(sent.version_id,'c1');assert.ok(!improve.kwSaveTarget().version.draft);
  improve.kwImproveMode='auto';assert.equal(improve.kwTuning().version_id,'base');improve.kwImproveMode='once';improve.kwCatalog.tuning=null;
+ // 정답 선택 삭제: 선택한 키를 보내고 선택을 비운다
+ improve.kwTraining=['dev0'];const confirm1=window.confirm;window.confirm=()=>true;improve.kwRequest=async(q,data)=>{sent=data;return{ok:true}};
+ await improve.kwDeleteGold('development');window.confirm=confirm1;assert.equal(sent.action,'delete_gold');assert.equal(JSON.stringify(sent.item_keys),'["dev0"]');assert.equal(improve.kwTraining.length,0);assert.match(improve.kwMessage,/삭제 완료/);
 
  // 목록 검색·필터는 선택과 원본 순서를 바꾸지 않고, 개선용·평가용·문장 정답을 구분한다.
  const list=window.PRISM_APP_PARTS[0]();

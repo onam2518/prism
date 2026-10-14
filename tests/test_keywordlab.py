@@ -140,6 +140,18 @@ class KeywordLabTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, '개선에 사용'): K.confirm_gold(b,'a','tester',True)
         self.assertEqual(K._version(vid,'a')['rules'], '메타에 근거한 키워드 최대 3개')
 
+    def test_delete_gold_logs_and_rejects_bad_input(self):
+        run = self.run_case(1); cell = next(iter(run['cells'].values())); b = self.final(run, cell)
+        gold = K.confirm_gold(b, 'a', 'tester', True)['gold']
+        self.assertFalse(K.action({'action': 'delete_gold', 'item_keys': [gold['item_key']]}, 'a', 'tester')['ok'])   # 관리 권한
+        for bad in ([], ['x', 'x'], 'k', [1]):
+            self.assertFalse(K.action({'action': 'delete_gold', 'item_keys': bad}, 'a', 'tester', True)['ok'])
+        self.assertTrue(K.action({'action': 'delete_gold', 'item_keys': [gold['item_key']]}, 'a', 'tester', True)['ok'])
+        self.assertEqual(K.catalog('a')['gold'], [])
+        log = K._catalog('a')['gold_deleted']
+        self.assertEqual((log[0]['item_key'], log[0]['deleted_by']), (gold['item_key'], 'tester'))
+        self.assertFalse(K.action({'action': 'delete_gold', 'item_keys': [gold['item_key']]}, 'a', 'tester', True)['ok'])   # 이미 삭제
+
     def test_review_acknowledges_persisted_revision_without_revealing_model(self):
         run = self.run_case(1)
         cell = next(iter(run['cells'].values()))
