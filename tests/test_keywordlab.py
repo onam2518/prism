@@ -147,7 +147,7 @@ class KeywordLabTest(unittest.TestCase):
         with patch.object(E, '_llm', return_value=(None, True, '')):
             r = K.action({'action':'compile','version_id':vid,'compiler_model':'solar-pro3','gold_keys':[gold['item_key']]},'a','tester',True)
         v = r['version']
-        self.assertEqual((v['title'], v['parent_id'], v['proposal_id'], v['rules']), ('1회 개선', vid, r['proposal']['id'], r['proposal']['rules']))
+        self.assertEqual((v['title'], v['parent_id'], v['proposal_id'], v['rules']), ('단건 개선', vid, r['proposal']['id'], r['proposal']['rules']))
         self.assertEqual(v['training_keys'], [gold['item_key']])
         self.assertIn(v['id'], [x['id'] for x in K.catalog('a')['versions']])
 

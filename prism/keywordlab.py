@@ -838,9 +838,9 @@ def compile_proposal(body, team, actor):
 
 
 def improve_once(body, team, actor):
-    """1회 개선 · 개선안을 바로 새 버전으로 저장한다(오토파일럿 후보와 같은 계보 경로)."""
+    """단건 개선 · 개선안을 바로 새 버전으로 저장한다(오토파일럿 후보와 같은 계보 경로)."""
     p = compile_proposal(body, team, actor)['proposal']
-    v = create_version({'target': p['target'], 'model': p['model'], 'rules': p['rules'], 'title': '1회 개선',
+    v = create_version({'target': p['target'], 'model': p['model'], 'rules': p['rules'], 'title': '단건 개선',
                         'parent_id': p['parent_id'], 'proposal_id': p['id'],
                         'note': '\n'.join(c['reason'] + ': ' + c['change'] for c in p['changes'])}, team, actor)['version']
     return {'ok': True, 'proposal': p, 'version': v}

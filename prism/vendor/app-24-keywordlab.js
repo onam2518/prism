@@ -7,7 +7,7 @@ window.PRISM_APP_PARTS.push(() => ({
   kwMode: '', kwCount: 1, kwDraftSlot: null, kwSlots: [{model:'',version_id:''},{model:'',version_id:''},{model:'',version_id:''}],
   kwSource: 'direct', kwSample: 3, kwHashes: '', kwReuse: '', kwTitle: '', kwLead: '', kwEntities: '', kwIntents: '', kwCategories: '', kwBlind: true,
   kwDraft: {model:'',title:'',rules:'',note:'',parent_id:'',proposal_id:''}, kwVersion: null,
-  kwReview: null, _kwSavedReview: '', kwReviewView: 'meta', kwSideOpen: {ents:false,rej:false}, kwAutoNext: false, kwCompiler: '', kwLoopVersion: '', kwTraining: [], kwEvaluation: [], kwTuneRounds: 3, _kwTuneTimer: null, kwProposal: null,
+  kwReview: null, _kwSavedReview: '', kwReviewView: 'meta', kwSideOpen: {ents:false,rej:false}, kwAutoNext: false, kwCompiler: '', kwLoopVersion: '', kwTraining: [], kwEvaluation: [], kwTuneRounds: 3, _kwTuneTimer: null, kwProposal: null, kwImproveMode: 'once',
   async kwRequest(query='', data=null) {
     const r = await (await this._afetch('/lab-keywords' + query, data ? {
       method:'POST', headers:this._authHeaders(), body:JSON.stringify({...data,reviewer:this.reviewer || ''})
@@ -470,6 +470,7 @@ window.PRISM_APP_PARTS.push(() => ({
   kwResultRows(query='', category='', state='') {
     return this.kwContentRows(this.kwRunData?.items || [],query,category).filter(item=>!state || this.kwItemState(item)[0]===state);
   },
+  kwAuto() {return this.kwTarget==='keyword' && (this.kwImproveMode==='auto' || this.kwCatalog?.tuning?.status==='running');},
   kwImproveIssue(automatic=false) {
     if(!this.kwCatalog?.can_manage) return '프롬프트 관리 권한이 필요합니다.';
     if(this.kwCatalog?.tuning?.status==='running') return '오토파일럿 실행 중입니다. 아래에서 진행 상황을 확인하세요.';
