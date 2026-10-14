@@ -557,14 +557,14 @@ def build_template_csv(with_meta: bool = False) -> bytes:
     return ("\ufeff" + buf.getvalue()).encode("utf-8")
 
 
-def build_template_xlsx(with_meta: bool = False) -> bytes:
+def build_template_xlsx(with_meta: bool = False, rows: list = None) -> bytes:
     """엑셀 일괄 입력용 .xlsx 템플릿(의존성 0: zipfile+xml, inline string).
     헤더·예시는 CSV 템플릿과 동일 · ingest._read_xlsx 와 왕복 호환."""
     import io
     import zipfile
     from xml.sax.saxutils import escape
 
-    rows = _template_rows(with_meta)     # 최대 15열(A~O) · 열 문자는 한 자리로 충분
+    rows = rows or _template_rows(with_meta)     # 최대 15열(A~O) · 열 문자는 한 자리로 충분
 
     def cell(r, ci, v):
         col = chr(ord("A") + ci)

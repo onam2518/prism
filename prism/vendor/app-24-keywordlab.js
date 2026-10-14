@@ -5,7 +5,7 @@ window.PRISM_APP_PARTS.push(() => ({
   kwTarget:'keyword', kwKeywordSource:'manual', kwSentenceKeywords:'', kwKeywordSlot:'', kwInputRun:null, kwInputLoading:false,
   kwCatalog: null, kwBusy: false, kwError: '', kwMessage: '', kwRunData: null, kwRunId: '', _kwTimer: null,
   kwMode: '', kwCount: 1, kwDraftSlot: null, kwSlots: [{model:'',version_id:''},{model:'',version_id:''},{model:'',version_id:''}],
-  kwSource: 'direct', kwSample: 3, kwHashes: '', kwReuse: '', kwTitle: '', kwLead: '', kwEntities: '', kwIntents: '', kwCategories: '', kwBlind: true,
+  kwSource: 'direct', kwExcel: null, kwXlsDrag: false, kwSample: 3, kwHashes: '', kwReuse: '', kwTitle: '', kwLead: '', kwEntities: '', kwIntents: '', kwCategories: '', kwBlind: true,
   kwDraft: {model:'',title:'',rules:'',note:'',parent_id:'',proposal_id:''}, kwVersion: null,
   kwReview: null, _kwSavedReview: '', kwReviewView: 'meta', kwSideOpen: {ents:false,rej:false}, kwAutoNext: false, kwCompiler: '', kwLoopVersion: '', kwTraining: [], kwEvaluation: [], kwTuneRounds: 3, _kwTuneTimer: null, kwProposal: null, kwImproveMode: 'once', kwPickVersion: '',
   async kwRequest(query='', data=null) {
@@ -50,7 +50,7 @@ window.PRISM_APP_PARTS.push(() => ({
     this.kwSlots.forEach(s=>s.version_id='');this.kwVersion=null;this.kwDraftSlot=null;
     this.kwDraft={target,model:'',title:'',rules:this.kwDefaultRules(),note:'',parent_id:'',proposal_id:''};
     this.kwLoopVersion='';this.kwTraining=[];this.kwEvaluation=[];this.kwProposal=null;this.kwPickVersion='';
-    this.kwSource='direct';this.kwReuse='';this.kwKeywordSource='manual';this.kwKeywordSlot='';this.kwInputRun=null;
+    this.kwSource='direct';this.kwExcel=null;this.kwReuse='';this.kwKeywordSource='manual';this.kwKeywordSlot='';this.kwInputRun=null;
     this.kwError='';this.kwMessage='';
   },
   kwAllVersions() {return (this.kwCatalog?.versions || []).filter(v=>(v.target || 'keyword')===this.kwTarget && !v.draft);},   // 초안(저장 전 후보)은 숨김
@@ -88,6 +88,7 @@ window.PRISM_APP_PARTS.push(() => ({
     if(slots.some(s=>!s.model || !s.version_id)) return this.kwMode==='single' ? '모델과 프롬프트 버전을 선택하세요' : '각 조합의 모델과 프롬프트 버전을 선택하세요';
     if(new Set(slots.map(s=>s.version_id)).size!==slots.length) return '서로 다른 모델·프롬프트 조합을 선택하세요';
     if(this.kwSource==='direct' && (!this.kwLead.trim() || (this.kwTarget==='keyword' && !this.kwSplit(this.kwEntities).length))) return this.kwTarget==='sentence' ? '리드문을 입력하세요' : '리드문과 엔티티를 입력하세요';
+    if(this.kwSource==='excel' && !this.kwExcel?.rows?.length) return '엑셀 파일을 올려 반영할 콘텐츠를 확인하세요';
     if(this.kwSource==='sample' && (!Number.isInteger(this.kwSample) || this.kwSample<1 || this.kwSample>30)) return '샘플 수는 1~30건으로 입력하세요';
     if(this.kwSource==='hash') {
       const hashes=this.kwHashes.split(/[\s,]+/).filter(Boolean);
@@ -120,6 +121,7 @@ window.PRISM_APP_PARTS.push(() => ({
       if(this.kwSource==='reuse') data.source_run=this.kwReuse;
       else if(this.kwSource==='sample') data.sample=Number(this.kwSample);
       else if(this.kwSource==='hash') data.hashes=this.kwHashes.split(/[\s,]+/).filter(Boolean);
+      else if(this.kwSource==='excel') data.rows=this.kwExcel.rows.map(r=>({title:r.title || '엑셀 '+r.row+'행',meta:r.meta}));
       else Object.assign(data,{title:this.kwTitle,meta:{summary:this.kwLead,entities:this.kwSplit(this.kwEntities),
         intent:this.kwSplit(this.kwIntents),content_category:this.kwSplit(this.kwCategories)}});
       const r=await this.kwRequest('',data); this.kwRunId=r.id; this.kwReview=null;
@@ -317,6 +319,26 @@ window.PRISM_APP_PARTS.push(() => ({
       await this.kwLoad();this.kwMessage='실험 기록을 삭제했습니다';
     } catch(e){this.kwError=e.message;} finally{this.kwBusy=false;}
   },
+  async kwExcelTemplate() {
+    try {
+      const r=await this._afetch('/lab-keywords?template=1',{headers:this._authHeaders()});
+      if(!(r.headers.get('content-type') || '').includes('spreadsheet')) throw new Error((await r.json()).error || '양식을 받지 못했습니다');
+      const u=URL.createObjectURL(await r.blob()), a=document.createElement('a');
+      a.href=u; a.download='keyword_lab_template.xlsx'; a.click(); setTimeout(()=>URL.revokeObjectURL(u),60000);
+    } catch(e) {this.kwError=e.message;}
+  },
+  // 엑셀·CSV 업로드 → 서버가 행별 반영·제외를 돌려준다(실행은 STEP 4에서)
+  async kwExcelPick(file) {
+    if(!file || this.kwBusy) return;
+    if(file.size>2*1024*1024) {this.kwError='파일은 2MB 이하여야 합니다';return;}
+    this.kwBusy=true;this.kwError='';this.kwExcel=null;
+    try {
+      const data=await new Promise((ok,no)=>{const fr=new FileReader();fr.onload=()=>ok(String(fr.result).split(',')[1] || '');fr.onerror=()=>no(new Error('파일을 읽지 못했습니다'));fr.readAsDataURL(file);});
+      const r=await this.kwRequest('',{action:'parse_excel',name:file.name,data});
+      this.kwExcel={name:file.name,rows:r.rows,rejected:r.rejected};
+    } catch(e) {this.kwError=e.message;} finally {this.kwBusy=false;}
+  },
+  kwExcelRows() {return [...(this.kwExcel?.rows || []),...(this.kwExcel?.rejected || [])].sort((a,b)=>a.row-b.row);},
   async kwDownloadCsv() {
     try {
       const r=await this._afetch('/lab-keywords?csv=1&run='+encodeURIComponent(this.kwRunId),{headers:this._authHeaders()});

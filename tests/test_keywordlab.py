@@ -152,6 +152,31 @@ class KeywordLabTest(unittest.TestCase):
         self.assertEqual((log[0]['item_key'], log[0]['deleted_by']), (gold['item_key'], 'tester'))
         self.assertFalse(K.action({'action': 'delete_gold', 'item_keys': [gold['item_key']]}, 'a', 'tester', True)['ok'])   # 이미 삭제
 
+    def test_excel_template_parse_and_start(self):
+        import base64
+        from prism.runops import build_template_xlsx
+        b64 = lambda raw: base64.b64encode(raw).decode()
+        ok = K.parse_excel({'name': 't.xlsx', 'data': b64(K.excel_template())})
+        self.assertEqual([r['row'] for r in ok['rows']], [2])                         # 양식 예시 행이 그대로 반영
+        self.assertEqual(ok['rows'][0]['meta']['entities'], ['한국은행', '이창용'])
+        rows = [K.EXCEL_HEADERS, ['a', '리드1', '엔티티1; 엔티티2', '속보·사건 추적', '경제'], ['b', '', '엔티티', '', ''],
+                ['c', '리드3', '', '', ''], ['', '', '', '', '']]
+        res = K.parse_excel({'name': 't.xlsx', 'data': b64(build_template_xlsx(rows=rows))})
+        self.assertEqual(res['rows'][0]['meta']['intent'], ['속보·사건 추적'])          # 가운뎃점 값은 쪼개지 않음
+        self.assertEqual([(r['row'], r['reason']) for r in res['rejected']], [(3, '리드문 없음'), (4, '엔티티 없음')])
+        csv_raw = ('\ufeff' + ','.join(K.EXCEL_HEADERS) + '\n' + 'x,리드,엔티티,,\n').encode()
+        self.assertEqual(len(K.parse_excel({'name': 't.csv', 'data': b64(csv_raw)})['rows']), 1)
+        for bad in ({'name': 't.txt', 'data': b64(b'x')}, {'name': 't.xlsx', 'data': '!!'},
+                    {'name': 't.xlsx', 'data': b64(b'not a zip')},
+                    {'name': 't.csv', 'data': b64('제목,본문\n1,2\n'.encode())}):
+            self.assertFalse(K.action(dict(bad, action='parse_excel'), 'a', 'tester')['ok'], bad['name'])
+        v = self.version()
+        with patch.object(K.threading, 'Thread'):
+            rid = K.start({'slots': [{'model': v['model'], 'version_id': v['id']}], 'rows': [{'title': r['title'], 'meta': r['meta']} for r in res['rows']]}, 'a', 'tester')['id']
+        self.assertEqual(K._get(K._key('run', rid), 'a')['items'][0]['title'], 'a')
+        with self.assertRaises(ValueError):
+            K.start({'slots': [{'model': v['model'], 'version_id': v['id']}], 'rows': [{'meta': {'summary': ''}}]}, 'a', 'tester')
+
     def test_review_acknowledges_persisted_revision_without_revealing_model(self):
         run = self.run_case(1)
         cell = next(iter(run['cells'].values()))
