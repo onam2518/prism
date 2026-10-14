@@ -334,7 +334,7 @@ class Runtime:
                 return old, None
             job['attempts'].append(record)
             if token == job.get('token') and job['origin'] == 'auto':
-                job.update(status=status, value=value if status in DONE else ('' if field == 'summary' else []),
+                job.update(status=status, value=value if status in DONE else MC.fail_value(field),
                            lease_until=0, token=None)
                 if job['attempt'] >= 3 and status not in DONE:
                     job['reason'] = 'attempts_exhausted'
@@ -384,9 +384,10 @@ class Runtime:
         except ValueError:
             def configuration_error(old):
                 if old['current'] == bundle_id:
-                    for job in old['bundles'][bundle_id]['jobs'].values():
+                    for field, job in old['bundles'][bundle_id]['jobs'].items():
                         if job['status'] not in DONE and job['origin'] != 'manual':
-                            job.update(status='configuration_error', reason='configuration_error')
+                            job.update(status='configuration_error', reason='configuration_error',
+                                       value=MC.fail_value(field))
                     old['publication_revision'] += 1
                 return old, None
             self._change(self._key(key), configuration_error)
@@ -497,7 +498,7 @@ def consumer_row(content, publication, current_policy, current_input):
 
 
 def attempt(llm, system, user, field):
-    value, status, detail = ('' if field == 'summary' else []), 'call_failed', ''
+    value, status, detail = MC.fail_value(field), 'call_failed', ''
     started = time.monotonic()
     measurement = {'cost_usd': 0, 'tokens_in': 0, 'tokens_out': 0}
     try:
@@ -513,6 +514,8 @@ def attempt(llm, system, user, field):
             value = obj[field]; status = 'success' if value else 'no_value'
     except Exception as exc:
         detail = type(exc).__name__
+    if status not in DONE:
+        value = MC.fail_value(field)                 # 호출 실패 분류 = 대체 카테고리(2026-10-14)
     measurement['latency_ms'] = (time.monotonic() - started) * 1000
     return {'status': status, 'value': value, 'detail': detail, 'measurement': measurement}
 

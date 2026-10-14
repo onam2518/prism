@@ -171,6 +171,7 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
     호출별 모델 티어, Structured Outputs/responseSchema/cache_control API 강제, IAB '구분 기준'
     텍스트(사전에 경로만 존재), 12 서비스 분기 세분화(공개 레포 내부명 노출 금지로 일반명 유지).
   - **(2026-09-29 현행)** 아래 두 항목은 당시 기록이다. 지금은 2026-09-22 정책으로 **독립 4호출**(제목·본문만 입력 · 체이닝·단락 차단 없음 · 항목별 hold_fields · 네 호출 동시 실행), **인텐트 전 출처 공통 68개**(서비스 분기·미정의 서비스 폴백·_service_key 삭제 · INTENT_RETIRED 대응표 · imeta@v20), **발행 키**(Content.item_unique_key·service_code·cp_type · schema.source_prefix), **품질·법령 단계 범위**(quality_stage 설정 · RED 가 파이프라인을 끊지 않음 · 빈 등급=판정 없음), **정답셋 인텐트 재확정**(intent_review needed/confirmed · 최종 검수 큐)이 적용됐다. PR #574~#578 · #584 · #585.
+  - **(2026-10-14)** 분류 호출(인텐트·카테고리) 최종 실패 시 빈 값 대신 대체 카테고리 `ETC_OUT` 저장 · 보류·검수 라우팅 유지 · 채점·승격·배정·검수 확정에선 분류 없음 취급(`meta_contract.fill_failed`·`real_categories`·`drop_fail`) · 정책 `docs/POLICY_CONTRACT_ROLLOUT.md`.
   - **분리형 4호출 계약 적용(2026-07-02 · 기준 원문 1312/인텐트·카테고리 사전 동기 · 현행 아님)**: agents._run_item_calls
     = ① 리드문 → ② 엔티티(1~3 강제) → ③ 인텐트(사전: 범용①·②+서비스 분기 · 표기 정확 일치만) →
     ④ 카테고리(사전: Tier1 설명+Tier2 전체+**구분 기준** 주입 · normalize 스냅). 단락 차단(① 빈 문자열 →

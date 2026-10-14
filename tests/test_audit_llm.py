@@ -355,6 +355,22 @@ class TestContractKeyIsFailure(unittest.TestCase):
         self.assertEqual([getattr(r, "fail_kind", None) for r in results
                           if hasattr(r, "fail_kind")], [None, None, None, None])
 
+    def test_failed_category_calls_get_fallback_category(self):
+        """호출 실패한 분류 필드는 빈 값 대신 ETC_OUT(2026-10-14) · 보류는 유지 · 승격·검수 저장에선 분류 없음."""
+        from prism import agents as A
+        from prism import meta_contract as MC
+        c = self._content()
+        llm = _StubLLM({"item_summary": {"summary": "노사 협상 결렬"},
+                        "item_entities": {"entities": ["삼성전자"]},
+                        "item_intent": {"x": 1}, "item_category": {"x": 1}})
+        im, _ = A.run_item(llm, c)
+        MC.fill_failed(im)
+        self.assertEqual(im.intent, ["ETC_OUT"])
+        self.assertEqual(im.content_category, [{"tier1": "ETC_OUT", "tier2": None}])
+        self.assertEqual(im.hold_fields, ["intent", "content_category"])
+        self.assertEqual(MC.real_categories(im.content_category), [])
+        self.assertEqual(MC.drop_fail(im.intent + ["속보·단신"]), ["속보·단신"])
+
     def test_contract_miss_holds_auto_g_in_harness(self):
         """종단: 계약 키 없는 응답 → review=yellow(사람 검수)."""
         from prism.harness import _assemble, HCtx, Methodology

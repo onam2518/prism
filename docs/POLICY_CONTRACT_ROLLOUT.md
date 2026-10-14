@@ -3,6 +3,7 @@
 새 추출 프롬프트는 `imeta@v21`이다. 엔티티는 `{name,type}`(PS·OG·LC·AF·EV·TM·null), 카테고리는 `{tier1,tier2}` 객체를 사용한다. 기존 문자열 이력은 읽기·표시 호환을 유지하며 새 정책으로 재확정된 것으로 간주하지 않는다. 검수 화면의 엔티티 확신도는 참고 표시이며 발행 필터가 아니다.
 
 - 네 호출은 독립 실행한다. `meta_status`는 success/no_value/insufficient_input/call_failed/invalid_output/configuration_error를 구분한다. 빈 텍스트는 호출하지 않는다.
+- **호출 실패 대체 카테고리(2026-10-14)**: 분류 필드(`intent`·`content_category`)의 호출이 끝내 실패하면(call_failed·invalid_output·configuration_error) 빈 값 대신 `ETC_OUT`을 단다. 카테고리는 `{tier1: "ETC_OUT", tier2: null}`이다. 리드문·엔티티와 입력 부족(insufficient_input)은 종전대로 빈 값이다. `ETC_OUT`은 사전 값이 아니다. 보류(`hold_fields`)·`meta_status`·사람 검수 라우팅은 그대로 유지한다. 채점·정답 승격·담당 배정·검수 확정값에서는 분류 없음으로 본다(공통 정의 `meta_contract.FAIL_CATEGORY`). DNM 작업 결과도 같은 값으로 저장한다.
 - `input_revision`은 실제 호출 입력과 보조 정보의 제공 여부를 식별한다. `run_manifest`는 호출별 모델·프롬프트 지문·시도 수를 보존한다. 이미지 정보 없음과 0장을 구분한다.
 - 검수 수정은 `manual_fields`에 근거를 남긴다. 자동 저장은 수동값을 보존하고 다른 입력 revision에서는 pending과 `manual_review_required`로 재검수를 요구한다.
 - `source_fields`는 원천값의 미제공/null/빈 문자열을 구분한다. source_key_status는 키 구조의 관찰값이며 DNM 대상 여부를 뜻하지 않는다.

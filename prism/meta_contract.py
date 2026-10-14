@@ -3,6 +3,39 @@ from . import dictionaries as D
 
 FIELDS = ("summary", "entities", "intent", "content_category")
 ENTITY_TYPES = {"PS", "OG", "LC", "AF", "EV", "TM", None}
+# 호출 실패 대체 카테고리(2026-10-14 정책): 모델 호출이 끝내 실패한 분류 필드(intent·content_category)는
+# 빈 값(NULL) 대신 이 값을 단다. 사전 값이 아니므로 채점·정답·승격·학습에서는 '분류 없음'으로 본다.
+# 사람 검수 라우팅은 그대로 meta_status·hold_fields 가 맡는다.
+FAIL_CATEGORY = "ETC_OUT"
+FAIL_STATUSES = ("call_failed", "invalid_output", "configuration_error")
+NO_CATEGORY = ("Unclassified", FAIL_CATEGORY)
+
+
+def fail_value(field):
+    """실패 상태 필드에 저장할 값. 분류 필드만 대체 카테고리 · 리드문·엔티티는 종전대로 빈 값."""
+    if field == "intent":
+        return [FAIL_CATEGORY]
+    if field == "content_category":
+        return [{"tier1": FAIL_CATEGORY, "tier2": None}]
+    return "" if field == "summary" else []
+
+
+def fill_failed(im):
+    """호출 실패로 비어 있는 분류 필드를 대체 카테고리로 채운다(임베딩 등으로 채워진 값은 둔다)."""
+    statuses = getattr(im, "meta_status", None) or {}
+    for field in ("intent", "content_category"):
+        if not getattr(im, field) and statuses.get(field) in FAIL_STATUSES:
+            setattr(im, field, fail_value(field))
+
+
+def real_categories(values):
+    """미분류·실패 대체값을 뺀 카테고리 경로(승격·배정 판정용)."""
+    return [p for p in category_paths(values) if p not in NO_CATEGORY]
+
+
+def drop_fail(values):
+    """검수 저장 값에서 실패 대체값 제거 · 그대로 저장해 확정값이 되는 것을 막는다."""
+    return [v for v in values if FAIL_CATEGORY not in (v, category_path(v))]
 
 
 def entity_name(value):

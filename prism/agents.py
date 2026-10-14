@@ -119,6 +119,10 @@ def run_item(llm, content, parallel: bool = False) -> tuple[ItemMeta, list]:
         topic=obj.get("topic", "") or "",                      # 3차(미생성 시 빈 값)
         topic_categories=obj.get("topic_categories", []) or [],
     )
+    if obj.get("_fail"):                                   # 4호출 경로와 같은 실패 표식(보류 + 대체 카테고리 대상)
+        from . import meta_contract as MC
+        im.hold_fields = list(MC.FIELDS)
+        im.meta_status = {k: "call_failed" for k in MC.FIELDS}
     return im, [res, {"agent": "ItemAgent", "fail": obj.get("_fail")}]
 
 

@@ -232,6 +232,9 @@ def st_item(ctx: HCtx):
         from .meta_contract import clean_categories
         im.content_category = clean_categories(im.content_category)   # 콘텐츠 단위 사전화
     ctx.fallbacks += V.verify_item(im, ctx.content)
+    if im:
+        from .meta_contract import fill_failed
+        fill_failed(im)                                  # 호출 실패 분류 = 대체 카테고리(2026-10-14)
 
 
 REGISTRY = {
