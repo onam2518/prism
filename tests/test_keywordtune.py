@@ -125,6 +125,10 @@ class KeywordTuningTest(unittest.TestCase):
         self.assertEqual(state['best']['total'], 1)
         self.assertEqual(K._catalog('a')['gold'], gold_before)
         candidate = K._version(state['best']['version_id'], 'a')
+        self.assertTrue(candidate['draft'])                                   # 저장 전 후보는 초안
+        self.assertTrue(K.action({'action': 'save_version', 'version_id': candidate['id']}, 'a', 'x', can_manage=True)['ok'])
+        self.assertNotIn('draft', K._version(candidate['id'], 'a'))
+        self.assertFalse(K.action({'action': 'save_version', 'version_id': candidate['id']}, 'a', 'x', can_manage=True)['ok'])
         proposal = K._get(K._key('proposal', candidate['proposal_id']), 'a')
         self.assertIn('키워드 순서는 평가하지 않는다', proposal['system'])
         self.assertIn('쿡북 설명을 rules에 옮기지 않는다', proposal['system'])

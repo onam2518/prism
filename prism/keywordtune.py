@@ -141,8 +141,9 @@ def _loop(run, team):
                                            'gold_keys': run['gold_keys'], 'comparison_run': development_id}, team, run['by'])['proposal']
             _checkpoint(run, team)
             version = K.create_version({'model': proposal['model'], 'rules': proposal['rules'],
-                                         'title': '자동 튜닝 ' + str(number), 'parent_id': best['version_id'],
-                                         'proposal_id': proposal['id'], 'note': '오토파일럿 후보 · 결과 검수 필요'}, team, run['by'])['version']
+                                         'title': '단건 개선' if run['max_rounds'] == 1 else '자동 튜닝 ' + str(number),
+                                         'parent_id': best['version_id'], 'proposal_id': proposal['id'], 'draft': True,
+                                         'note': '\n'.join(c['reason'] + ': ' + c['change'] for c in proposal['changes'])}, team, run['by'])['version']
             _save(team, ident, phase='후보 평가')
             result_id, metrics = _experiment(run, team, version['id'], run['evaluation_keys'])
             if metrics['exact_total'] != best['total']:
