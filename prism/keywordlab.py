@@ -164,6 +164,8 @@ def create_version(body, team, actor):
          'created_at': time.time(), 'by': actor, 'parent_id': parent['id'] if parent else '',
          'note': str(body.get('note') or '')[:2000], 'training_keys': parent.get('training_keys', []) if parent else [],
          'training_hashes': parent.get('training_hashes', []) if parent else []}
+    if body.get('draft'):
+        v['draft'] = True   # ponytail: 저장 안 한 후보는 숨긴 채 남음 · 쌓이면 다음 튜닝 시작 때 정리
     # 컴파일러 산출물은 서버에 보관한 제안에서 가져온 경우만 계보에 포함한다.
     if body.get('proposal_id'):
         proposal = _get(_key('proposal', body['proposal_id']), team)
@@ -837,13 +839,16 @@ def compile_proposal(body, team, actor):
     return {'ok': True, 'proposal': {k: val for k, val in proposal.items() if k not in ('input', 'system')}}
 
 
-def improve_once(body, team, actor):
-    """단건 개선 · 개선안을 바로 새 버전으로 저장한다(오토파일럿 후보와 같은 계보 경로)."""
-    p = compile_proposal(body, team, actor)['proposal']
-    v = create_version({'target': p['target'], 'model': p['model'], 'rules': p['rules'], 'title': '단건 개선',
-                        'parent_id': p['parent_id'], 'proposal_id': p['id'],
-                        'note': '\n'.join(c['reason'] + ': ' + c['change'] for c in p['changes'])}, team, actor)['version']
-    return {'ok': True, 'proposal': p, 'version': v}
+def save_version(body, team):
+    """튜닝 후보(초안)를 저장한 버전으로 확정한다 · 저장 전 후보는 버전 목록에 보이지 않는다."""
+    ident = body.get('version_id')
+    def change(c):
+        v = next((x for x in c['versions'] if x['id'] == ident), None)
+        if not v or not v.get('draft'):
+            raise ValueError('저장할 후보가 없습니다 · 다시 불러오세요')
+        del v['draft']
+    _update(CATALOG, team, change, _catalog(team))
+    return {'ok': True}
 
 
 def delete_version(body, team):
@@ -900,7 +905,7 @@ def action(body, team=None, actor='', can_manage=False, can_final=False):
         return {'ok': False, 'error': '요청 형식을 확인하세요'}
     try:
         op = body.get('action')
-        if op in ('version', 'delete', 'delete_run', 'start', 'compile', 'reveal', 'tune_start', 'tune_stop') and not can_manage:
+        if op in ('version', 'delete', 'delete_run', 'start', 'compile', 'save_version', 'reveal', 'tune_start', 'tune_stop') and not can_manage:
             raise ValueError('실험 관리 권한이 필요합니다')
         if op in ('tune_start', 'tune_stop'):
             from . import keywordtune
@@ -914,7 +919,8 @@ def action(body, team=None, actor='', can_manage=False, can_final=False):
         if op == 'cancel_final': return cancel_final(body, team, actor, can_final)
         if op == 'gold': return confirm_gold(body, team, actor, can_final)
         if op == 'reveal': return reveal(body, team)
-        if op == 'compile': return improve_once(body, team, actor)
+        if op == 'compile': return compile_proposal(body, team, actor)
+        if op == 'save_version': return save_version(body, team)
         raise ValueError('지원하지 않는 작업입니다')
     except (ValueError, TypeError, KeyError) as exc:
         return {'ok': False, 'error': str(exc)}
