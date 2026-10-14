@@ -7,24 +7,7 @@
   <ul class="ds-bullets" role="status" x-show="kwMessage" x-data="{ lines: [] }" x-effect="lines=sents(kwMessage)">
         <li><span x-text="lines[0]"></span><ul x-show="lines.length>1"><template x-for="(line,i) in lines.slice(1)" x-bind:key="i"><li x-text="line"></li></template></ul></li>
       </ul>
-  <details class="dve__fold" x-show="kwTarget==='keyword'">
-    <summary>키워드 정답셋 만들기 · 사용자 가이드</summary>
-    <ol class="ds-bullets">
-      <li>실험 기록에서 결과를 열고 모든 키워드의 적합·수정·제외 판단과 사유 입력</li>
-      <li>누락 키워드 추가 또는 적합한 키워드 없음 선택, 정답 미리보기 확인</li>
-      <li>정답셋 용도 선택: 개선용은 프롬프트 튜닝에 사용, 평가용은 튜닝 결과 측정에만 사용</li>
-      <li>최종 검수 권한 보유자가 <b>검수 완료·정답셋 저장</b> 클릭, 저장 완료 안내 확인</li>
-      <li>프롬프트 개선 탭에서 개선용·평가용 정답 선택 후 튜닝 시작, 종료 후 후보 결과 검수 및 채택 여부 판단</li>
-    </ol>
-    <ul class="ds-bullets">
-      <li>임시 저장은 검수 도중 기록 보관용, 정답셋 저장 전에는 검수 미완료</li>
-      <li>완료 버튼 한 번으로 판단·최종 확정·정답셋 저장을 함께 처리, 완료한 동일 입력의 재저장 차단</li>
-      <li>정답 기준은 키워드 순서와 관계없이 표기·구성이 모두 일치하는지 확인, 추가·누락 키워드는 불일치</li>
-      <li>개선에 사용한 콘텐츠는 평가용으로 전환 불가</li>
-      <li>최종 확정 취소 후 판단·메모와 과거 실험은 보존, 해당 정답은 이후 개선·평가에서 제외</li>
-      <li>취소한 결과의 재사용은 <b>검수 완료·정답셋 저장</b>으로 처리</li>
-    </ul>
-  </details>
+
 
   <section role="tabpanel" id="kw-panel-run" aria-labelledby="kw-tab-run" x-show="kwTab==='run'" class="dc-body">
     <div class="stepline"><span class="stepline__no">STEP 1</span><b>테스트 방식</b><span class="meta">단일 모델 테스트 또는 비교 실험 선택</span></div>
@@ -143,7 +126,7 @@
     </div>
   </section>
   <!-- 실행 결과 상세 · 검수: 콘텐츠 상세(detailview)와 같은 구성 · 좌 입력 메타 · 우 조합별 결과와 판정 -->
-  <div class="ds-dialog-backdrop" x-show="kwTab==='run' && kwReview" x-cloak x-transition.opacity x-on:mousedown.self="kwCloseReview()" x-on:keydown.window="kwReviewKey($event)" style="z-index:74">
+  <div class="ds-dialog-backdrop" x-show="kwTab==='run' && Boolean(kwReview)" x-cloak x-transition.opacity x-on:mousedown.self="kwCloseReview()" x-on:keydown.window="kwReviewKey($event)" style="z-index:74">
     <template x-if="kwReview"><div class="detailview detailview--wide" role="dialog" aria-modal="true" aria-label="실험 결과 상세" x-on:input="kwReview.final=null">
       <div class="detailview__hd">
         <span class="control-row control-row--compact"><b>실험 결과 상세 · 검수</b><span class="text-xs text-muted tnum" x-text="(kwReviewIndex()+1)+' / '+kwRunData.items.length"></span></span>
