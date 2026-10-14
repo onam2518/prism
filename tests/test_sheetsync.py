@@ -21,7 +21,7 @@ class _NowThread:                                    # 백그라운드 실행을
         self.target(*self.args)
 
 
-def pipeline(fields, mock, team, persist):
+def pipeline(fields, mock, team, model, persist):
     ents = [] if fields['title'] == '엔티티 없음' else ['이창용', '한국은행']
     return {'mock': True, 'output': {'item_meta': {'summary': '한국은행이 ' + fields['title'], 'entities': ents,
             'intent': ['속보', 'ETC_OUT'], 'content_category': [{'tier1': 'ETC_OUT', 'tier2': None}]}}}
@@ -42,7 +42,7 @@ class SheetSyncTest(unittest.TestCase):
         self.code = self.issue()
 
     def issue(self, team='a'):
-        out = K.action({'action': 'sheet_key', 'slot': {'model': self.v['model'], 'version_id': self.v['id']}}, team, 'pete', can_manage=True)
+        out = K.action({'action': 'sheet_key'}, team, 'pete', can_manage=True)
         return out.get('code')
 
     def call(self, **body):
@@ -50,14 +50,16 @@ class SheetSyncTest(unittest.TestCase):
 
     def run_rows(self, rows, **patches):
         with patch.object(runops, 'add_contents', return_value=patches.get('added', {'ok': True})) as add, \
-             patch.object(runops, 'run_pipeline', side_effect=patches.get('pipeline', pipeline)), \
+             patch.object(runops, 'run_pipeline', side_effect=patches.get('pipeline', pipeline)) as pipe, \
              patch.object(self.store, 'get_item_meta', return_value=patches.get('stored')):
-            out = self.call(op='run', rows=rows, include_pending=patches.get('pending', False))
-        self.add = add
+            body = {'mode': patches.get('mode', 'both'), 'meta_model': patches.get('meta_model', S.META_DEFAULT),
+                    'keyword_version': patches.get('version', f"v1 · solar-pro3 · 기준")}
+            out = self.call(op='run', rows=rows, include_pending=patches.get('pending', False), **body)
+        self.add, self.pipe = add, pipe
         return out
 
     def test_select(self):
-        rows = [row(2, '새 글'), row(3, '완료', '검수 완료'), row(4, '반영', '반영됨'), row(5, '대기', '미검수'),
+        rows = [row(2, '새 글'), row(3, '완료', '검수 완료'), row(4, '반영', '반영됨'), row(5, '대기', '미검수', 핵심키워드='금리'),
                 row(6, '실패', '실패'), row(7, '', body=''), row(8, '긴 제목' * 100), row(9, '새 글')]
         targets, skipped = S.select(rows)
         self.assertEqual([t['row'] for t in targets], [2, 6])
@@ -67,14 +69,33 @@ class SheetSyncTest(unittest.TestCase):
         many, over = S.select([row(n, f'글 {n}') for n in range(2, 2 + K.MAX_ITEMS + 3)])
         self.assertEqual((len(many), [s['reason'] for s in over]), (K.MAX_ITEMS, [S.OVER] * 3))
         self.assertEqual(many[0]['content'], {'displayServiceName': '뉴스', 'title': '글 2', 'body': '본문'})
+        # 메타만 만든 미검수 행(키워드 칸 비어 있음)은 키워드·둘 다 실행 대상 · 메타 실행에선 이미 만든 행
+        meta_done = row(2, '메타만', '미검수', 리드문='리드', 엔티티='한국은행')
+        self.assertEqual((len(S.select([meta_done])[0]), len(S.select([meta_done], mode='meta')[0])), (1, 0))
+
+    def test_select_keyword_reads_sheet_meta(self):
+        rows = [row(2, '글', 리드문='한국은행이 금리를 내렸다', 엔티티='한국은행, 이창용', 인텐트='속보', 카테고리='경제'),
+                row(3, '리드 없음', 엔티티='한국은행'), row(4, '엔티티 없음', 리드문='리드'), row(5, '', body='', 리드문='제목 없이', 엔티티='A')]
+        targets, skipped = S.select(rows, mode='keyword')
+        self.assertEqual([t['row'] for t in targets], [2, 5])
+        self.assertEqual(targets[0]['meta'], {'summary': '한국은행이 금리를 내렸다', 'entities': ['한국은행', '이창용'],
+                                              'intent': ['속보'], 'content_category': ['경제']})
+        self.assertEqual([s['reason'] for s in skipped], ['리드문 없음', '엔티티 없음'])
+
+    def test_options_and_stale_choice(self):
+        K.create_version({'model': 'solar-pro3', 'rules': '문장', 'title': '문장', 'target': 'sentence'}, 'a', 't')
+        opts = self.call(op='options')
+        self.assertEqual((opts['keyword_versions'], opts['meta_models'][0]), (['v1 · solar-pro3 · 기준'], S.META_DEFAULT))
+        self.assertIn('핵심키워드 프롬프트', self.run_rows([row(2, '글')], version='v9 · x · y')['error'])
+        self.assertIn('원천 메타 모델', self.run_rows([row(2, '글')], meta_model='없는 모델')['error'])
+        self.assertIn('실행 종류', self.run_rows([row(2, '글')], mode='all')['error'])
 
     def test_issue_stores_hash_only_and_rotates(self):
         self.assertRegex(self.code, r'^a\.[\w-]{43}$')
         cfg = S._config('a')
-        self.assertEqual((cfg['version_id'], cfg['model'], cfg['by']), (self.v['id'], self.v['model'], 'pete'))
+        self.assertEqual((cfg['by'], 'version_id' in cfg), ('pete', False))          # 인증만 · 버전·모델은 시트 설정 탭
         self.assertNotIn(self.code.split('.')[1], json.dumps([cfg, K.catalog('a')], ensure_ascii=False))
         self.assertEqual(K.catalog('a')['sheet']['connected'], True)
-        self.assertFalse(K.action({'action': 'sheet_key', 'slot': {'model': 'x', 'version_id': self.v['id']}}, 'a', can_manage=True)['ok'])
         self.assertFalse(K.action({'action': 'sheet_key', 'slot': {}}, 'a')['ok'])          # 관리 권한 필요
         old, self.code = self.code, self.issue()
         self.assertEqual(self.call(op='result', id='0' * 32)['error'], '시트에서 시작한 실험이 아닙니다')
@@ -120,6 +141,31 @@ class SheetSyncTest(unittest.TestCase):
         self.assertEqual((s['written'], s['mismatched']), (3, 1))
         self.assertIn('1개 행 위치가 바뀌어', s['write_error'])
         self.assertFalse(self.call(op='written', id=rid, written='3', mismatched=0)['ok'])
+
+    def test_meta_only(self):
+        rows = [row(2, '기준금리 인하', 핵심키워드='기존'), row(3, '엔티티 없음'), row(4, '메타 있음', '미검수', 리드문='이미')]
+        out = self.run_rows(rows, mode='meta', meta_model='gpt-5.4')
+        self.assertEqual((out['ok'], out['targets'], out['skipped']), (True, 2, 1))
+        self.assertEqual({c.kwargs['model'] for c in self.pipe.call_args_list}, {'gpt-5.4'})
+        self.assertEqual(K._catalog('a')['runs'], [])                                 # 실험실 실험은 만들지 않음
+        res = self.call(op='result', id=out['id'])
+        ok, bad = (u['values'] for u in res['updates'])
+        self.assertEqual((res['status'], ok['상태'], ok['리드문'], ok['모델']), ('done', '미검수', '한국은행이 기준금리 인하', '메타 mock'))
+        self.assertNotIn('핵심키워드', ok)                                             # 키워드 칸은 건드리지 않음
+        self.assertEqual((bad['상태'], bad['엔티티']), ('실패', ''))
+        self.assertEqual(self.call(op='written', id=out['id'], written=2, mismatched=0), {'ok': True})
+        self.assertNotIn(('a', out['id']), K.ACTIVE)
+        self.assertNotIn('a', K.SHEET_TEAMS)
+
+    def test_keyword_only_uses_sheet_meta(self):
+        rows = [row(2, '기준금리 인하', '미검수', 리드문='시트에서 고친 리드문', 엔티티='한국은행, 이창용', 인텐트='속보')]
+        out = self.run_rows(rows, mode='keyword', pipeline=AssertionError('메타를 만들면 안 됨'))
+        self.add.assert_not_called()
+        run = K._get(K._key('run', out['id']), 'a')
+        self.assertEqual((run['items'][0]['meta']['summary'], run['sheet']['mode']), ('시트에서 고친 리드문', 'keyword'))
+        values = self.call(op='result', id=out['id'])['updates'][0]['values']
+        self.assertTrue(values['핵심키워드'] and values['모델'].startswith('키워드 '))
+        self.assertNotIn('리드문', values)                                             # 시트 메타 칸은 그대로 둠
 
     def test_bad_rows_rejected_whole(self):
         for rows in ('x', [{'row': 1, 'values': {}}], [{'row': '2', 'values': {}}], [row(n, 'a') for n in range(2, 3 + S.MAX_ROWS)]):

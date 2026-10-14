@@ -346,7 +346,7 @@ window.PRISM_APP_PARTS.push(() => ({
     if(this.kwCatalog?.sheet?.connected && !confirm('새 연결 코드를 만들면 이전 코드는 바로 막힙니다. 계속할까요?')) return;
     this.kwBusy=true;this.kwError='';this.kwMessage='';
     try {
-      const r=await this.kwRequest('',{action:'sheet_key',slot:{...this.kwSlots[0]}});
+      const r=await this.kwRequest('',{action:'sheet_key'});
       this.kwSheetCode=location.origin+'/sheet-sync#'+r.code;this.kwCatalog={...this.kwCatalog,sheet:r.sheet};
       this.kwMessage='연결 코드를 만들었습니다 · 시트 메뉴 프리즘 › 연결 설정에 붙여 넣으세요';
     } catch(e) {this.kwError=e.message;} finally {this.kwBusy=false;}
