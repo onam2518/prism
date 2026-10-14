@@ -140,6 +140,17 @@ class KeywordLabTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, '개선에 사용'): K.confirm_gold(b,'a','tester',True)
         self.assertEqual(K._version(vid,'a')['rules'], '메타에 근거한 키워드 최대 3개')
 
+    def test_compile_action_saves_new_version_with_lineage(self):
+        run = self.run_case(1); cell = next(iter(run['cells'].values())); b = self.final(run, cell)
+        gold = K.confirm_gold(b, 'a', 'tester', True)['gold']
+        vid = run['slots'][0]['version']['id']
+        with patch.object(E, '_llm', return_value=(None, True, '')):
+            r = K.action({'action':'compile','version_id':vid,'compiler_model':'solar-pro3','gold_keys':[gold['item_key']]},'a','tester',True)
+        v = r['version']
+        self.assertEqual((v['title'], v['parent_id'], v['proposal_id'], v['rules']), ('1회 개선', vid, r['proposal']['id'], r['proposal']['rules']))
+        self.assertEqual(v['training_keys'], [gold['item_key']])
+        self.assertIn(v['id'], [x['id'] for x in K.catalog('a')['versions']])
+
     def test_review_acknowledges_persisted_revision_without_revealing_model(self):
         run = self.run_case(1)
         cell = next(iter(run['cells'].values()))

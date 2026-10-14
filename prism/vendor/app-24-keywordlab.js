@@ -515,17 +515,17 @@ window.PRISM_APP_PARTS.push(() => ({
     if(this.kwBusy) return;
     this.kwError=this.kwImproveIssue();if(this.kwError)return;
     this.kwBusy=true;this.kwImproving='manual';this.kwMessage='';
-    try {this.kwProposal=(await this.kwRequest('',{action:'compile',version_id:this.kwLoopVersion,
-      compiler_model:this.kwCompiler,gold_keys:this.kwTraining})).proposal;
-      this.kwMessage='개선안 작성 완료 · 아래 결과를 확인하고 새 버전으로 저장하세요.';
+    try {const r=await this.kwRequest('',{action:'compile',version_id:this.kwLoopVersion,
+      compiler_model:this.kwCompiler,gold_keys:this.kwTraining});
+      this.kwProposal={...r.proposal,version:r.version};await this.kwLoad();
+      this.kwMessage=r.version.model+' · '+this.kwVersionLabel(r.version)+' 버전으로 저장했습니다. 실행·비교에서 이 버전을 골라 추출 결과를 확인하세요.';
     }catch(e){this.kwError='개선안을 작성하지 못했습니다. '+e.message;}
     finally{this.kwBusy=false;this.kwImproving='';}
     if(this.kwTab==='improve')this.kwFocus(this.kwError ? 'kw-improve-status' : 'kw-proposal-result');
   },
-  kwUseProposal() {
-    const p=this.kwProposal;if(!p)return;this.kwDraftSlot=null;
-    this.kwDraft={target:p.target || 'keyword',model:p.model,title:'검수 기반 개선',rules:p.rules,note:p.changes.map(c=>c.reason+': '+c.change).join('\n'),parent_id:p.parent_id,proposal_id:p.id};
-    this.kwChangeTab('prompts');this.kwMessage='개선안을 확인하고 새 버전으로 저장하세요. 저장 후 실행·비교에서 이 버전을 선택하면 추출 결과를 확인할 수 있습니다.';
-    this.kwFocus('kw-version-draft');
+  kwShowProposalVersion() {
+    const id=this.kwProposal?.version?.id;
+    this.kwVersion=(this.kwCatalog?.versions || []).find(v=>v.id===id) || this.kwProposal?.version || null;
+    this.kwChangeTab('prompts');
   }
 }));
