@@ -699,9 +699,10 @@ class TestConfigCache(unittest.TestCase):
         self.assertEqual(Config.load().model, "file-model")
         os.environ["PRISM_MODEL"] = "env-model"
         self.addCleanup(lambda: os.environ.pop("PRISM_MODEL", None))
-        self.assertEqual(Config.load().model, "env-model")        # 재로드가 env 를 다시 읽는다
+        self.assertEqual(Config.load().model, "file-model")       # 저장한 모델이 env 기본값보다 우선
+        self._cfg_path({"concurrency": 3})
+        self.assertEqual(Config.load().model, "env-model")        # 파일에 모델이 없을 때만 env 기본값
         os.environ.pop("PRISM_MODEL")
-        self.assertEqual(Config.load().model, "file-model")
 
     def test_mutation_does_not_poison_cache(self):
         from prism.config import Config

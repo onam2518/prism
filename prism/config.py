@@ -161,7 +161,9 @@ class Config:
         cfg.api_key = os.environ.get("PRISM_API_KEY", os.environ.get("UPSTAGE_API_KEY", cfg.api_key))
         if os.environ.get("PRISM_DB"):                 # 컨테이너 볼륨 등으로 DB 경로 지정
             cfg.db_path = os.environ["PRISM_DB"]
-        if os.environ.get("PRISM_MODEL"):
+        # PRISM_MODEL 은 설정 파일에 모델이 없을 때의 기본값이다. 화면(사용 모델)에서 저장한 모델을
+        # 덮으면 고른 모델과 다른 모델로 실행된다(2026-10-14 사고: fly secret 이 pro3 로 고정).
+        if os.environ.get("PRISM_MODEL") and not (data or {}).get("model"):
             cfg.model = os.environ["PRISM_MODEL"]
         if os.environ.get("PRISM_CONCURRENCY"):
             cfg.concurrency = int(os.environ["PRISM_CONCURRENCY"])
