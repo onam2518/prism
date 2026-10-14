@@ -1568,4 +1568,17 @@ button.tbchip:disabled{cursor:default;opacity:.8}
   .kwl-kw{margin:var(--ds-space-1) 0 0;font-size:12.5px;color:var(--ds-body)}
   .kwl-table .meta{margin:2px 0 0;font-size:11.5px;color:var(--ds-muted);font-weight:400}
   .kwl-ellipsis{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:calc(var(--ds-space-10) * 7)}
+  .kwl-wrap{max-height:calc(var(--ds-space-10) * 10.5)}
+  .kwl-table{min-width:calc(var(--ds-space-10) * 20)}
+  .kwl-table .kwl-content{min-width:calc(var(--ds-space-10) * 6);max-width:calc(var(--ds-space-10) * 9);white-space:normal;overflow-wrap:anywhere}
+  .kwl-table .kwl-value{min-width:calc(var(--ds-space-10) * 4);max-width:calc(var(--ds-space-10) * 7);white-space:normal;overflow-wrap:anywhere}
+  .kwl-table .kwl-category{min-width:calc(var(--ds-space-10) * 3.5);max-width:calc(var(--ds-space-10) * 5)}
+  .kwl-table .ds-badge--category{white-space:normal;text-align:left}
+  .kwl-table .kwl-select{width:var(--ds-space-10);text-align:center;accent-color:var(--ds-primary)}
+  .kwl-table .kwl-author{min-width:calc(var(--ds-space-10) * 3.5)}
+  .kw-workspace .ds-bullets{margin-block:var(--ds-space-5)}
+  .kw-workspace .dc-body > .ds-bullets{margin-block:0}
+  .kw-workspace .ds-bullets li.ds-hint--error{color:var(--ds-error)}
   @media (max-width:900px){.kwd-split{grid-template-columns:minmax(0,1fr)}.kwd-side{padding-left:0;border-left:0}}
+
+.kwl-note{white-space:pre-wrap;overflow-wrap:anywhere}

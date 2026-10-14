@@ -43,6 +43,60 @@ class KeywordLabTest(unittest.TestCase):
         K.review(b, 'a', 'tester', True)
         return b
 
+    def test_prior_review_is_shared_by_exact_input_and_keeps_first_reviewer(self):
+        first = self.run_case(1)
+        cell = next(iter(first['cells'].values()))
+        body = self.final(first, cell)
+        # 기존 데이터는 was_final 필드가 없더라도 수정 전에 확정 이력을 보존한다.
+        K._update(K._key('run', first['id']), 'a', lambda r: r['cells'][cell['id']]['reviews'][0].pop('was_final'))
+        K.review(dict(body, expected_revision=1, note='수정 내용'), 'a', 'second', True)
+        newer = self.run_case(1)
+        data = K.run_detail(newer['id'], 'a')['run']
+        prior = data['prior_reviews'][newer['items'][0]['key']][0]
+        self.assertEqual(prior['first_by'], 'tester')
+        self.assertEqual(prior['by'], 'second')
+        self.assertEqual(len(prior['history']), 2)
+        self.assertTrue(all(r['was_final'] for r in prior['history']))
+        self.assertEqual(prior['history'][0]['note'], '')
+        self.assertEqual(prior['history'][1]['note'], '수정 내용')
+        self.assertNotIn('model', str(prior))
+        self.assertEqual(K._prior_reviews(newer, 'b')[newer['items'][0]['key']], [])
+        changed = copy.deepcopy(newer)
+        changed['items'][0]['key'] = 'changed-meta'
+        self.assertEqual(K._prior_reviews(changed, 'a'), {'changed-meta': []})
+        changed = copy.deepcopy(newer); changed['target'] = 'sentence'
+        self.assertEqual(K._prior_reviews(changed, 'a')[newer['items'][0]['key']], [])
+        with self.assertRaisesRegex(ValueError, '확정 검수 이력'):
+            K.delete_run({'run_id': first['id']}, 'a')
+
+    def test_confirmed_revision_can_only_be_overwritten_once_and_history_survives(self):
+        run = self.run_case(1); cell = next(iter(run['cells'].values()))
+        body = self.final(run, cell)
+        update = dict(body, expected_revision=1, note='두 번째 확정')
+        K.review(update, 'a', 'second', True)
+        with self.assertRaisesRegex(ValueError, '다른 검수'):
+            K.review(dict(update, note='경고 확인 뒤 경합'), 'a', 'third', True)
+        history = K.run_detail(run['id'], 'a')['run']['cells'][cell['id']]['reviews']
+        self.assertEqual([r['by'] for r in history], ['tester', 'second'])
+        self.assertTrue(history[0]['was_final'])
+        self.assertTrue(history[1]['was_final'])
+
+    def test_delete_racing_final_review_preserves_history(self):
+        run = self.run_case(1); cell = next(iter(run['cells'].values()))
+        original = self.store.compare_report
+        raced = []
+        def compare(*args, **kwargs):
+            if kwargs.get('guard_payload') == {'deleted': True} and not raced:
+                raced.append(True)
+                self.final(run, cell)
+            return original(*args, **kwargs)
+        with patch.object(self.store, 'compare_report', side_effect=compare):
+            with self.assertRaisesRegex(ValueError, '확정 검수 이력'):
+                K.delete_run({'run_id': run['id']}, 'a')
+        saved = K.run_detail(run['id'], 'a')['run']
+        self.assertEqual(len(saved['cells'][cell['id']]['reviews']), 1)
+        self.assertTrue(saved['cells'][cell['id']]['final'])
+
     def test_three_combinations_frozen_input_blind_and_independent_failure(self):
         run = self.run_case(fail=True)
         self.assertEqual(run['status'], 'done')

@@ -10,7 +10,7 @@ VENDOR = os.path.join(os.path.dirname(__file__), "..", "prism", "vendor")
 
 class ModalEscTest(unittest.TestCase):
     # JS 키 핸들러가 Esc 를 따로 처리하는 모달(app-02 상세 단축키 · app-24 kwReviewKey)
-    JS_ESC = ("detailOpen || cmpOpen", "kwTab==='run' && kwReview")
+    JS_ESC = ("detailOpen || cmpOpen", "kwTab==='run' && Boolean(kwReview)")
 
     def test_dismissable_modals_close_on_escape(self):
         for tag in re.findall(r'<div class="ds-dialog-backdrop"[^>]*>', page.PAGE):
