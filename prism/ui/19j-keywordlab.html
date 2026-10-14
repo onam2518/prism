@@ -81,11 +81,11 @@
         <div x-show="kwSource==='sheet'" class="dc-body">
           <div class="control-row">
             <a class="ds-btn ds-btn--outline ds-btn--s-sm" x-bind:href="kwCatalog?.sheet?.template_url || null" target="_blank" rel="noopener noreferrer">템플릿 사본 만들기</a>
-            <button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-bind:disabled="kwBusy || !kwCatalog?.can_manage || !kwSlots[0]?.version_id" x-on:click="kwSheetIssue()" x-text="kwCatalog?.sheet?.connected ? '연결 코드 다시 만들기' : '연결 코드 만들기'"></button>
+            <button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-bind:disabled="kwBusy || !kwCatalog?.can_manage" x-on:click="kwSheetIssue()" x-text="kwCatalog?.sheet?.connected ? '연결 코드 다시 만들기' : '연결 코드 만들기'"></button>
           </div>
-          <p class="meta" x-show="kwCatalog?.sheet?.connected" x-text="'연결됨 · 키워드 '+(kwCatalog?.sheet?.model || '')+' · 발급 '+kwDate(kwCatalog?.sheet?.issued_at)"></p>
+          <p class="meta" x-show="kwCatalog?.sheet?.connected" x-text="'연결됨 · 발급 '+kwDate(kwCatalog?.sheet?.issued_at)"></p>
           <label class="fn" x-show="kwSheetCode"><span class="ds-label">연결 코드 · 지금만 보입니다</span><input class="field" type="text" readonly x-bind:value="kwSheetCode" x-on:focus="$event.target.select()"></label>
-          <ul class="ds-bullets"><li>STEP 2 에서 모델·프롬프트 버전을 고르고 연결 코드를 만듭니다(다시 만들면 이전 코드는 막힘)</li><li>템플릿 사본에서 시트 메뉴 프리즘 › 양식 만들기 → 연결 설정에 코드를 붙여 넣습니다</li><li>시트 메뉴 프리즘 › 실행으로 시작하고, 끝나면 결과 받기로 행에 적습니다 · 실험은 아래 실험 기록에 남습니다</li></ul>
+          <ul class="ds-bullets"><li>연결 코드를 만듭니다(인증만 · 다시 만들면 이전 코드는 막힘)</li><li>템플릿 사본에서 시트 메뉴 프리즘 › 양식 만들기 → 연결 설정에 코드를 붙여 넣고, 설정 탭에서 원천 메타 모델·핵심키워드 프롬프트를 고릅니다</li><li>시트 메뉴 실행(원천 메타)·실행(핵심키워드)·실행(둘 다)로 시작하고, 끝나면 결과 받기로 행에 적습니다 · 키워드 실행은 아래 실험 기록에 남습니다</li></ul>
         </div>
         <div x-show="kwSource==='sample'" class="dc-body">
           <div class="control-row"><label for="kw-sample" class="ds-label">샘플 수</label><input id="kw-sample" type="number" min="1" max="100" class="field kw-count-field" x-model.number="kwSample"><span class="meta">최대 100건</span></div>

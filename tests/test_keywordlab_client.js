@@ -15,11 +15,11 @@ async function main(){
   assert.equal(x.kwReady(),true);assert.equal(x.kwExcelRows()[0].row,2);
   let xs;x.kwRequest=async(q,d)=>{xs=d;return{id:'r9'}};x.kwOpenRun=async()=>true;x.kwLoad=async()=>{};
   await x.kwStart();assert.equal(xs.rows.length,1);assert.equal(xs.rows[0].title,'엑셀 3행');assert.equal(xs.meta,undefined);}
- // 구글 시트(시트 → 프리즘): 화면에선 실행하지 않고 연결 코드만 발급 · 본문 {action:'sheet_key',slot} · 코드 = 주소/sheet-sync#코드 · 비교 모드면 direct 복귀
+ // 구글 시트(시트 → 프리즘): 화면에선 실행하지 않고 연결 코드만 발급 · 본문 {action:'sheet_key'}(인증만) · 코드 = 주소/sheet-sync#코드 · 비교 모드면 direct 복귀
  {const x=window.PRISM_APP_PARTS[0]();x._authHeaders=()=>({});x.kwChooseMode('single');x.kwSlots[0]={model:'solar',version_id:'v1'};x.kwSource='sheet';x.kwCatalog={sheet:{}};
   let xs;x.kwRequest=async(q,d)=>{xs=d;return{code:'t.abc',sheet:{connected:true}}};
   assert.equal(x.kwReady(),false);await x.kwSheetIssue();
-  assert.equal(JSON.stringify(xs),JSON.stringify({action:'sheet_key',slot:{model:'solar',version_id:'v1'}}));
+  assert.equal(JSON.stringify(xs),JSON.stringify({action:'sheet_key'}));
   assert.equal(x.kwSheetCode,'https://p.test/sheet-sync#t.abc');assert.equal(x.kwCatalog.sheet.connected,true);
   x.kwChooseMode('compare');assert.equal(x.kwSource,'direct');}
  let sent;a._afetch=async(url,opt)=>{sent=JSON.parse(opt.body);return{json:async()=>({ok:true})}};

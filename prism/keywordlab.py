@@ -198,12 +198,12 @@ def _items(body, team):
     if isinstance(body.get('sheet'), dict):          # 시트(Code.gs)가 보낸 행 · 형식은 여기서 다시 검사
         from . import sheetsync
         rows = sheetsync._rows(body['sheet'].get('rows'))
-        targets, skipped = sheetsync.select(rows, body['sheet'].get('include_pending') is True)
+        targets, skipped = sheetsync.select(rows, body['sheet'].get('include_pending') is True, body['sheet'].get('mode', 'both'))
         if not targets:
             raise ValueError('처리할 행이 없습니다')
         body['sheet'].update(read=len(rows), skipped=len(skipped))
         empty = {'summary': '', 'entities': [], 'intent': [], 'content_category': []}
-        return [dict(_item(t['content'], empty, t['hash']), title=t['title'] or f"시트 {t['row']}행", sheet_row=t['row'], content=t['content'])
+        return [dict(_item(t['content'], t.get('meta') or empty, t['hash']), title=t['title'] or f"시트 {t['row']}행", sheet_row=t['row'], content=t['content'])
                 for t in targets]
     if 'gold_keys' in body:
         keys = body['gold_keys']
@@ -303,7 +303,7 @@ def parse_excel(body):
         os.unlink(path)
     if '리드문' not in headers:
         raise ValueError('리드문 열이 없습니다 · 양식을 받아 다시 작성하세요')
-    split = lambda v: [x.strip() for x in re.split(r'[,;|\n]', str(v or '')) if x.strip()]
+    split = _split
     rows, rejected = [], []
     for n, r in enumerate(table, 2):                 # 엑셀 행 번호(1행=머리줄)
         title = str(r.get('콘텐츠 이름') or '').strip()
@@ -320,6 +320,11 @@ def parse_excel(body):
                 reason = str(exc)
         (rejected if reason else rows).append({'row': n, 'title': title, 'meta': meta, **({'reason': reason} if reason else {})})
     return {'ok': True, 'rows': rows, 'rejected': rejected}
+
+
+def _split(v):
+    """엑셀·시트 칸의 여러 값(쉼표·세미콜론·세로줄·줄바꿈 구분) → 목록."""
+    return [x.strip() for x in re.split(r'[,;|\n]', str(v or '')) if x.strip()]
 
 
 def _prepare_items(body, team, target):
@@ -405,6 +410,7 @@ def start(body, team, actor, background=True, gold_snapshot=None, should_stop=No
     if isinstance(body.get('sheet'), dict):
         run['sheet'] = {'read': body['sheet']['read'], 'targets': len(items), 'skipped': body['sheet']['skipped'],
                         'include_pending': body['sheet'].get('include_pending') is True, 'meta_model': '', 'meta_failed': 0,
+                        'mode': body['sheet'].get('mode', 'both'), 'meta_pick': body['sheet'].get('meta_pick', ''),
                         'written': 0, 'mismatched': 0, 'write_error': '', 'written_at': None}
     with LOCK:
         if 'sheet' in run:
@@ -471,7 +477,7 @@ def _run(rid, team, should_stop=None):
         _update(key, team, save)
     try:
         try:
-            if 'sheet' in run:
+            if 'sheet' in run and run['sheet'].get('mode', 'both') == 'both':     # 키워드만 실행은 시트 메타를 그대로 쓴다
                 run = _sheet_meta(rid, team, run, should_stop)
             with ThreadPoolExecutor(max_workers=3) as pool:
                 list(pool.map(one, [(it, slot) for it in run['items'] for slot in run['slots']
@@ -493,12 +499,11 @@ def _run(rid, team, should_stop=None):
                 SHEET_TEAMS.discard(team)
 
 
-def _sheet_meta(rid, team, run, should_stop=None):
-    """시트 행: 콘텐츠 등록 → 운영 경로로 메타 4종 생성(DB 미검수 저장) → 문항 키·해시를 실제 메타로 고정."""
+def sheet_metas(items, team, model='', should_stop=None):
+    """시트 행: 콘텐츠 등록 → 운영 경로(run_pipeline · model 비우면 운영 기본)로 메타 4종(DB 미검수 저장) → [(행, 메타|None, 모델, 오류)]."""
     from . import runops
     from .meta_contract import FIELDS, drop_fail
     mock = bool(getattr(getattr(_SV, 'Handler', None), 'server_mock', False))
-    label, items = run['slots'][0]['label'], run['items']
     added = runops.add_contents([it['content'] for it in items], team=team, source='구글 시트')
     add_error = '콘텐츠 등록 실패: ' + str(added['error'])[:300] if added.get('error') else ''
     st = _store()
@@ -511,22 +516,28 @@ def _sheet_meta(rid, team, run, should_stop=None):
             # 이미 실행된 콘텐츠는 저장 결과(검수 교정 포함)를 쓴다 · 다시 돌리면 이중 과금·검수 결과 덮어쓰기
             im = st.get_item_meta(it['hash'], team=team) if hasattr(st, 'get_item_meta') else None
             if im and any(im.get(k) for k in FIELDS):
-                model = ((im.get('run_manifest') or {}).get('calls') or {}).get('summary', {}).get('model') or '저장 결과'
+                used = ((im.get('run_manifest') or {}).get('calls') or {}).get('summary', {}).get('model') or '저장 결과'
             else:
-                res = runops.run_pipeline(dict(it['content']), mock=mock, team=team, persist=True)
+                res = runops.run_pipeline(dict(it['content']), mock=mock, team=team, model=model, persist=True)
                 if res.get('error'):
                     return it, None, '', res['error']
                 im = res['output'].get('item_meta') or {}
                 calls = (im.get('run_manifest') or {}).get('calls') or {}
-                model = (calls.get('summary') or {}).get('model') or ('mock' if res.get('mock') else '운영 기본')
+                used = (calls.get('summary') or {}).get('model') or ('mock' if res.get('mock') else model or '운영 기본')
             # 호출 실패 대체값(ETC_OUT)은 '분류 없음' · 키워드 입력·시트 칸에선 뺀다(DB 원본은 유지)
             m = {k: im.get(k) or ([] if k != 'summary' else '') for k in FIELDS}
             m['intent'], m['content_category'] = drop_fail(m['intent']), drop_fail(m['content_category'])
-            return it, m, model, '' if ER.MC.entity_names(m['entities']) else '메타 생성 결과에 엔티티가 없습니다'
+            return it, m, used, '' if ER.MC.entity_names(m['entities']) else '메타 생성 결과에 엔티티가 없습니다'
         except Exception as exc:
             return it, None, '', '메타 생성 실패: ' + str(exc)[:300]
     with ThreadPoolExecutor(max_workers=3) as pool:
-        done = list(pool.map(meta, items))
+        return list(pool.map(meta, items)), add_error
+
+
+def _sheet_meta(rid, team, run, should_stop=None):
+    """둘 다 실행: 메타 4종 생성 → 문항 키·해시를 실제 메타로 고정 · 메타 실패 행은 키워드 칸을 실패로 채운다."""
+    label, items = run['slots'][0]['label'], run['items']
+    done, add_error = sheet_metas(items, team, run['sheet'].get('meta_pick', ''), should_stop)
     failed, models = {}, []
     for it, m, model, error in done:
         if m is not None:
@@ -1146,7 +1157,7 @@ def action(body, team=None, actor='', can_manage=False, can_final=False):
         if op == 'delete_gold': return delete_gold(body, team, actor)
         if op == 'sheet_key':
             from . import sheetsync
-            return sheetsync.issue(body, team, actor)
+            return sheetsync.issue(team, actor)
         raise ValueError('지원하지 않는 작업입니다')
     except (ValueError, TypeError, KeyError) as exc:
         return {'ok': False, 'error': str(exc)}
