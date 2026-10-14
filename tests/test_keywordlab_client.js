@@ -15,13 +15,12 @@ async function main(){
   assert.equal(x.kwReady(),true);assert.equal(x.kwExcelRows()[0].row,2);
   let xs;x.kwRequest=async(q,d)=>{xs=d;return{id:'r9'}};x.kwOpenRun=async()=>true;x.kwLoad=async()=>{};
   await x.kwStart();assert.equal(xs.rows.length,1);assert.equal(xs.rows[0].title,'엑셀 3행');assert.equal(xs.meta,undefined);}
- // 구글 시트(시트 → 프리즘): 화면에선 실행하지 않고 연결 코드만 발급 · 본문 {action:'sheet_key'}(인증만) · 코드 = 주소/sheet-sync#코드 · 비교 모드면 direct 복귀
- {const x=window.PRISM_APP_PARTS[0]();x._authHeaders=()=>({});x.kwChooseMode('single');x.kwSlots[0]={model:'solar',version_id:'v1'};x.kwSource='sheet';x.kwCatalog={sheet:{}};
+ // 구글 시트(시트 → 프리즘): 화면에선 실행하지 않고 연결 코드만 발급 · 본문 {action:'sheet_key'}(인증만) · 코드 = 주소/sheet-sync#코드
+ {const x=window.PRISM_APP_PARTS[0]();x._authHeaders=()=>({});x.kwCatalog={sheet:{}};
   let xs;x.kwRequest=async(q,d)=>{xs=d;return{code:'t.abc',sheet:{connected:true}}};
-  assert.equal(x.kwReady(),false);await x.kwSheetIssue();
+  await x.kwSheetIssue();
   assert.equal(JSON.stringify(xs),JSON.stringify({action:'sheet_key'}));
-  assert.equal(x.kwSheetCode,'https://p.test/sheet-sync#t.abc');assert.equal(x.kwCatalog.sheet.connected,true);
-  x.kwChooseMode('compare');assert.equal(x.kwSource,'direct');}
+  assert.equal(x.kwSheetCode,'https://p.test/sheet-sync#t.abc');assert.equal(x.kwCatalog.sheet.connected,true);}
  let sent;a._afetch=async(url,opt)=>{sent=JSON.parse(opt.body);return{json:async()=>({ok:true})}};
  await a.kwRequest('',{action:'review'});assert.equal(sent.reviewer,'검수자');
  a.kwRunData={cells:{'key:A':{id:'key:A',status:'done',review_revision:2,refined:{keywords:[{text:'한국은행',kind:'single'}]},reviews:[],final:null}}};
@@ -32,7 +31,7 @@ async function main(){
  a._afetch=async()=>({json:async()=>({ok:false,error:'저장 충돌'})});await a.kwSaveReview();assert.match(a.kwError,/저장 충돌/);assert.equal(a.kwMessage,'');assert.equal(a.kwBusy,false);
 
  const b=window.PRISM_APP_PARTS[0]();
- assert.deepEqual(Array.from(b.kwTabs,t=>t[0]),['run','improve','prompts']);
+ assert.deepEqual(Array.from(b.kwTabs,t=>t[0]),['run','improve','prompts','sheet']);
  b.kwCatalog={can_manage:true,runs:[{id:'one',n:1},{id:'many',n:3}],versions:[],default_rules:'기본 규칙'};
  b.kwChooseMode('compare');assert.equal(b.kwCount,2);
  b.kwCount=3;b.kwSlots=[{model:'m1',version_id:'v1'},{model:'m2',version_id:'v2'},{model:'m3',version_id:'v3'}];

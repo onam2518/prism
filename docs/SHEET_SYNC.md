@@ -14,7 +14,7 @@
 
 ## 설정 절차
 
-1. 프리즘 키워드 실험실 STEP 3 입력 방식 **구글 시트 연동**에서 **연결 코드 만들기**를 누른다. 코드는 이 화면에서 한 번만 보인다.
+1. 프리즘 키워드 실험실 **구글 시트 연동** 탭(프롬프트 관리 옆)에서 **연결 코드 만들기**를 누른다. 코드는 이 화면에서 한 번만 보인다.
    다시 만들면 이전 코드는 바로 막힌다(팀에 코드 1개).
 2. **템플릿 사본 만들기**로 내 드라이브에 사본을 만든다(Code.gs 가 들어 있다).
 3. 사본 시트 메뉴 **프리즘 › 양식 만들기**를 누른다. 처음 한 번은 권한 승인 창이 뜬다(외부 서비스 연결 포함).
@@ -215,7 +215,7 @@ function refreshMenu() {
 
 function connect() {
   var ui = SpreadsheetApp.getUi();
-  var r = ui.prompt('연결 설정', '프리즘 키워드 실험실 STEP 3 에서 만든 연결 코드를 붙여 넣으세요.', ui.ButtonSet.OK_CANCEL);
+  var r = ui.prompt('연결 설정', '프리즘 키워드 실험실 구글 시트 연동 탭에서 만든 연결 코드를 붙여 넣으세요.', ui.ButtonSet.OK_CANCEL);
   if (r.getSelectedButton() !== ui.Button.OK) return;
   var code = r.getResponseText().trim();
   if (!/^https:\/\/[^#\s]+\/sheet-sync#[\w-]+\.[\w-]{40,64}$/.test(code)) {
