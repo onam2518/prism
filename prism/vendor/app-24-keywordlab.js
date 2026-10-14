@@ -339,6 +339,16 @@ window.PRISM_APP_PARTS.push(() => ({
     } catch(e) {this.kwError=e.message;} finally {this.kwBusy=false;}
   },
   kwExcelRows() {return [...(this.kwExcel?.rows || []),...(this.kwExcel?.rejected || [])].sort((a,b)=>a.row-b.row);},
+  // 실행 결과 엑셀 · 현재 값만(최종 확정이면 확정값, 아니면 모델 결과) · 파일명은 서버 규칙
+  async kwDownloadXlsx() {
+    try {
+      const r=await this._afetch('/lab-keywords?xlsx=1&run='+encodeURIComponent(this.kwRunId),{headers:this._authHeaders()});
+      if(!(r.headers.get('content-type') || '').includes('spreadsheet')) throw new Error((await r.json()).error || '엑셀을 만들지 못했습니다');
+      const name=((r.headers.get('content-disposition') || '').match(/filename="([^"]+)"/) || [])[1] || 'keyword_result.xlsx';
+      const u=URL.createObjectURL(await r.blob()), a=document.createElement('a');
+      a.href=u; a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(u),60000);
+    } catch(e) {this.kwError=e.message;}
+  },
   async kwDownloadCsv() {
     try {
       const r=await this._afetch('/lab-keywords?csv=1&run='+encodeURIComponent(this.kwRunId),{headers:this._authHeaders()});
