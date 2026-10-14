@@ -7,9 +7,9 @@
           <div class="panel-hd"><b>콘텐츠 추가</b><span class="meta">텍스트·엑셀은 저장만(초안은 STEP 2 모델 실행) · 미디어는 추출 미리보기 후 등록</span></div>
           <div class="panel-bd">
           <!-- 입력 방식 -->
-          <div class="seg seg3 mb-5">
+          <div class="ds-segmented mb-5" role="group" aria-label="입력 방식">
             <template x-for="t in tabItems" x-bind:key="t.id">
-              <button type="button" x-on:click="selectTab(t.id)" x-bind:class="activeTabId === t.id ? 'on' : ''" x-text="t.label"></button>
+              <button type="button" class="ds-segmented__item" x-on:click="selectTab(t.id)" x-bind:aria-pressed="activeTabId === t.id ? 'true' : 'false'" x-text="t.label"></button>
             </template>
           </div>
           <!-- 콘텐츠 그룹: 텍스트만 여기서 지정 · 미디어는 패널 안(양식별) · 엑셀은 컬럼에서 자동 -->
@@ -33,9 +33,9 @@
           <!-- 미디어(이미지·영상): 실험실에서 승격(2026-08-13) · 추출 미리보기 → '콘텐츠로 등록'.
                텍스트·엑셀과 달리 등록 시점에 이미 메타가 있어 STEP 2 재실행이 필요 없다 -->
           <div x-show="activeTabId === 'media'" x-cloak class="space-y-4">
-            <div class="seg mb-4" style="max-width:220px">
-              <button type="button" x-bind:class="mediaTab==='image'?'on':''" x-on:click="mediaTab='image'">이미지</button>
-              <button type="button" x-bind:class="mediaTab==='video'?'on':''" x-on:click="mediaTab='video'">영상</button>
+            <div class="ds-segmented mb-4" role="group" aria-label="미디어 종류">
+              <button type="button" class="ds-segmented__item" x-bind:aria-pressed="mediaTab==='image' ? 'true' : 'false'" x-on:click="mediaTab='image'">이미지</button>
+              <button type="button" class="ds-segmented__item" x-bind:aria-pressed="mediaTab==='video' ? 'true' : 'false'" x-on:click="mediaTab='video'">영상</button>
             </div>
             <!-- ── 이미지 ── -->
             <div x-show="mediaTab==='image'" x-cloak class="space-y-4">

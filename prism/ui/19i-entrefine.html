@@ -56,10 +56,10 @@
 
         <!-- ── STEP 2 · 실행 · 단건/다건 선택은 머리줄 칩(콘텐츠 관리 수동/자동 추가와 같은 방식) ── -->
         <div class="stepline"><span class="stepline__no">STEP 2</span><b>실행</b><span class="meta">STEP 1 에 저장한 모델·프롬프트로 돌립니다</span>
-          <span class="panel-hd__controls control-row ml-auto">
-            <button type="button" class="srcfilter__chip" x-bind:class="erMode === 'one' ? 'sel' : ''" x-on:click="erMode = 'one'">단건</button>
-            <button type="button" class="srcfilter__chip" x-bind:class="erMode === 'batch' ? 'sel' : ''" x-on:click="erMode = 'batch'">다건 · 정답셋 일괄</button>
-          </span>
+          <span class="panel-hd__controls control-row ml-auto"><span class="ds-segmented" role="group" aria-label="실행 방식">
+            <button type="button" class="ds-segmented__item" x-bind:aria-pressed="erMode === 'one' ? 'true' : 'false'" x-on:click="erMode = 'one'">단건</button>
+            <button type="button" class="ds-segmented__item" x-bind:aria-pressed="erMode === 'batch' ? 'true' : 'false'" x-on:click="erMode = 'batch'">다건 · 정답셋 일괄</button>
+          </span></span>
         </div>
         <section class="panel" x-show="erMode === 'one'">
           <div class="panel-hd"><b>단건</b><span class="meta">정답셋 해시를 넣거나 메타를 직접 입력</span></div>
