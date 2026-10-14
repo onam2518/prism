@@ -291,9 +291,6 @@
       <section><label class="ds-label">메타컴파일러 모델</label><x-modelpick key="kwcompiler" value="kwCompiler" set="kwCompiler=$v" groups="textGroups" first-label="모델 선택" first-value="" width="260px" tip="개선안을 작성할 모델"></x-modelpick></section>
       </fieldset>
     </section>
-    <div class="ds-segmented" role="group" aria-label="개선 방식" x-show="kwTarget==='keyword'">
-      <template x-for="m in [['once','단건 개선'],['auto','반복 개선(오토파일럿)']]" x-bind:key="m[0]"><button type="button" class="ds-segmented__item" x-bind:aria-pressed="kwImpMode()===m[0] ? 'true' : 'false'" x-bind:disabled="kwBusy || kwCatalog?.tuning?.status==='running'" x-on:click="kwImproveMode=m[0]" x-text="m[1]"></button></template>
-    </div>
     <div class="stepline"><span class="stepline__no">STEP 2</span><b>개선용 정답</b><span class="meta" x-text="'개선안 작성에 쓸 정답 · '+kwTraining.length+' / 20개 선택'"></span></div>
     <section class="panel" aria-label="개선용 정답">
       <fieldset class="panel-bd dc-body" x-bind:disabled="kwBusy || kwCatalog?.tuning?.status==='running'">
@@ -368,17 +365,21 @@
       </section>
       </fieldset>
     </section>
-    <div class="stepline"><span class="stepline__no" x-text="'STEP '+(kwTarget==='keyword' ? 4 : 3)"></span><b>실행</b><span class="meta" x-text="!(kwTarget==='keyword') ? '개선안 1개 작성' : kwAuto() ? '개선과 평가를 정한 횟수만큼 반복' : '개선안 1개를 만들어 평가'"></span></div>
+    <div class="stepline"><span class="stepline__no" x-text="'STEP '+(kwTarget==='keyword' ? 4 : 3)"></span><b>실행</b><span class="meta" x-text="kwTarget==='keyword' ? '실행 유형을 고르고 실행' : '개선안 1개 작성'"></span></div>
     <section class="panel" aria-label="실행" x-bind:aria-busy="Boolean(kwImproving)">
       <section class="panel-bd dc-body">
-        <label class="ds-label" x-show="kwAuto()">최대 반복 횟수<input class="field" type="number" min="1" max="10" step="1" x-model.number="kwTuneRounds" x-bind:disabled="kwBusy || kwCatalog?.tuning?.status==='running'"></label>
+        <fieldset class="kwd-gap-sm" x-show="kwTarget==='keyword'" x-bind:disabled="kwBusy || kwCatalog?.tuning?.status==='running'" aria-label="실행 유형">
+          <legend class="dve__lbl">실행 유형</legend>
+          <div style="display:flex;flex-direction:column;align-items:flex-start;gap:var(--ds-space-2)"><label class="kw-check"><input type="radio" name="kw-run-type" value="once" x-model="kwImproveMode">단건 개선 · 개선안 1개를 만들어 평가</label>
+          <label class="kw-check"><input type="radio" name="kw-run-type" value="auto" x-model="kwImproveMode">반복 개선 · 개선과 평가를 최대<input class="field" type="number" min="1" max="10" step="1" aria-label="최대 반복 횟수" style="width:64px" x-model.number="kwTuneRounds" x-bind:disabled="kwImproveMode!=='auto'">회 반복</label></div>
+        </fieldset>
         <ul class="ds-bullets">
           <li x-show="kwTarget==='keyword'" x-text="'개선용 '+kwTraining.length+'개 · 평가용 '+kwEvaluation.length+'개'+(kwAuto() ? ' · 최대 '+kwTuneRounds+'회' : '')+' · 모델 호출 비용 발생'"></li>
           <li x-show="kwTarget!=='keyword'" x-text="'개선용 정답 '+kwTraining.length+'개로 개선안 작성'"></li>
         </ul>
         <section class="control-row">
-          <button type="button" class="ds-btn ds-btn--solid ds-btn--c-primary" x-show="kwTarget==='keyword'" x-bind:disabled="kwBusy || Boolean(kwImproveIssue())" x-on:click="kwStartTuning()" x-text="kwAuto() ? '반복 개선 시작' : '단건 개선 실행'"></button>
-          <button type="button" class="ds-btn ds-btn--solid ds-btn--c-primary" x-show="kwTarget!=='keyword'" x-bind:disabled="kwBusy || Boolean(kwImproveIssue())" x-on:click="kwCompile()" x-text="kwImproving==='manual' ? '작성 중…' : '단건 개선 실행'"></button>
+          <button type="button" class="ds-btn ds-btn--solid ds-btn--c-primary" x-show="kwTarget==='keyword'" x-bind:disabled="kwBusy || Boolean(kwImproveIssue())" x-on:click="kwStartTuning()">실행</button>
+          <button type="button" class="ds-btn ds-btn--solid ds-btn--c-primary" x-show="kwTarget!=='keyword'" x-bind:disabled="kwBusy || Boolean(kwImproveIssue())" x-on:click="kwCompile()" x-text="kwImproving==='manual' ? '작성 중…' : '실행'"></button>
         </section>
         <ul class="ds-bullets" x-show="kwImproveIssue()" x-data="{ lines: [] }" x-effect="lines=sents(kwImproveIssue())">
           <li><span x-text="lines[0]"></span><ul x-show="lines.length>1"><template x-for="(line,i) in lines.slice(1)" x-bind:key="i"><li x-text="line"></li></template></ul></li>
@@ -392,14 +393,14 @@
     <section class="panel" id="kw-result" tabindex="-1" x-show="kwTuning() || (kwTarget!=='keyword' &amp;&amp; kwProposal)" aria-label="실행 결과 확인">
       <section class="panel-bd dc-body" aria-live="polite">
         <template x-if="kwTuning()"><section class="dc-body">
-          <p role="status" x-text="({running:'실행 중',done:'완료',stopped:'중지',failed:'실패'}[kwTuning().status] || kwTuning().status)+(kwAuto() ? ' · '+kwTuning().round+'/'+kwTuning().max_rounds+'회' : '')+(kwTuning().status==='running' ? ' · '+kwTuning().phase : '')"></p>
+          <p role="status" x-text="({running:'실행 중',done:'완료',stopped:'중지',failed:'실패'}[kwTuning().status] || kwTuning().status)+(kwTuning().max_rounds>1 ? ' · '+kwTuning().round+'/'+kwTuning().max_rounds+'회' : '')+(kwTuning().status==='running' ? ' · '+kwTuning().phase : '')"></p>
           <ul class="ds-bullets" x-show="kwTuning().reason"><li x-text="kwTuning().reason"></li></ul>
           <button type="button" class="ds-btn ds-btn--outline" x-show="kwTuning().status==='running'" x-bind:disabled="kwBusy || kwTuning().stop_requested || !kwCatalog.can_manage" x-on:click="kwStopTuning()" x-text="kwTuning().stop_requested ? '중지 요청됨' : '실행 중지'"></button>
           <table class="ds-table" x-show="kwTuning().history.length"><thead><tr><th>회차</th><th>완전 일치 / 평가 콘텐츠</th><th>결과</th><th>검수</th></tr></thead><tbody>
-            <template x-for="h in kwTuning().history" x-bind:key="h.round"><tr><td x-text="h.round===0 ? '개선 전' : (kwImpMode()==='once' ? '개선안' : h.round+'회')"></td><td x-text="h.matched+' / '+h.total+' ('+Math.round(h.matched/h.total*100)+'%)'"></td><td x-text="h.round===0 ? '기준' : h.version_id===kwTuning().best?.version_id ? '최고 후보' : h.improved ? '향상' : '향상 없음'"></td><td><button type="button" class="copybtn" x-on:click="kwOpenTuningCandidate(h)">결과 검수</button></td></tr></template>
+            <template x-for="h in kwTuning().history" x-bind:key="h.round"><tr><td x-text="h.round===0 ? '개선 전' : (kwTuning().max_rounds===1 ? '개선안' : h.round+'회')"></td><td x-text="h.matched+' / '+h.total+' ('+Math.round(h.matched/h.total*100)+'%)'"></td><td x-text="h.round===0 ? '기준' : h.version_id===kwTuning().best?.version_id ? '최고 후보' : h.improved ? '향상' : '향상 없음'"></td><td><button type="button" class="copybtn" x-on:click="kwOpenTuningCandidate(h)">결과 검수</button></td></tr></template>
           </tbody></table>
           <template x-if="kwSaveTarget()"><section class="dc-body">
-            <p class="ds-label" x-text="'변경 내용 · '+(kwImpMode()==='once' ? '개선안' : kwSaveTarget().round+'회 후보')"></p>
+            <p class="ds-label" x-text="'변경 내용 · '+(kwTuning().max_rounds===1 ? '개선안' : kwSaveTarget().round+'회 후보')"></p>
             <ul class="ds-bullets"><template x-for="(line,i) in (kwSaveTarget().version.note || '').split('\n').filter(Boolean)" x-bind:key="i"><li x-text="line"></li></template></ul>
             <details><summary>개선된 프롬프트</summary><pre class="ds-code" x-text="kwSaveTarget().version.rules"></pre></details>
           </section></template>
