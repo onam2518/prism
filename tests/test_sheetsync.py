@@ -25,14 +25,18 @@ class SheetSyncTest(unittest.TestCase):
                                    Handler=types.SimpleNamespace(server_mock=True))
         for module in (K, E):
             p = patch.object(module, '_SV', sv); p.start(); self.addCleanup(p.stop)
-        self.sent, self.rows = [], []
-        p = patch.object(S.urllib.request, 'urlopen', self.fake); p.start(); self.addCleanup(p.stop)
+        self.sent, self.rows, self.mismatched = [], [], []
+        p = patch.object(S._OPENER, 'open', self.fake); p.start(); self.addCleanup(p.stop)
 
     def fake(self, req, timeout=None):
         self.sent.append(req)
         if req.get_method() == 'POST':
             body = json.loads(req.data)
-            out = {'ok': True, 'written': len(body['updates'])} if body['key'] == KEY else {'ok': False, 'error': 'unauthorized'}
+            self.assertTrue(all('expect' in u for u in body['updates']))
+            runs = K._catalog('a')['runs']
+            if runs:
+                self.post_status = K._get(K._key('run', runs[-1]['id']), 'a')['status']
+            out = {'ok': True, 'written': len(body['updates']), 'mismatched': self.mismatched} if body['key'] == KEY else {'ok': False, 'error': 'unauthorized'}
         else:
             out = {'ok': True, 'rows': self.rows} if ('key=' + KEY) in req.full_url else {'ok': False, 'error': 'unauthorized'}
         return io.BytesIO(json.dumps(out).encode())
@@ -82,7 +86,7 @@ class SheetSyncTest(unittest.TestCase):
         K._update(S.CONFIG, 'a', lambda c: c.update(key='wrong-key-999'))
         out = K.action({'action': 'sheet_preview'}, 'a', can_manage=True)
         self.assertEqual(out, {'ok': False, 'error': '시트 비밀 키가 맞지 않습니다'})
-        with patch.object(S.urllib.request, 'urlopen', lambda req, timeout=None: io.BytesIO(b'{"ok":false,"error":"bad wrong-key-999"}')):
+        with patch.object(S._OPENER, 'open', lambda req, timeout=None: io.BytesIO(b'{"ok":false,"error":"bad wrong-key-999"}')):
             self.assertEqual(K.action({'action': 'sheet_preview'}, 'a', can_manage=True)['error'], 'bad ***')
 
     def test_start_runs_meta_keywords_and_writes_sheet(self):
@@ -120,6 +124,15 @@ class SheetSyncTest(unittest.TestCase):
         self.assertTrue(first['핵심키워드'] and first['모델'].startswith('메타 mock · 키워드 '))
         self.assertEqual((failed['상태'], failed['핵심키워드']), ('실패', ''))
         self.assertIn('엔티티', failed['오류'])
+        self.assertEqual(failed['모델'], '메타 mock')                           # 키워드 미실행 칸은 메타 모델만
+        self.assertEqual((post['updates'][2]['expect'], post['updates'][3]['expect']),
+                         ({'제목': '다시', '콘텐츠키': 'k5'}, {'제목': '', '콘텐츠키': ''}))
+        self.assertEqual(self.post_status, 'running')                           # 기재가 끝난 뒤에 완료 저장
+        self.mismatched = [2]
+        self.assertEqual(K.action({'action': 'sheet_write', 'id': rid}, 'a', can_manage=True)['sheet']['write_error'],
+                         '1개 행 위치가 바뀌어 기재하지 않았습니다 · 정렬·삽입 없이 시트 다시 기재')
+        self.assertEqual(K._get(K._key('run', rid), 'a')['sheet']['mismatched'], 1)
+        self.mismatched = []
         # 기재 실패는 실험을 실패로 만들지 않고 다시 기재할 수 있다
         K._update(S.CONFIG, 'a', lambda c: c.update(key='wrong-key-999'))
         out = K.action({'action': 'sheet_write', 'id': rid}, 'a', can_manage=True)
@@ -128,9 +141,44 @@ class SheetSyncTest(unittest.TestCase):
         K._update(S.CONFIG, 'a', lambda c: c.update(key=KEY))
         self.assertEqual(K.action({'action': 'sheet_write', 'id': rid}, 'a', can_manage=True)['sheet']['write_error'], '')
 
+    def start_sheet(self, **patches):
+        S.save_config({'url': URL, 'key': KEY}, 'a')
+        self.rows = [row(2, '기준금리 인하')]
+        v = K.create_version({'model': 'solar-pro3', 'rules': '키워드 최대 3개', 'title': '기준'}, 'a', 't')['version']
+        with patch.object(runops, 'add_contents', return_value=patches.get('added', {'ok': True})), \
+             patch.object(runops, 'run_pipeline', side_effect=AssertionError('다시 실행하면 안 됨')), \
+             patch.object(self.store, 'get_item_meta', return_value=patches.get('stored')), patch.object(E, '_llm', return_value=(None, True, '')):
+            rid = K.start({'slots': [{'model': v['model'], 'version_id': v['id']}], 'sheet': {}}, 'a', 't', background=False)['id']
+        return K._get(K._key('run', rid), 'a'), json.loads(self.sent[-1].data)['updates'][0]['values']
+
+    def test_reuses_stored_meta(self):
+        stored = {'summary': '한국은행이 금리를 내렸다', 'entities': ['이창용', '한국은행'], 'intent': [], 'content_category': []}
+        run, values = self.start_sheet(stored=stored)
+        self.assertEqual((run['items'][0]['meta']['summary'], run['sheet']['meta_model'], values['상태']), (stored['summary'], '저장 결과', '미검수'))
+
+    def test_add_contents_error_marks_rows(self):
+        run, values = self.start_sheet(added={'error': '저장 실패 · 다시 시도하세요'})
+        self.assertEqual((values['상태'], values['오류'], run['error']), ('실패', '콘텐츠 등록 실패: 저장 실패 · 다시 시도하세요', values['오류']))
+
+    def test_one_sheet_run_per_team(self):
+        K.SHEET_TEAMS.add('a')
+        self.addCleanup(K.SHEET_TEAMS.discard, 'a')
+        with self.assertRaisesRegex(ValueError, '이미 시트 실험이 실행 중입니다'):
+            self.start_sheet()
+
+    def test_redirect_hosts_and_size(self):
+        req = S.urllib.request.Request(URL, method='POST', data=b'{}')
+        follow = lambda url: S._Redirect().redirect_request(req, None, 302, 'Found', {}, url)
+        self.assertIsNotNone(follow('https://script.googleusercontent.com/macros/echo?x=1'))
+        self.assertIsNone(follow('https://evil.example/steal'))
+        self.assertIsNone(follow('http://script.googleusercontent.com/x'))
+        S.save_config({'url': URL, 'key': KEY}, 'a')
+        with patch.object(S, 'MAX_BYTES', 10), self.assertRaisesRegex(ValueError, '너무 큽니다'):
+            S.fetch_rows('a')
+
     def test_write_chunks(self):
         S.save_config({'url': URL, 'key': KEY}, 'a')
-        self.assertEqual(S.write('a', [{'row': n, 'values': {'상태': '미검수'}} for n in range(2, 122)]), 120)
+        self.assertEqual(S.write('a', [{'row': n, 'values': {'상태': '미검수'}, 'expect': {}} for n in range(2, 122)]), (120, []))
         self.assertEqual([len(json.loads(r.data)['updates']) for r in self.sent], [50, 50, 20])
 
 

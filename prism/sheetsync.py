@@ -19,6 +19,8 @@ TEMPLATE_URL = 'https://docs.google.com/spreadsheets/d/10v-uIRGSiqpLXv3EbQIEvyMW
 MAX_ROWS = 5000
 WRITE_CHUNK = 50
 TIMEOUT = 30
+MAX_BYTES = 20 * 1024 * 1024
+REDIRECT_HOSTS = ('script.google.com', 'script.googleusercontent.com')
 LIMITS = {'제목': 300, '본문': 20000}           # 그 외 입력 칸은 2000
 INPUT_COLUMNS = ('콘텐츠키', '서비스', '제목', '본문', '원문 링크')
 RESULT_COLUMNS = ('리드문', '엔티티', '인텐트', '카테고리', '핵심키워드', '핵심문장', '모델', '처리 시각', '상태', '프리즘 해시', '실험 ID', '오류')
@@ -50,15 +52,31 @@ def save_config(body, team):
     return {'ok': True, 'sheet': public_config(team)}
 
 
+class _Redirect(urllib.request.HTTPRedirectHandler):
+    """Apps Script 의 302(googleusercontent) 만 따라간다 · 다른 호스트면 None → HTTPError."""
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        u = urllib.parse.urlsplit(newurl)
+        if u.scheme != 'https' or u.hostname not in REDIRECT_HOSTS:
+            return None
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_OPENER = urllib.request.build_opener(_Redirect())
+
+
 def _call(req, key):
     """웹앱 호출 · 오류 문구에 URL·키를 싣지 않는다."""
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-            data = json.loads(r.read() or b'{}')
+        with _OPENER.open(req, timeout=TIMEOUT) as r:
+            raw = r.read(MAX_BYTES + 1)
     except urllib.error.HTTPError as exc:
         raise ValueError(f'시트 웹앱 호출 실패 (HTTP {exc.code})')
     except (urllib.error.URLError, OSError):
         raise ValueError('시트 웹앱에 연결하지 못했습니다 · 주소와 배포 상태를 확인하세요')
+    if len(raw) > MAX_BYTES:
+        raise ValueError('시트 웹앱 응답이 너무 큽니다 · 처리한 행을 다른 시트로 옮기세요')
+    try:
+        data = json.loads(raw or b'{}')
     except ValueError:
         raise ValueError('시트 웹앱 응답을 읽지 못했습니다 · 배포 상태를 확인하세요')
     if not isinstance(data, dict) or data.get('ok') is not True:
@@ -134,14 +152,16 @@ def preview(body, team):
 
 
 def write(team, updates):
-    """[{row, values}] 를 50행씩 기재 · 반환: 기재 행 수."""
+    """[{row, values, expect}] 를 50행씩 기재 · 반환: (기재 행 수, 위치가 바뀌어 건너뛴 행 번호들)."""
     c = _ready(team)
-    written = 0
+    written, mismatched = 0, []
     for i in range(0, len(updates), WRITE_CHUNK):
         req = urllib.request.Request(c['url'], method='POST', headers={'Content-Type': 'application/json'},
                                      data=json.dumps({'key': c['key'], 'updates': updates[i:i + WRITE_CHUNK]}, ensure_ascii=False).encode())
-        written += int(_call(req, c['key']).get('written') or 0)   # 302 → googleusercontent GET 은 urllib 가 따라간다
-    return written
+        data = _call(req, c['key'])                      # 302 → googleusercontent GET 은 _Redirect 가 따라간다
+        written += int(data.get('written') or 0)
+        mismatched += [n for n in data.get('mismatched') or [] if type(n) is int]
+    return written, mismatched
 
 
 def _kst(ts):
@@ -163,7 +183,9 @@ def updates_of(run):
             '카테고리': ', '.join(category_paths(m.get('content_category'))),
             '핵심키워드': ', '.join(k['text'] for k in (cell.get('refined') or {}).get('keywords', [])) if ok else '',
             '핵심문장': '',                               # ponytail: 키워드 실험은 문장을 안 만든다 · 문장 실험 연동 때 채움
-            '모델': f"메타 {meta_model or '-'} · 키워드 {cell.get('actual_model') or run['slots'][0]['version']['model']}",
+            '모델': f"메타 {meta_model or '-'}" + (f" · 키워드 {cell['actual_model']}" if cell.get('actual_model') else ''),   # 키워드 미실행 칸은 메타만
             '처리 시각': _kst(run['updated_at']), '상태': '미검수' if ok else '실패',
-            '프리즘 해시': it['hash'], '실험 ID': run['id'], '오류': '' if ok else str(cell.get('error') or '')[:500]}})
+            '프리즘 해시': it['hash'], '실험 ID': run['id'], '오류': '' if ok else str(cell.get('error') or '')[:500]},
+            # 정렬·행 삽입으로 위치가 바뀐 행엔 쓰지 않도록 원문과 대조(Code.gs)
+            'expect': {'제목': it['content'].get('title', ''), '콘텐츠키': it['content'].get('item_unique_key', '')}})
     return out

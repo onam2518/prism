@@ -57,6 +57,7 @@
 - `미검수` 행은 건너뛴다 · 화면에서 **미검수도 다시 생성**을 켜면 포함
 - `검수 완료` · `반영됨` 행은 항상 건너뛴다
 - 대상이 100건을 넘으면 시트 행 순서로 100건만 처리하고 나머지는 다음 실행으로 미룬다
+- 실행 중에는 정렬·행 삽입·삭제를 하지 않는다 · 읽을 때와 제목·콘텐츠키가 달라진 행은 기록하지 않는다
 
 ## Code.gs
 
@@ -64,7 +65,7 @@
 // 프리즘 키워드 실험실 · 구글 시트 연동 웹앱
 // 시트 메뉴 프리즘 › 양식 만들기(setup) · 연결 코드 보기(connectCode)
 // GET  ?key=비밀키  → {ok, rows:[{row, values:{열 이름: 값}}]}  (첫 시트 · 빈 행 제외)
-// POST {key, updates:[{row, values:{열 이름: 값}}]} → {ok, written}  (없는 열은 머리줄 끝에 추가)
+// POST {key, updates:[{row, values:{열 이름: 값}, expect:{제목, 콘텐츠키}}]} → {ok, written, mismatched}  (없는 열은 머리줄 끝에 추가)
 
 function json_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
@@ -105,16 +106,17 @@ function setupMenu() {
 // 연결 코드 = 웹앱 주소#비밀 키 · 키가 없으면 새로 만들어 스크립트 속성에 저장
 function connectCode() {
   var ui = SpreadsheetApp.getUi();
-  var url = ScriptApp.getService().getUrl();
-  if (!url) {
-    ui.alert('먼저 배포하세요. 확장 프로그램 › Apps Script › 배포 › 새 배포 · 웹 앱 · 나로 실행 · 링크가 있는 모든 사용자');
-    return;
-  }
+  var url = ScriptApp.getService().getUrl() || '';
   var props = PropertiesService.getScriptProperties();
   var key = props.getProperty('PRISM_KEY');
   if (!key) {
     key = (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, '');
     props.setProperty('PRISM_KEY', key);
+  }
+  if (!/\/exec$/.test(url)) {
+    ui.alert('비밀 키', '#' + key + '\n\n웹앱 주소를 찾지 못했습니다. 배포하지 않았다면 먼저 배포하세요(웹 앱 · 나로 실행 · 링크가 있는 모든 사용자). ' +
+      '배포 관리에서 웹앱 URL(/exec)을 복사해 #키 앞에 붙이면 연결 코드가 됩니다.', ui.ButtonSet.OK);
+    return;
   }
   ui.alert('연결 코드', url + '#' + key + '\n\n프리즘 키워드 실험실 STEP 3 연결 코드 칸에 붙여 넣으세요. 다른 사람에게 보이지 않게 다루세요.', ui.ButtonSet.OK);
 }
@@ -122,8 +124,8 @@ function connectCode() {
 // 메뉴 또는 편집기에서 실행 · 프리즘 양식(머리줄·서식·상태 목록)을 만든다 · 있는 머리줄은 덮지 않고 없는 열만 끝에 추가
 function setup() {
   var sh = sheet_();
-  sh.setName('프리즘 연동');
   var head = headers_(sh);
+  if (!head.length) sh.setName('프리즘 연동');   // 이미 쓰던 시트면 이름은 그대로 둔다
   INPUT_COLS.concat(RESULT_COLS).forEach(function (name) {
     if (head.indexOf(name) < 0) {
       head.push(name);
@@ -173,6 +175,18 @@ function safe_(v) {
   return /^[=+\-@]/.test(s) ? "'" + s : s;
 }
 
+// 읽을 때와 같은 행인지 확인(정렬·행 삽입으로 위치가 바뀌면 다른 콘텐츠에 덮어쓰지 않게) · 빈 값끼리는 일치
+function sameRow_(sh, head, row, expect) {
+  if (!expect) return true;
+  for (var name in expect) {
+    if (!Object.prototype.hasOwnProperty.call(expect, name)) continue;
+    var col = head.indexOf(String(name).trim()) + 1;
+    var now = col ? String(sh.getRange(row, col).getDisplayValue()).trim() : '';
+    if (now !== String(expect[name] == null ? '' : expect[name]).trim()) return false;
+  }
+  return true;
+}
+
 function doPost(e) {
   var body;
   try { body = JSON.parse(e.postData.contents); } catch (err) { return json_({ok: false, error: 'bad_json'}); }
@@ -183,11 +197,12 @@ function doPost(e) {
   try {
     var sh = sheet_();
     var head = headers_(sh);
-    var written = 0;
+    var written = 0, mismatched = [];
     for (var i = 0; i < updates.length; i++) {
       var u = updates[i] || {};
       var row = Number(u.row);
       if (!(row >= 2) || Math.floor(row) !== row || !u.values) continue;
+      if (!sameRow_(sh, head, row, u.expect)) { mismatched.push(row); continue; }
       for (var name in u.values) {
         if (!Object.prototype.hasOwnProperty.call(u.values, name)) continue;
         var col = head.indexOf(String(name).trim()) + 1;
@@ -201,7 +216,7 @@ function doPost(e) {
       written++;
     }
     SpreadsheetApp.flush();
-    return json_({ok: true, written: written});
+    return json_({ok: true, written: written, mismatched: mismatched});
   } finally {
     lock.releaseLock();
   }

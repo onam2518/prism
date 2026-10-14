@@ -366,8 +366,8 @@ window.PRISM_APP_PARTS.push(() => ({
   },
   async kwSheetWrite() {
     this.kwBusy=true;this.kwError='';this.kwMessage='';
-    try {await this.kwRequest('',{action:'sheet_write',id:this.kwRunId});await this.kwOpenRun(this.kwRunId);this.kwMessage='시트에 다시 기재했습니다';}
-    catch(e) {this.kwError=e.message;} finally {this.kwBusy=false;}
+    try {await this.kwRequest('',{action:'sheet_write',id:this.kwRunId});this.kwMessage='시트에 다시 기재했습니다';}
+    catch(e) {this.kwError=e.message;} finally {await this.kwOpenRun(this.kwRunId);this.kwBusy=false;}   // 실패해도 기재 결과(write_error) 갱신
   },
   kwExcelRows() {return [...(this.kwExcel?.rows || []),...(this.kwExcel?.rejected || [])].sort((a,b)=>a.row-b.row);},
   // 실행 결과 엑셀 · 현재 값만(최종 확정이면 확정값, 아니면 모델 결과) · 파일명은 서버 규칙

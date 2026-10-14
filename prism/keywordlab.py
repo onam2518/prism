@@ -18,6 +18,7 @@ from . import entrefine as ER, model_guides as MG
 _SV = None
 CATALOG = 'keyword_lab_catalog_v1'
 ACTIVE = set()
+SHEET_TEAMS = set()        # 시트 실험이 실행 중인 팀(같은 시트 행을 두 실험이 동시에 쓰지 않게)
 LOCK = threading.Lock()
 MAX_ITEMS = 100
 SAVE_EVERY = 10            # 결과 칸을 몇 개씩 묶어 저장할지(실험 기록 전체를 다시 쓰므로 칸마다 쓰면 DB 부하)
@@ -404,8 +405,12 @@ def start(body, team, actor, background=True, gold_snapshot=None, should_stop=No
     if isinstance(body.get('sheet'), dict):
         run['sheet'] = {'read': body['sheet']['read'], 'targets': len(items), 'skipped': body['sheet']['skipped'],
                         'include_pending': body['sheet'].get('include_pending') is True, 'meta_model': '', 'meta_failed': 0,
-                        'written': 0, 'write_error': '', 'written_at': None}
+                        'written': 0, 'mismatched': 0, 'write_error': '', 'written_at': None}
     with LOCK:
+        if 'sheet' in run:
+            if team in SHEET_TEAMS:
+                raise ValueError('이미 시트 실험이 실행 중입니다')
+            SHEET_TEAMS.add(team)
         ACTIVE.add((team, rid))                    # 기록 저장보다 먼저: 갓 시작한 실행을 _settle 이 중단으로 오인하지 않게
     _update(_key('run', rid), team, lambda target: target.update(run), {})
     _update(CATALOG, team, lambda cat: cat['runs'].append({'id': rid, 'target': target, 'created_at': run['created_at'],
@@ -474,14 +479,23 @@ def _run(rid, team, should_stop=None):
         finally:
             if pending:                              # 남은 칸은 중단돼도 저장(이미 낸 모델 호출 결과 보존)
                 flush(dict(pending))
-        _update(key, team, lambda r: r.update(status='done', updated_at=time.time()))
+        end = {'status': 'done'}
+    except Exception:
+        end = {'status': 'interrupted', 'error': '실험 저장 또는 실행이 중단되었습니다 · 같은 입력으로 새 실험을 실행하세요'}
+    try:
+        if 'sheet' in run:                           # 상태 저장 전에 기재 → 화면 폴링은 기재까지 끝나야 멈춤
+            try:
+                sheet_write({'id': rid}, team)
+            except Exception:
+                pass                                 # 기재 실패는 write_error 로 남고 실험 결과엔 영향 없음
+        _update(key, team, lambda r: r.update(end, updated_at=time.time()))
     except Exception:
         _update(key, team, lambda r: r.update(status='interrupted', error='실험 저장 또는 실행이 중단되었습니다 · 같은 입력으로 새 실험을 실행하세요'))
     finally:
         with LOCK:
             ACTIVE.discard((team, rid))
-        if 'sheet' in run:
-            sheet_write({'id': rid}, team)
+            if 'sheet' in run:
+                SHEET_TEAMS.discard(team)
 
 
 def _sheet_meta(rid, team, run, should_stop=None):
@@ -491,18 +505,25 @@ def _sheet_meta(rid, team, run, should_stop=None):
     mock = bool(getattr(getattr(_SV, 'Handler', None), 'server_mock', False))
     label, items = run['slots'][0]['label'], run['items']
     added = runops.add_contents([it['content'] for it in items], team=team, source='구글 시트')
-    if added.get('error'):
-        raise ValueError(added['error'])
+    add_error = '콘텐츠 등록 실패: ' + str(added['error'])[:300] if added.get('error') else ''
+    st = _store()
     def meta(it):
         if should_stop and should_stop():
             raise ValueError('실행 중지 요청')
+        if add_error:
+            return it, None, '', add_error
         try:
-            res = runops.run_pipeline(dict(it['content']), mock=mock, team=team, persist=True)
-            if res.get('error'):
-                return it, None, '', res['error']
-            im = res['output'].get('item_meta') or {}
-            calls = (im.get('run_manifest') or {}).get('calls') or {}
-            model = (calls.get('summary') or {}).get('model') or ('mock' if res.get('mock') else '운영 기본')
+            # 이미 실행된 콘텐츠는 저장 결과(검수 교정 포함)를 쓴다 · 다시 돌리면 이중 과금·검수 결과 덮어쓰기
+            im = st.get_item_meta(it['hash'], team=team) if hasattr(st, 'get_item_meta') else None
+            if im and any(im.get(k) for k in FIELDS):
+                model = ((im.get('run_manifest') or {}).get('calls') or {}).get('summary', {}).get('model') or '저장 결과'
+            else:
+                res = runops.run_pipeline(dict(it['content']), mock=mock, team=team, persist=True)
+                if res.get('error'):
+                    return it, None, '', res['error']
+                im = res['output'].get('item_meta') or {}
+                calls = (im.get('run_manifest') or {}).get('calls') or {}
+                model = (calls.get('summary') or {}).get('model') or ('mock' if res.get('mock') else '운영 기본')
             # 호출 실패 대체값(ETC_OUT)은 '분류 없음' · 키워드 입력·시트 칸에선 뺀다(DB 원본은 유지)
             m = {k: im.get(k) or ([] if k != 'summary' else '') for k in FIELDS}
             m['intent'], m['content_category'] = drop_fail(m['intent']), drop_fail(m['content_category'])
@@ -526,6 +547,8 @@ def _sheet_meta(rid, team, run, should_stop=None):
         r['items'], r['dataset_id'] = items, dataset
         r['cells'].update(failed)
         r['sheet'].update(meta_failed=len(failed), meta_model=', '.join(sorted(set(models))))
+        if add_error:
+            r['error'] = add_error
         r['updated_at'] = time.time()
         r['revision'] += 1
     run = _update(_key('run', rid), team, save)
@@ -545,11 +568,13 @@ def sheet_write(body, team):
     if not run or 'sheet' not in run:
         raise ValueError('구글 시트에서 시작한 실험이 아닙니다')
     try:
-        written, error = sheetsync.write(team, sheetsync.updates_of(run)), ''
+        written, mismatched = sheetsync.write(team, sheetsync.updates_of(run))
+        error = f'{len(mismatched)}개 행 위치가 바뀌어 기재하지 않았습니다 · 정렬·삽입 없이 시트 다시 기재' if mismatched else ''
     except Exception as exc:
-        written, error = 0, str(exc)[:300] if isinstance(exc, ValueError) else '시트 기재에 실패했습니다'
+        written, error = None, str(exc)[:300] if isinstance(exc, ValueError) else '시트 기재에 실패했습니다'
     def save(r):
-        r['sheet'].update(write_error=error, **({'written': written, 'written_at': time.time()} if not error else {}))
+        r['sheet'].update(write_error=error, **({'written': written, 'written_at': time.time(), 'mismatched': len(mismatched)}
+                                                 if written is not None else {}))
     run = _update(key, team, save)
     return {'ok': not error, 'sheet': run['sheet'], **({'error': error} if error else {})}
 
