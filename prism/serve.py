@@ -2240,6 +2240,11 @@ def _g_lab_keywords(h, q):
             h._send_file(KL.excel_template(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                          "keyword_lab_template.xlsx")
             return None
+        if q.get("run") and q.get("xlsx"):            # 실행 결과 엑셀 · 현재 값(최종 확정 우선)만
+            data, model, version = KL.export_xlsx(q["run"][0], h._req_team())
+            h._send_file(data, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                         _export_name(h._req_team(), "xlsx", "keyword_result", model=model, version=version))
+            return None
         if q.get("run") and q.get("csv"):             # 실행 결과 CSV(콘텐츠 × 조합) · 다른 AI 전달용
             rid = q["run"][0]
             h._send_file(KL.export_csv(rid, h._req_team()), "text/csv; charset=utf-8", "prism_keyword_" + rid[:8] + ".csv")

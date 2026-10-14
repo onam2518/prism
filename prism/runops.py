@@ -568,6 +568,7 @@ def build_template_xlsx(with_meta: bool = False, rows: list = None) -> bytes:
 
     def cell(r, ci, v):
         col = chr(ord("A") + ci)
+        v = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', str(v))   # XML 금지 제어문자(파일 깨짐 방지)
         return f'<c r="{col}{r}" t="inlineStr"><is><t xml:space="preserve">{escape(v)}</t></is></c>'
 
     sheet_rows = "".join(

@@ -177,6 +177,30 @@ class KeywordLabTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             K.start({'slots': [{'model': v['model'], 'version_id': v['id']}], 'rows': [{'meta': {'summary': ''}}]}, 'a', 'tester')
 
+    def test_export_xlsx_uses_final_else_model_output(self):
+        import os, tempfile
+        from prism.ingest import _read_xlsx
+        run = self.run_case(count=2)
+        cells = {c['id'].rsplit(':', 1)[1]: c for c in run['cells'].values()}
+        self.final(run, cells['A'])                                         # A = 최종 확정
+        key = K._key('run', run['id'])
+        K._update(key, 'a', lambda r: r['cells'][cells['A']['id']]['final'].update(keywords=[{'text': '확정값', 'kind': 'single'}]))
+        b = self.final(run, cells['B']); b.update(finalize=False, expected_revision=K._get(key, 'a')['cells'][cells['B']['id']]['review_revision'])
+        K.cancel_final({'run_id': run['id'], 'cell_id': cells['B']['id'], 'expected_revision': b['expected_revision'],
+                        'final_id': K._get(key, 'a')['cells'][cells['B']['id']]['final']['id']}, 'a', 'tester', True)   # B = 판정만(확정 취소)
+        data, model, version = K.export_xlsx(run['id'], 'a')
+        fd, path = tempfile.mkstemp(suffix='.xlsx'); os.write(fd, data); os.close(fd)
+        try:
+            headers, rows = _read_xlsx(path)
+        finally:
+            os.unlink(path)
+        self.assertEqual(headers, K.XLSX_COLUMNS)
+        got = {r['조합']: r['핵심 키워드'] for r in rows}
+        model_out = ' | '.join(k['text'] for k in cells['B']['refined']['keywords'])
+        self.assertEqual((got['A'], got['B']), ('확정값', model_out))
+        self.assertEqual({r['모델·버전'] for r in rows}, {'비공개'})              # 공개 전엔 가림
+        self.assertEqual(model, 'blind')
+
     def test_review_acknowledges_persisted_revision_without_revealing_model(self):
         run = self.run_case(1)
         cell = next(iter(run['cells'].values()))

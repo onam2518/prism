@@ -633,6 +633,31 @@ def export_csv(rid, team):
     return ('\ufeff' + '\r\n'.join(lines)).encode('utf-8')
 
 
+XLSX_COLUMNS = ['조합', '모델·버전', '콘텐츠', '원문 URL', '리드문', '엔티티', '인텐트', '카테고리', '핵심 키워드']
+
+
+def export_xlsx(rid, team):
+    """실행 결과 엑셀 · 검수 상태 없이 현재 값만 · 최종 확정이면 확정값, 아니면(미검수·판정만) 모델 결과.
+    행 = 콘텐츠 × 조합 · 공개 전 실험은 모델·버전을 가린다 · 반환 (파일 바이트, 첫 조합 모델, 버전 번호)."""
+    from .runops import build_template_xlsx
+    run = run_detail(rid, team)['run']
+    join = lambda xs: ' | '.join(str(x) for x in xs)
+    rows = [XLSX_COLUMNS]
+    for item in run['items']:
+        meta = item['meta']
+        for slot in run['slots']:
+            cell = run['cells'].get(item['key'] + ':' + slot['label']) or {}
+            v = slot['version']
+            final = cell.get('final')
+            values = _answers(final) if final else _candidates(cell)
+            rows.append([slot['label'], (v.get('model', '') + ' · v' + str(v.get('number', '')) + ' ' + v.get('title', '')) if run['revealed'] else '비공개',
+                         item['title'], run['sources'].get(item['hash'], ''), meta.get('summary', ''),
+                         join(ER.MC.entity_names(meta.get('entities'))), join(meta.get('intent') or []),
+                         join(meta.get('content_category') or []), join(k['text'] for k in values)])
+    first = run['slots'][0]['version'] if run['slots'] and run['revealed'] else {}
+    return build_template_xlsx(rows=rows), first.get('model') or 'blind', first.get('number') or 0
+
+
 def _review_payload(body, cell, item, target='keyword'):
     keywords = _candidates(cell)
     label = '문장' if target == 'sentence' else '키워드'
