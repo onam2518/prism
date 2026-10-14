@@ -1,8 +1,12 @@
 <template x-if="mod === 'lab'"><template x-if="labTab === 'entref' && ['run','prompts','improve'].includes(kwTab)">
 <div x-show="labTab === 'entref' && ['run','prompts','improve'].includes(kwTab)" x-cloak class="w-full dc-body kw-workspace" x-on:beforeunload.window="kwBeforeUnload($event)">
   <div class="control-row"><label class="selctl"><span class="selctl__lbl">실험 대상</span><select class="field" aria-label="실험 대상" x-bind:value="kwTarget" x-bind:disabled="kwBusy" x-on:change="kwTargetChange($event.target.value);$event.target.value=kwTarget"><option value="keyword">핵심 키워드</option><option value="sentence">핵심 문장</option></select></label><span class="meta" x-text="kwTarget==='sentence' ? '문장 검수·정답셋·프롬프트 개선' : '키워드별 검수·정답셋·프롬프트 개선'"></span></div>
-  <p role="alert" class="ds-hint ds-hint--error" x-show="kwError" x-text="kwError"></p>
-  <p role="status" class="ds-hint" x-show="kwMessage" x-text="kwMessage"></p>
+  <ul class="ds-bullets" role="alert" x-show="kwError" x-data="{ lines: [] }" x-effect="lines=sents(kwError)">
+        <li x-bind:class="kwError ? 'ds-hint--error' : ''"><span x-text="lines[0]"></span><ul x-show="lines.length>1"><template x-for="(line,i) in lines.slice(1)" x-bind:key="i"><li x-bind:class="kwError ? 'ds-hint--error' : ''" x-text="line"></li></template></ul></li>
+      </ul>
+  <ul class="ds-bullets" role="status" x-show="kwMessage" x-data="{ lines: [] }" x-effect="lines=sents(kwMessage)">
+        <li><span x-text="lines[0]"></span><ul x-show="lines.length>1"><template x-for="(line,i) in lines.slice(1)" x-bind:key="i"><li x-text="line"></li></template></ul></li>
+      </ul>
   <details class="dve__fold" x-show="kwTarget==='keyword'">
     <summary>키워드 정답셋 만들기 · 사용자 가이드</summary>
     <ol class="ds-bullets">
@@ -97,25 +101,42 @@
     <select id="kw-history" class="field" x-bind:disabled="kwBusy" x-bind:value="kwRunId" x-on:change="kwOpenRun($event.target.value).then(()=>{$event.target.value=kwRunId})"><option value="">실험 선택</option><template x-for="r in kwRuns()" x-bind:key="r.id"><option x-bind:value="r.id" x-bind:selected="kwRunId===r.id" x-text="kwDate(r.created_at)+' · 콘텐츠 '+r.n+'개 · '+r.slots+'조합'"></option></template></select>
     <button class="ds-btn ds-btn--ghost ds-btn--s-sm" x-on:click="kwLoad()">새로고침</button><button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-show="kwTab==='run'" x-bind:disabled="!kwRunData || kwRunData.status==='running'" x-on:click="kwDownloadCsv()" data-tip="콘텐츠 × 조합 한 행 · 제목·본문·엔티티·핵심 키워드·핵심 문장·검수 결과" data-tip-pos="bottom">CSV 받기</button><button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" x-show="kwTab==='run' && kwCatalog?.can_manage" x-bind:disabled="!kwRunData || kwRunData.status==='running' || kwBusy" x-on:click="kwDeleteRun()" data-tip="정답셋 반영·버전 채택에 쓰인 실험은 삭제할 수 없습니다" data-tip-pos="bottom">기록 삭제</button>
   </div>
-  <section class="panel" x-show="kwRunData && kwTab==='run'">
+  <section class="panel" x-show="kwRunData && kwTab==='run'" x-data="{ query:'', category:'', state:'', rows:[] }" x-effect="rows=kwResultRows(query,category,state)" aria-label="실행 결과 콘텐츠 목록">
     <div class="panel-hd"><b>실행 결과</b><span class="meta" x-text="kwRunData ? kwState(kwRunData) : ''"></span><button class="ds-btn ds-btn--outline ds-btn--s-sm ml-auto" x-show="kwRunData && !kwRunData.revealed && kwCatalog?.can_manage" x-on:click="kwReveal()">모델·버전 공개</button></div>
     <div class="panel-bd dc-body"><p role="status" x-show="kwRunData?.error" x-text="kwRunData?.error || ''"></p>
       <!-- 결과 목록(콘텐츠 검수 목록과 같은 결) · 행 = 콘텐츠 · 행 클릭 = 다음 판정할 조합으로 상세 검수 · 조합 셀 클릭 = 그 조합 -->
-      <div class="overflow-auto kwl-wrap"><table class="ds-table kwl-table"><thead><tr><th class="kwl-state">상태</th><th>콘텐츠</th>
+      <section class="filterbar control-row" aria-label="실행 결과 검색·필터">
+          <input class="field" type="search" aria-label="실행 결과 검색" placeholder="제목·카테고리·엔티티 검색" x-model.debounce.150ms="query">
+          <section class="fpop" x-data="{ fpOpen:false, fpBox:{} }" x-on:keydown.escape="fpOpen=false" x-on:click.outside="fpOpen=false" x-on:scroll.window="fpOpen=false" x-on:resize.window="fpOpen=false">
+            <button type="button" class="fpop__btn" x-bind:class="{ 'is-open':fpOpen, 'is-on':Boolean(category)+Number(Boolean(state)) }" x-on:click="fpOpen=!fpOpen; if(fpOpen) fpBox=mpMenuBox($el)" x-bind:aria-expanded="fpOpen" aria-haspopup="dialog" aria-label="실행 결과 필터">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              필터 <span class="fpop__n tnum" x-show="Boolean(category)+Number(Boolean(state))" x-text="Boolean(category)+Number(Boolean(state))"></span>
+            </button>
+            <section class="fpop__panel" x-show="fpOpen" x-cloak x-bind:style="fpBox" x-on:click.stop role="dialog" aria-label="실행 결과 필터 조건">
+              <label class="fpop__row"><span class="fpop__lbl">카테고리</span><select class="field" x-model="category" aria-label="실행 결과 카테고리"><option value="">전체</option><template x-for="name in kwContentCategories((kwRunData?.items || []))" x-bind:key="name"><option x-bind:value="name" x-bind:selected="category===name" x-text="catKo(name)"></option></template></select></label>
+              <label class="fpop__row"><span class="fpop__lbl">검수 상태</span><select class="field" x-model="state" aria-label="실행 결과 검수 상태"><option value="">전체</option><template x-for="name in ['대기','미검수','검수 중','판정됨','확정','실패']" x-bind:key="name"><option x-bind:value="name" x-bind:selected="state===name" x-text="name"></option></template></select></label>
+              <footer class="fpop__ft"><button type="button" class="copybtn" x-bind:disabled="!query &amp;&amp; !(Boolean(category)+Number(Boolean(state)))" x-on:click="query='';category='';state=''">필터 초기화</button><button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-on:click="fpOpen=false">닫기</button></footer>
+            </section>
+          </section>
+          <span class="text-xs text-muted tnum" role="status" x-text="rows.length+' / '+(kwRunData?.items || []).length+'건'"></span>
+          <span class="ds-badge ds-badge--neutral">입력순</span>
+        </section>
+      <section class="overflow-auto kwl-wrap" tabindex="0" aria-label="실행 결과 표 · 가로·세로 스크롤"><table class="ds-table kwl-table"><thead><tr><th scope="col" class="kwl-state">상태</th><th scope="col">콘텐츠</th><th scope="col">카테고리</th>
         <template x-for="s in (kwRunData?.slots || [])" x-bind:key="'kh'+s.label"><th><span x-text="'조합 '+s.label"></span><p class="meta kwl-ellipsis" x-text="kwRunData.revealed ? s.version.model+' · '+kwVersionLabel(s.version) : '판정 후 공개'" x-bind:title="kwRunData.revealed ? s.version.model+' · '+kwVersionLabel(s.version) : ''"></p></th></template>
         <th class="kwl-act">검수</th></tr></thead><tbody>
-        <template x-for="item in (kwRunData?.items || [])" x-bind:key="item.key"><tr role="button" tabindex="0" class="kwl-row" x-data="{ st: [] }" x-effect="st = kwItemState(item)" x-bind:class="kwReview && kwReview.item.key===item.key ? 'is-sel' : ''" x-on:click="kwOpenItem(item)" x-on:keydown.enter="kwOpenItem(item)">
+        <template x-for="item in rows" x-bind:key="item.key"><tr role="button" tabindex="0" class="kwl-row" x-data="{ st: [] }" x-effect="st = kwItemState(item)" x-bind:class="kwReview && kwReview.item.key===item.key ? 'is-sel' : ''" x-on:click="kwOpenItem(item)" x-on:keydown.enter="kwOpenItem(item)">
           <td><span class="ds-badge" x-bind:class="st[1]" x-text="st[0]"></span></td>
-          <td class="text-ink"><span x-text="item.title"></span><p class="meta kwl-ellipsis" x-text="kwMetaList(item.meta.entities).join(' · ') || '엔티티 없음'"></p></td>
-          <template x-for="s in kwRunData.slots" x-bind:key="item.key+s.label"><td x-on:click.stop="kwReviewable(kwCell(item,s)) && kwOpenReview(item,s)" x-bind:class="kwReviewable(kwCell(item,s)) ? 'kwl-cell' : ''">
+          <td class="kwl-content text-ink"><span x-text="item.title"></span><p class="meta" x-show="kwPriorReviews(item).length" x-text="kwPriorReviews(item).length ? '기존 검수 '+kwPriorReviews(item).length+'건 · 최초 '+kwPriorReviews(item)[0].first_by : ''"></p><p class="meta" x-text="kwMetaList(item.meta.entities).join(' · ') || '엔티티 없음'"></p></td>
+          <td class="kwl-category"><template x-for="c in kwMetaList(item.meta?.content_category)" x-bind:key="c"><span class="ds-badge ds-badge--category" x-bind:data-tip="termDef('category',c)" data-tip-pos="top" x-text="catKo(c)"></span></template><span class="text-xs text-muted" x-show="!kwMetaList(item.meta?.content_category).length">·</span></td>
+          <template x-for="s in kwRunData.slots" x-bind:key="item.key+s.label"><td class="kwl-value" x-on:click.stop="kwReviewable(kwCell(item,s)) && kwEnterReview(item,s)" x-bind:class="kwReviewable(kwCell(item,s)) ? 'kwl-cell' : ''">
             <span class="ds-badge" x-bind:class="kwSlotBadge(kwCell(item,s))" x-text="kwSlotState(kwCell(item,s))"></span>
             <span class="ds-badge ds-badge--warning" x-show="kwCell(item,s)?.mock">모의</span>
-            <p class="kwl-kw kwl-ellipsis" x-bind:title="kwCandidates(kwCell(item,s)).map(k=>k.text).join(' · ')" x-text="kwCell(item,s)?.error && !kwReviewable(kwCell(item,s)) ? kwCell(item,s).error : (kwCandidates(kwCell(item,s)).map(k=>k.text).join(' · ') || (kwCell(item,s) ? kwTargetLabel()+' 없음' : '실행 대기 중…'))"></p>
+            <p class="kwl-kw" x-bind:title="kwCandidates(kwCell(item,s)).map(k=>k.text).join(' · ')" x-text="kwCell(item,s)?.error && !kwReviewable(kwCell(item,s)) ? kwCell(item,s).error : (kwCandidates(kwCell(item,s)).map(k=>k.text).join(' · ') || (kwCell(item,s) ? kwTargetLabel()+' 없음' : '실행 대기 중…'))"></p>
           </td></template>
           <td x-on:click.stop><button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-show="['미검수','검수 중'].includes(st[0])" x-on:click="kwOpenItem(item)">검수하기</button><span class="text-xs text-muted kwl-done" x-show="['판정됨','확정'].includes(st[0])" x-on:click="kwOpenItem(item)" data-tip="상세에서 판정을 다시 보거나 수정" data-tip-pos="top" x-text="'✓ '+st[0]"></span></td>
         </tr></template>
-        <tr x-show="!(kwRunData?.items || []).length"><td x-bind:colspan="(kwRunData?.slots.length || 1)+3" class="text-xs text-muted">결과가 없습니다</td></tr>
-      </tbody></table></div>
+        <tr x-show="!rows.length"><td x-bind:colspan="(kwRunData?.slots.length || 1)+4" class="text-xs text-muted" x-text="kwRunData?.items.length ? '검색·필터 조건에 맞는 콘텐츠가 없습니다' : '결과가 없습니다'"></td></tr>
+      </tbody></table></section>
       <details class="dve__fold kwl-metrics"><summary>평가 항목 · 조합별 지표</summary><div class="overflow-auto"><table class="ds-table model-compare-table" x-bind:style="'--compare-model-count:'+(kwRunData?.slots.length || 1)"><thead><tr><th class="model-compare-label">평가 항목</th><template x-for="m in (kwRunData?.metrics || [])" x-bind:key="m.slot"><th x-text="m.slot"></th></template></tr></thead><tbody>
         <template x-for="row in [['완료 / 실패', m=>m.completed+' / '+m.failed],['적합 / 수정 / 제외',m=>kwRate(m,'accept')+' / '+kwRate(m,'edit')+' / '+kwRate(m,'exclude')],['키워드 구성 완전 일치 / 평가 콘텐츠',m=>m.exact_matches+' / '+m.exact_total],['빈 결과',m=>m.empty],['평균 소요 시간',m=>!kwRunData.revealed ? '판정 후 공개' : m.avg_ms==null ? '대기' : (m.avg_ms/1000).toFixed(1)+'초'],['토큰 / 비용',m=>!kwRunData.revealed ? '판정 후 공개' : m.tokens+' / '+kwMoney(m.cost_usd)]]" x-bind:key="row[0]"><tr><th x-text="row[0]"></th><template x-for="m in (kwRunData?.metrics || [])" x-bind:key="m.slot"><td x-text="row[1](m)"></td></template></tr></template>
       </tbody></table></div><ul class="ds-bullets"><li>적합·수정·제외 비율은 최종 확정한 판단 기준입니다. 완전 일치는 실행 당시 평가용 정답과 키워드 표기·구성이 모두 같은 콘텐츠 수입니다. 순서는 무관하며 추가·누락·표기 차이·실행 실패는 불일치입니다.</li></ul></details>
@@ -159,11 +180,36 @@
             <div class="dvc__note">모델에는 제목·본문을 전달하지 않습니다 · 제목은 검수자 식별용입니다</div>
           </div>
         </div>
-        <fieldset class="detailview__eval" x-bind:disabled="kwBusy" aria-label="결과 검수 입력">
+        <section class="detailview__eval" aria-label="기존 검수와 현재 결과">
+          <section x-show="kwPriorReviews(kwReview.item).length" aria-label="먼저 저장된 검수 결과">
+            <h3 class="dve__lbl">기존 검수 결과</h3>
+            <ul class="ds-bullets"><li>먼저 저장된 검수부터 확인하세요<ul><li>같은 입력으로 저장한 검수입니다 · 현재 조합의 판정에는 자동 반영되지 않습니다</li><li>최초 검수자와 최신 저장 내용을 표시합니다 · 저장 전 작업 여부는 표시되지 않습니다</li></ul></li></ul>
+            <template x-for="(r,idx) in kwPriorReviews(kwReview.item)" x-bind:key="r.run_id+r.cell_id">
+              <details class="dve__fold" x-bind:open="idx===0">
+                <summary><span x-text="'최초 '+r.first_by+' · '+kwDate(r.first_at)"></span> <span class="ds-badge" x-bind:class="r.final ? 'ds-badge--success' : 'ds-badge--neutral'" x-text="r.final ? '확정' : '임시 저장'"></span></summary>
+                <p class="meta" x-text="'최신 저장 '+r.by+' · '+kwDate(r.at)"></p>
+                <p class="text-sm" x-text="r.answers.map(k=>k.text).join(' · ') || (r.no_keywords ? '적합한 결과 없음' : '확정 가능한 결과 없음')"></p>
+                <ul class="ds-bullets"><template x-for="(j,ji) in r.judgments" x-bind:key="ji"><li><span x-text="j.original+' · '+({accept:'적합',edit:'수정',exclude:'제외',hold:'보류'}[j.verdict] || j.verdict)+(j.verdict==='edit' ? ' → '+j.corrected : '')"></span><ul x-show="j.reason"><li x-text="j.reason"></li></ul></li></template><template x-for="(a,ai) in r.additions" x-bind:key="'add'+ai"><li><span x-text="'추가 · '+a.text"></span><ul><li x-text="a.reason"></li></ul></li></template></ul>
+                <p class="text-sm kwl-note" x-show="r.note" x-text="r.note"></p>
+                <details class="dve__fold"><summary x-text="'변경 이력 '+r.history.length+'건'"></summary>
+                  <ol class="ds-bullets"><template x-for="h in r.history" x-bind:key="h.id"><li>
+                    <span x-text="h.by+' · '+kwDate(h.at)+(h.was_final ? ' · 확정' : ' · 저장')"></span>
+                    <ul><li x-text="kwAnswers(h).map(k=>k.text).join(' · ') || '적합한 결과 없음'"></li><template x-for="(j,hi) in h.judgments" x-bind:key="hi"><li x-text="j.original+' · '+({accept:'적합',edit:'수정',exclude:'제외',hold:'보류'}[j.verdict] || j.verdict)+(j.corrected && j.verdict==='edit' ? ' → '+j.corrected : '')+(j.reason ? ' · '+j.reason : '')"></li></template><template x-for="(a,ai) in (h.additions || [])" x-bind:key="'ha'+ai"><li x-text="'추가 · '+a.text+' · '+a.reason"></li></template><li x-show="h.note" x-text="h.note"></li></ul>
+                  </li></template></ol>
+                </details>
+                <button type="button" class="copybtn" x-show="r.run_id!==kwRunId || r.cell_id!==kwReview.cell_id" x-bind:disabled="kwBusy" x-on:click="kwViewPriorReview(r)">이 검수 결과 열기</button>
+              </details>
+            </template>
+          </section>
+          <section x-show="kwReview.readOnly" aria-label="검수 시작 안내">
+            <ul class="ds-bullets"><li>기존 검수가 있어 읽기 전용으로 열었습니다<ul><li>추가 검수가 필요한 경우 담당자와 확인한 뒤 시작하세요</li></ul></li></ul>
+            <button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-bind:disabled="kwBusy" x-on:click="kwEnableReview()">기존 결과 확인 후 현재 조합 검수</button>
+          </section>
+          <fieldset class="dc-body" x-bind:disabled="kwBusy || kwReview.readOnly" aria-label="결과 검수 입력">
           <div>
             <div class="dve__lbl">비교 조합 <span class="kwd-sub" x-text="kwRunData.revealed ? '· 모델·버전 공개됨' : '· 블라인드 · 모델·버전은 판정 후 공개'"></span></div>
             <span class="srcfilter kwd-chips"><template x-for="s in kwRunData.slots" x-bind:key="'ks'+s.label">
-              <button type="button" class="srcfilter__chip" x-bind:class="kwReview.slot===s.label ? 'sel' : ''" x-bind:disabled="!kwReviewable(kwCell(kwReview.item,s))" x-on:click="kwOpenReview(kwReview.item,s)" x-bind:data-tip="kwRunData.revealed ? s.version.model+' · '+kwVersionLabel(s.version) : null" data-tip-pos="bottom">조합 <b x-text="s.label"></b><span x-text="kwSlotState(kwCell(kwReview.item,s))"></span></button>
+              <button type="button" class="srcfilter__chip" x-bind:class="kwReview.slot===s.label ? 'sel' : ''" x-bind:disabled="!kwReviewable(kwCell(kwReview.item,s))" x-on:click="kwEnterReview(kwReview.item,s)" x-bind:data-tip="kwRunData.revealed ? s.version.model+' · '+kwVersionLabel(s.version) : null" data-tip-pos="bottom">조합 <b x-text="s.label"></b><span x-text="kwSlotState(kwCell(kwReview.item,s))"></span></button>
             </template></span>
           </div>
           <p role="status" class="dve__hint" x-show="kwReviewCell()?.error" x-text="kwReviewCell()?.error"></p>
@@ -238,7 +284,8 @@
             </section>
             <p class="dve__hint" x-show="!kwCatalog?.can_final">최종 검수 권한이 필요합니다. 임시 저장 후 최종 검수자에게 완료를 요청하세요.</p>
           </div>
-        </fieldset>
+          </fieldset>
+        </section>
       </div>
     </div></template>
   </div>
@@ -250,7 +297,7 @@
       <div class="fn" id="kw-version-draft" tabindex="-1"><b class="fn__title">새 버전</b><label class="ds-label">대상 모델</label><x-modelpick key="kwdraft" value="kwDraft.model" set="kwDraft.model=$v;kwDraft.parent_id='';kwDraft.proposal_id=''" groups="textGroups" first-label="모델 선택" first-value="" width="260px" tip="프롬프트가 적용될 모델"></x-modelpick><label class="ds-label">버전 이름<input class="field" maxlength="100" x-model="kwDraft.title"></label><label class="ds-label">프롬프트 규칙<textarea class="field" rows="16" maxlength="8000" x-model="kwDraft.rules"></textarea></label><label class="ds-label">변경 이유<textarea class="field" rows="3" maxlength="2000" x-model="kwDraft.note"></textarea></label><button class="ds-btn ds-btn--solid ds-btn--c-primary" x-bind:disabled="kwBusy || !kwDraft.model || !kwDraft.title.trim() || !kwCatalog?.can_manage" x-on:click="kwSaveVersion()">새 버전 저장</button></div>
     </div></section>
     <section class="panel"><div class="panel-bd dc-body">
-      <div class="fn"><b class="fn__title">비교 후 채택</b><ul class="ds-bullets"><li>채택 근거로 사용할 비교 실험을 선택하세요. 모델·버전을 공개하고 해당 버전의 모든 결과를 최종 확정해야 채택할 수 있습니다.</li></ul><label class="ds-label">비교 실험<select class="field" x-bind:disabled="kwBusy" x-bind:value="kwRunId" x-on:change="kwOpenRun($event.target.value).then(()=>{$event.target.value=kwRunId})"><option value="">실험 선택</option><template x-for="r in kwRuns()" x-bind:key="r.id"><option x-bind:value="r.id" x-bind:selected="kwRunId===r.id" x-text="kwDate(r.created_at)+' · 콘텐츠 '+r.n+'건 · '+r.slots+'조합'"></option></template></select></label><select class="field" aria-label="채택할 버전" x-model="kwAdoptVersion"><option value="">채택할 버전 선택</option><template x-for="s in (kwRunData?.revealed ? kwRunData.slots : [])" x-bind:key="s.label"><option x-bind:value="s.version.id" x-text="s.version.model+' · '+kwVersionLabel(s.version)" x-bind:selected="String(s.version.id) === String(kwAdoptVersion)"></option></template></select><button class="ds-btn ds-btn--outline" x-bind:disabled="kwBusy || !kwAdoptVersion || !kwCatalog?.can_manage" x-on:click="kwAdopt()">검수한 버전 채택</button></div>
+      <div class="fn"><b class="fn__title">비교 후 채택</b><ul class="ds-bullets"><li>채택 근거로 사용할 비교 실험을 선택하세요<ul><li>모델·버전을 공개하고 해당 버전의 모든 결과를 최종 확정해야 채택할 수 있습니다</li></ul></li></ul><label class="ds-label">비교 실험<select class="field" x-bind:disabled="kwBusy" x-bind:value="kwRunId" x-on:change="kwOpenRun($event.target.value).then(()=>{$event.target.value=kwRunId})"><option value="">실험 선택</option><template x-for="r in kwRuns()" x-bind:key="r.id"><option x-bind:value="r.id" x-bind:selected="kwRunId===r.id" x-text="kwDate(r.created_at)+' · 콘텐츠 '+r.n+'건 · '+r.slots+'조합'"></option></template></select></label><select class="field" aria-label="채택할 버전" x-model="kwAdoptVersion"><option value="">채택할 버전 선택</option><template x-for="s in (kwRunData?.revealed ? kwRunData.slots : [])" x-bind:key="s.label"><option x-bind:value="s.version.id" x-text="s.version.model+' · '+kwVersionLabel(s.version)" x-bind:selected="String(s.version.id) === String(kwAdoptVersion)"></option></template></select><button class="ds-btn ds-btn--outline" x-bind:disabled="kwBusy || !kwAdoptVersion || !kwCatalog?.can_manage" x-on:click="kwAdopt()">검수한 버전 채택</button></div>
     </div></section>
   </section>
   <section role="tabpanel" id="kw-panel-improve" aria-labelledby="kw-tab-improve" x-show="kwTab==='improve'" class="dc-body">
@@ -260,46 +307,109 @@
       <legend class="sr-only">개선 대상 선택</legend>
       <label class="ds-label">개선할 프롬프트 버전<select class="field" x-model="kwLoopVersion" x-bind:disabled="kwBusy"><option value="">버전 선택</option><template x-for="v in kwAllVersions()" x-bind:key="v.id"><option x-bind:value="v.id" x-text="v.model+' · '+kwVersionLabel(v)" x-bind:selected="String(v.id) === String(kwLoopVersion)"></option></template></select></label>
       <section><label class="ds-label">메타컴파일러 모델</label><x-modelpick key="kwcompiler" value="kwCompiler" set="kwCompiler=$v" groups="textGroups" first-label="모델 선택" first-value="" width="260px" tip="개선안을 작성할 모델"></x-modelpick></section>
-        <p class="ds-hint">아래에서 개선용 정답을 선택하세요. 수동 작성은 프롬프트 개선안을 만들고, 오토파일럿은 후보 생성과 평가를 반복합니다.</p>
+        <ul class="ds-bullets"><li>아래에서 개선용 정답을 선택하세요<ul><li><b>수동 작성</b>은 프롬프트 개선안을 만듭니다</li><li x-show="kwTarget==='keyword'"><b>오토파일럿</b>은 후보 생성과 평가를 반복합니다</li></ul></li></ul>
       </fieldset>
     </section>
     <section class="panel" aria-labelledby="kw-improve-gold-title">
       <header class="panel-hd" data-wz="1"><h3 class="ds-widget__title" id="kw-improve-gold-title">개선용 정답</h3><p class="meta" x-text="kwTraining.length+' / 20개 선택'"></p></header>
       <fieldset class="panel-bd dc-body" x-bind:disabled="kwBusy || kwCatalog?.tuning?.status==='running'">
         <legend class="sr-only">개선에 사용할 정답 · 최대 20개</legend>
-        <p class="ds-hint">선택한 정답과 판단 사유를 개선안 작성에 사용합니다. 최대 20개까지 선택할 수 있습니다.</p>
-        <p class="ds-hint" x-show="!kwDevelopmentGold().length">실행 결과를 검수하고 개선용 정답으로 저장하세요.</p>
-        <template x-for="g in kwDevelopmentGold()" x-bind:key="g.item_key"><label class="control-row"><input type="checkbox" x-model="kwTraining" x-bind:value="g.item_key" x-bind:disabled="kwTraining.length>=20 && !kwTraining.includes(g.item_key)"><b x-text="g.title+' · '+kwAnswers(g).map(k=>k.text).join(', ')"></b></label></template>
+        <ul class="ds-bullets"><li>선택한 정답과 판단 사유를 개선안 작성에 사용합니다<ul><li>최대 20개까지 선택할 수 있습니다</li><li x-show="!kwDevelopmentGold().length">실행 결과를 검수하고 개선용 정답으로 저장하세요</li></ul></li></ul>
+        <section class="kwl-browser" x-data="{ query:'', category:'', selectedOnly:false, rows:[] }" x-effect="rows=kwGoldRows('development',query,category,selectedOnly)" aria-label="개선용 정답 목록">
+        <section class="filterbar control-row" aria-label="개선용 정답 검색·필터">
+          <input class="field" type="search" aria-label="개선용 정답 검색" placeholder="제목·카테고리·정답 검색" x-model.debounce.150ms="query">
+          <section class="fpop" x-data="{ fpOpen:false, fpBox:{} }" x-on:keydown.escape="fpOpen=false" x-on:click.outside="fpOpen=false" x-on:scroll.window="fpOpen=false" x-on:resize.window="fpOpen=false">
+            <button type="button" class="fpop__btn" x-bind:class="{ 'is-open':fpOpen, 'is-on':Boolean(category)+Number(selectedOnly) }" x-on:click="fpOpen=!fpOpen; if(fpOpen) fpBox=mpMenuBox($el)" x-bind:aria-expanded="fpOpen" aria-haspopup="dialog" aria-label="개선용 정답 필터">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              필터 <span class="fpop__n tnum" x-show="Boolean(category)+Number(selectedOnly)" x-text="Boolean(category)+Number(selectedOnly)"></span>
+            </button>
+            <section class="fpop__panel" x-show="fpOpen" x-cloak x-bind:style="fpBox" x-on:click.stop role="dialog" aria-label="개선용 정답 필터 조건">
+              <label class="fpop__row"><span class="fpop__lbl">카테고리</span><select class="field" x-model="category" aria-label="개선용 정답 카테고리"><option value="">전체</option><template x-for="name in kwContentCategories(kwDevelopmentGold())" x-bind:key="name"><option x-bind:value="name" x-bind:selected="category===name" x-text="catKo(name)"></option></template></select></label>
+              <label class="fpop__chk" x-bind:class="selectedOnly ? 'is-on' : ''"><input type="checkbox" x-model="selectedOnly"><span>선택한 정답만 보기</span></label>
+              <footer class="fpop__ft"><button type="button" class="copybtn" x-bind:disabled="!query &amp;&amp; !(Boolean(category)+Number(selectedOnly))" x-on:click="query='';category='';selectedOnly=false">필터 초기화</button><button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-on:click="fpOpen=false">닫기</button></footer>
+            </section>
+          </section>
+          <span class="text-xs text-muted tnum" role="status" x-text="rows.length+' / '+kwDevelopmentGold().length+'건'"></span>
+          <span class="ds-badge ds-badge--neutral">최근 확정순</span>
+        </section>
+        <section class="overflow-auto kwl-wrap" tabindex="0" aria-label="개선용 정답 표 · 가로·세로 스크롤">
+          <table class="ds-table kwl-table"><thead><tr><th scope="col" class="kwl-select">선택</th><th scope="col">콘텐츠</th><th scope="col">카테고리</th><th scope="col" x-text="'확정 '+kwTargetLabel()"></th><th scope="col">확정자 · 일시</th></tr></thead><tbody>
+            <template x-for="g in rows" x-bind:key="g.item_key"><tr x-bind:class="kwTraining.includes(g.item_key) ? 'is-sel' : ''">
+              <td class="kwl-select"><input type="checkbox" x-model="kwTraining" x-bind:value="g.item_key" x-bind:aria-label="(g.title || '제목 없음')+' 개선용 정답 선택'" x-bind:disabled="kwTraining.length>=20 &amp;&amp; !kwTraining.includes(g.item_key)"></td>
+              <td class="kwl-content text-ink" x-text="g.title || '(제목 없음)'"></td>
+              <td class="kwl-category"><template x-for="c in kwMetaList(g.meta?.content_category)" x-bind:key="c"><span class="ds-badge ds-badge--category" x-bind:data-tip="termDef('category',c)" data-tip-pos="top" x-text="catKo(c)"></span></template><span class="text-xs text-muted" x-show="!kwMetaList(g.meta?.content_category).length">·</span></td>
+              <td class="kwl-value" x-text="kwAnswers(g).map(k=>k.text).join(' · ') || '적합한 결과 없음'"></td>
+              <td class="kwl-author"><span x-text="g.by || '·'"></span><p class="meta tnum" x-text="g.at ? kwDate(g.at) : '·'"></p></td>
+            </tr></template>
+            <tr x-show="!rows.length"><td colspan="5" class="text-xs text-muted" x-text="kwDevelopmentGold().length ? '검색·필터 조건에 맞는 정답이 없습니다' : '저장된 개선용 정답이 없습니다'"></td></tr>
+          </tbody></table>
+        </section>
+      </section>
       </fieldset>
     </section>
     <section class="panel" x-show="kwTarget==='keyword'" aria-labelledby="kw-tune-settings-title">
       <header class="panel-hd" data-wz="1"><h3 class="ds-widget__title" id="kw-tune-settings-title">오토파일럿 설정</h3></header>
       <fieldset class="panel-bd dc-body" x-bind:disabled="kwBusy || kwCatalog?.tuning?.status==='running'">
         <legend class="sr-only">키워드 오토파일럿 설정</legend>
-        <p class="ds-hint">자동 튜닝을 실행할 때만 필요한 설정입니다. 수동 개선안 작성에는 평가용 정답이 필요하지 않습니다.</p>
+        <ul class="ds-bullets"><li>자동 튜닝을 실행할 때만 필요한 설정입니다<ul><li>수동 개선안 작성에는 평가용 정답이 필요하지 않습니다</li></ul></li></ul>
         <p class="ds-label" x-text="'평가용 정답 · '+kwEvaluation.length+' / 30개 선택'"></p>
-        <p class="ds-hint" x-show="!kwEvaluationGold().length">평가용 정답이 없어 오토파일럿을 시작할 수 없습니다. 검수 완료 시 평가용으로 저장하세요.</p>
-        <template x-for="g in kwEvaluationGold()" x-bind:key="g.item_key"><label class="control-row"><input type="checkbox" x-model="kwEvaluation" x-bind:value="g.item_key" x-bind:disabled="kwEvaluation.length>=30 && !kwEvaluation.includes(g.item_key)"><b x-text="g.title+' · '+kwAnswers(g).map(k=>k.text).join(', ')"></b></label></template>
+        <ul class="ds-bullets" x-show="!kwEvaluationGold().length"><li>평가용 정답이 없어 오토파일럿을 시작할 수 없습니다<ul><li>검수 완료 시 평가용으로 저장하세요</li></ul></li></ul>
+        <section class="kwl-browser" x-data="{ query:'', category:'', selectedOnly:false, rows:[] }" x-effect="rows=kwGoldRows('evaluation',query,category,selectedOnly)" aria-label="평가용 정답 목록">
+        <section class="filterbar control-row" aria-label="평가용 정답 검색·필터">
+          <input class="field" type="search" aria-label="평가용 정답 검색" placeholder="제목·카테고리·정답 검색" x-model.debounce.150ms="query">
+          <section class="fpop" x-data="{ fpOpen:false, fpBox:{} }" x-on:keydown.escape="fpOpen=false" x-on:click.outside="fpOpen=false" x-on:scroll.window="fpOpen=false" x-on:resize.window="fpOpen=false">
+            <button type="button" class="fpop__btn" x-bind:class="{ 'is-open':fpOpen, 'is-on':Boolean(category)+Number(selectedOnly) }" x-on:click="fpOpen=!fpOpen; if(fpOpen) fpBox=mpMenuBox($el)" x-bind:aria-expanded="fpOpen" aria-haspopup="dialog" aria-label="평가용 정답 필터">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              필터 <span class="fpop__n tnum" x-show="Boolean(category)+Number(selectedOnly)" x-text="Boolean(category)+Number(selectedOnly)"></span>
+            </button>
+            <section class="fpop__panel" x-show="fpOpen" x-cloak x-bind:style="fpBox" x-on:click.stop role="dialog" aria-label="평가용 정답 필터 조건">
+              <label class="fpop__row"><span class="fpop__lbl">카테고리</span><select class="field" x-model="category" aria-label="평가용 정답 카테고리"><option value="">전체</option><template x-for="name in kwContentCategories(kwEvaluationGold())" x-bind:key="name"><option x-bind:value="name" x-bind:selected="category===name" x-text="catKo(name)"></option></template></select></label>
+              <label class="fpop__chk" x-bind:class="selectedOnly ? 'is-on' : ''"><input type="checkbox" x-model="selectedOnly"><span>선택한 정답만 보기</span></label>
+              <footer class="fpop__ft"><button type="button" class="copybtn" x-bind:disabled="!query &amp;&amp; !(Boolean(category)+Number(selectedOnly))" x-on:click="query='';category='';selectedOnly=false">필터 초기화</button><button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-on:click="fpOpen=false">닫기</button></footer>
+            </section>
+          </section>
+          <span class="text-xs text-muted tnum" role="status" x-text="rows.length+' / '+kwEvaluationGold().length+'건'"></span>
+          <span class="ds-badge ds-badge--neutral">최근 확정순</span>
+        </section>
+        <section class="overflow-auto kwl-wrap" tabindex="0" aria-label="평가용 정답 표 · 가로·세로 스크롤">
+          <table class="ds-table kwl-table"><thead><tr><th scope="col" class="kwl-select">선택</th><th scope="col">콘텐츠</th><th scope="col">카테고리</th><th scope="col" x-text="'확정 '+kwTargetLabel()"></th><th scope="col">확정자 · 일시</th></tr></thead><tbody>
+            <template x-for="g in rows" x-bind:key="g.item_key"><tr x-bind:class="kwEvaluation.includes(g.item_key) ? 'is-sel' : ''">
+              <td class="kwl-select"><input type="checkbox" x-model="kwEvaluation" x-bind:value="g.item_key" x-bind:aria-label="(g.title || '제목 없음')+' 평가용 정답 선택'" x-bind:disabled="kwEvaluation.length>=30 &amp;&amp; !kwEvaluation.includes(g.item_key)"></td>
+              <td class="kwl-content text-ink" x-text="g.title || '(제목 없음)'"></td>
+              <td class="kwl-category"><template x-for="c in kwMetaList(g.meta?.content_category)" x-bind:key="c"><span class="ds-badge ds-badge--category" x-bind:data-tip="termDef('category',c)" data-tip-pos="top" x-text="catKo(c)"></span></template><span class="text-xs text-muted" x-show="!kwMetaList(g.meta?.content_category).length">·</span></td>
+              <td class="kwl-value" x-text="kwAnswers(g).map(k=>k.text).join(' · ') || '적합한 결과 없음'"></td>
+              <td class="kwl-author"><span x-text="g.by || '·'"></span><p class="meta tnum" x-text="g.at ? kwDate(g.at) : '·'"></p></td>
+            </tr></template>
+            <tr x-show="!rows.length"><td colspan="5" class="text-xs text-muted" x-text="kwEvaluationGold().length ? '검색·필터 조건에 맞는 정답이 없습니다' : '저장된 평가용 정답이 없습니다'"></td></tr>
+          </tbody></table>
+        </section>
+      </section>
         <label class="ds-label">최대 반복 횟수<input class="field" type="number" min="1" max="10" step="1" x-model.number="kwTuneRounds"></label>
-        <p class="ds-hint">키워드 순서는 비교하지 않으며 정답의 표기·구성 완전 일치를 목표로 합니다. 평가용 정답은 개선 프롬프트에 전달하지 않습니다. 반복 실행에 모델 호출 비용이 발생합니다.</p>
+        <ul class="ds-bullets"><li>정답의 표기·구성이 완전히 일치하는지 평가합니다<ul><li>키워드 순서는 비교하지 않습니다</li><li>평가용 정답은 개선 프롬프트에 전달하지 않습니다</li></ul></li><li>반복 실행에 모델 호출 비용이 발생합니다</li></ul>
       </fieldset>
     </section>
     <section class="dc-body" aria-label="프롬프트 개선 실행" x-bind:aria-busy="Boolean(kwImproving)">
-      <p class="ds-hint" x-text="'수동 작성: 개선용 정답 '+kwTraining.length+'개로 프롬프트를 작성합니다. 완료되면 아래 수동 개선안 결과로 이동합니다. 실제 추출 결과는 새 버전 저장 후 실행·비교에서 확인하세요.'"></p>
-      <p class="ds-hint" x-show="kwTarget==='keyword'" x-text="'오토파일럿: 개선용 '+kwTraining.length+'개 · 평가용 '+kwEvaluation.length+'개 · 최대 '+kwTuneRounds+'회. '+(kwImproveIssue(true) || '후보와 평가 점수는 아래 실행 결과에 표시됩니다. 적용·채택은 사람이 결정합니다.')"></p>
+      <ul class="ds-bullets">
+        <li><b>수동 작성</b><ul><li x-text="'개선용 정답 '+kwTraining.length+'개로 프롬프트를 작성합니다'"></li><li>완료되면 아래 수동 개선안 결과로 이동합니다</li><li>실제 추출 결과는 새 버전 저장 후 실행·비교에서 확인하세요</li></ul></li>
+        <li x-show="kwTarget==='keyword'"><b>오토파일럿</b><ul><li x-text="'개선용 '+kwTraining.length+'개 · 평가용 '+kwEvaluation.length+'개 · 최대 '+kwTuneRounds+'회'"></li><template x-for="(line,i) in sents(kwImproveIssue(true) || '후보와 평가 점수는 아래 실행 결과에 표시됩니다. 적용·채택은 사람이 결정합니다.')" x-bind:key="i"><li x-text="line"></li></template></ul></li>
+      </ul>
       <section class="control-row" aria-label="개선 실행 방식">
         <button type="button" class="ds-btn ds-btn--solid ds-btn--c-primary" x-show="kwTarget==='keyword'" x-bind:disabled="kwBusy || Boolean(kwImproveIssue(true))" x-on:click="kwStartTuning()">오토파일럿 시작</button>
         <button type="button" class="ds-btn ds-btn--outline" x-bind:disabled="kwBusy || Boolean(kwImproveIssue())" x-on:click="kwCompile()" x-text="kwImproving==='manual' ? '개선안 작성 중…' : '수동 개선안 한 번 작성'"></button>
       </section>
-      <p class="ds-hint" x-show="kwImproveIssue()" x-text="kwImproveIssue()"></p>
-      <p id="kw-improve-status" tabindex="-1" x-bind:role="kwError ? 'alert' : 'status'" x-bind:class="kwError ? 'ds-hint ds-hint--error' : 'ds-hint'" x-show="kwError || kwImproving || kwMessage" x-text="kwError || (kwImproving==='manual' ? '선택한 정답으로 프롬프트 개선안을 작성하고 있습니다. 완료되면 아래 결과가 표시됩니다.' : kwImproving==='auto' ? '오토파일럿을 시작하고 있습니다.' : kwMessage)"></p>
+      <ul class="ds-bullets" x-show="kwImproveIssue()" x-data="{ lines: [] }" x-effect="lines=sents(kwImproveIssue())">
+        <li><span x-text="lines[0]"></span><ul x-show="lines.length>1"><template x-for="(line,i) in lines.slice(1)" x-bind:key="i"><li x-text="line"></li></template></ul></li>
+      </ul>
+      <ul class="ds-bullets" id="kw-improve-status" tabindex="-1" x-bind:role="kwError ? 'alert' : 'status'" x-show="kwError || kwImproving || kwMessage" x-data="{ lines: [] }" x-effect="lines=sents(kwError || (kwImproving==='manual' ? '선택한 정답으로 프롬프트 개선안을 작성하고 있습니다. 완료되면 아래 결과가 표시됩니다.' : kwImproving==='auto' ? '오토파일럿을 시작하고 있습니다.' : kwMessage))">
+        <li x-bind:class="kwError ? 'ds-hint--error' : ''"><span x-text="lines[0]"></span><ul x-show="lines.length>1"><template x-for="(line,i) in lines.slice(1)" x-bind:key="i"><li x-bind:class="kwError ? 'ds-hint--error' : ''" x-text="line"></li></template></ul></li>
+      </ul>
     </section>
     <template x-if="kwProposal"><section class="panel" id="kw-proposal-result" tabindex="-1" aria-labelledby="kw-proposal-title">
       <header class="panel-hd" data-wz="1"><h3 class="ds-widget__title" id="kw-proposal-title">수동 개선안 결과</h3><p class="meta" x-text="kwDate(kwProposal.created_at)"></p></header>
       <section class="panel-bd dc-body">
-        <p class="ds-hint" x-show="kwError">아래는 이전에 작성한 개선안입니다. 이번 요청은 실패했습니다.</p>
-        <p class="ds-hint">개선된 프롬프트입니다. 변경 내용을 확인하고 새 버전으로 저장한 뒤 실행·비교에서 추출 결과를 확인하세요.</p>
-        <ul class="ds-bullets"><template x-for="(c,i) in kwProposal.changes" x-bind:key="i"><li x-text="c.reason+' · '+c.change"></li></template></ul>
+        <ul class="ds-bullets" x-show="kwError"><li>이번 요청은 실패했습니다<ul><li>아래는 이전에 작성한 개선안입니다</li></ul></li></ul>
+        <ul class="ds-bullets"><li>개선된 프롬프트입니다<ul><li>변경 내용을 확인하고 새 버전으로 저장하세요</li><li>실행·비교에서 추출 결과를 확인하세요</li></ul></li></ul>
+        <ul class="ds-bullets"><template x-for="(c,i) in kwProposal.changes" x-bind:key="i"><li><span x-text="sents(c.reason).join(' · ')"></span><ul><template x-for="(line,j) in sents(c.change)" x-bind:key="j"><li x-text="line"></li></template></ul></li></template></ul>
         <pre class="ds-code" x-text="kwProposal.rules"></pre>
         <details><summary>적용 쿡북</summary><pre class="ds-code" x-text="kwProposal.cookbook.text"></pre></details>
         <button type="button" class="ds-btn ds-btn--outline" x-bind:disabled="kwBusy" x-on:click="kwUseProposal()">새 버전 작성으로 가져오기</button>
@@ -310,12 +420,14 @@
       <section class="panel-bd dc-body">
         <template x-if="kwCatalog?.tuning"><section class="dc-body" aria-live="polite">
           <p role="status" x-text="({running:'튜닝 중',done:'튜닝 완료',stopped:'중지',failed:'실패'}[kwCatalog.tuning.status] || kwCatalog.tuning.status)+' · '+kwCatalog.tuning.round+'/'+kwCatalog.tuning.max_rounds+'회 · '+kwCatalog.tuning.phase"></p>
-          <p class="ds-hint" x-text="kwCatalog.tuning.reason || '목표 달성·2회 연속 향상 없음·최대 횟수 도달 시 종료'"></p>
+          <ul class="ds-bullets"  x-data="{ lines: [] }" x-effect="lines=sents(kwCatalog.tuning.reason || '목표 달성·2회 연속 향상 없음·최대 횟수 도달 시 종료')">
+        <li><span x-text="lines[0]"></span><ul x-show="lines.length>1"><template x-for="(line,i) in lines.slice(1)" x-bind:key="i"><li x-text="line"></li></template></ul></li>
+      </ul>
           <button type="button" class="ds-btn ds-btn--outline" x-show="kwCatalog.tuning.status==='running'" x-bind:disabled="kwBusy || kwCatalog.tuning.stop_requested || !kwCatalog.can_manage" x-on:click="kwStopTuning()" x-text="kwCatalog.tuning.stop_requested ? '중지 요청됨' : '튜닝 중지'"></button>
           <table class="ds-table" x-show="kwCatalog.tuning.history.length"><thead><tr><th>회차</th><th>완전 일치 / 평가 콘텐츠</th><th>결과</th><th>검수</th></tr></thead><tbody>
             <template x-for="h in kwCatalog.tuning.history" x-bind:key="h.round"><tr><td x-text="h.round===0 ? '기준 버전' : h.round+'회'"></td><td x-text="h.matched+' / '+h.total+' ('+Math.round(h.matched/h.total*100)+'%)'"></td><td x-text="h.version_id===kwCatalog.tuning.best?.version_id ? '최고 후보' : h.improved ? '향상' : '향상 없음'"></td><td><button type="button" class="copybtn" x-on:click="kwOpenTuningCandidate(h)">결과 검수</button></td></tr></template>
           </tbody></table>
-          <p class="ds-hint">후보 결과를 검수한 뒤 ‘비교 후 채택’에서 결정하세요. 튜닝만으로 운영 프롬프트나 채택 상태가 바뀌지 않습니다.</p>
+          <ul class="ds-bullets"><li>후보 결과를 검수한 뒤 ‘비교 후 채택’에서 결정하세요<ul><li>튜닝만으로 운영 프롬프트나 채택 상태가 바뀌지 않습니다</li></ul></li></ul>
         </section></template>
       </section>
     </section>

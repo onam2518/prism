@@ -69,7 +69,8 @@ def _store():
 
 
 def _get(key, team):
-    return _store().get_report(key, team=team)
+    value = _store().get_report(key, team=team)
+    return None if value and value.get('deleted') is True else value
 
 
 def _update(key, team, change, default=None, guard=None):
@@ -319,7 +320,7 @@ def start(body, team, actor, background=True, gold_snapshot=None, should_stop=No
         ACTIVE.add((team, rid))                    # 기록 저장보다 먼저: 갓 시작한 실행을 _settle 이 중단으로 오인하지 않게
     _update(_key('run', rid), team, lambda target: target.update(run), {})
     _update(CATALOG, team, lambda cat: cat['runs'].append({'id': rid, 'target': target, 'created_at': run['created_at'],
-                'n': len(items), 'slots': len(slots), 'dataset_id': run['dataset_id']}), c)
+                'n': len(items), 'slots': len(slots), 'dataset_id': run['dataset_id'], 'item_keys': [it['key'] for it in items]}), c)
     if background:
         threading.Thread(target=_run, args=(rid, team), daemon=True).start()
     else:
@@ -459,12 +460,51 @@ def _source_urls(items, team, rid=None):
     return dict(out)
 
 
+def _prior_reviews(run, team):
+    """같은 입력의 저장된 검수를 최초 저장 순으로 안내한다. 판정을 새 셀로 복사하지 않는다."""
+    keys = {item['key'] for item in run['items']}
+    found = {key: [] for key in keys}
+    # ponytail: 이전 실행에 입력 색인이 없으면 읽어서 확인한다 · 이력이 커지면 기존 목록도 역채움한다.
+    for summary in _catalog(team)['runs']:
+        if _target(summary) != _target(run) or ('item_keys' in summary and keys.isdisjoint(summary['item_keys'])):
+            continue
+        previous = run if summary['id'] == run['id'] else _get(_key('run', summary['id']), team)
+        if not previous or _target(previous) != _target(run):
+            continue
+        for cell in previous['cells'].values():
+            reviews = cell.get('reviews') or []
+            if cell['item_key'] not in keys or not reviews:
+                continue
+            latest = reviews[-1]
+            history = copy.deepcopy(reviews)
+            final_ids = {r['review_id'] for r in cell.get('final_cancellations', [])}
+            if cell.get('final'):
+                final_ids.add(cell['final']['id'])
+            for saved in history:
+                if saved['id'] in final_ids:
+                    saved['was_final'] = True
+            found[cell['item_key']].append({
+                'run_id': previous['id'], 'cell_id': cell['id'], 'slot': cell['slot'],
+                'first_by': reviews[0]['by'], 'first_at': reviews[0]['at'],
+                'by': latest['by'], 'at': latest['at'], 'review_id': latest['id'],
+                'final': bool(cell.get('final')), 'answers': copy.deepcopy(_answers(latest)),
+                'judgments': copy.deepcopy(latest['judgments']),
+                'additions': copy.deepcopy(latest.get('additions', [])),
+                'note': latest.get('note', ''), 'no_keywords': latest.get('no_keywords', False),
+                'history': history})
+    for reviews in found.values():
+        reviews.sort(key=lambda r: (r['first_at'], r['run_id'], r['cell_id']))
+    return found
+
+
 def run_detail(rid, team):
     run = _settle(rid, team)
     if not run:
         raise ValueError('이 팀에 해당 실험이 없습니다')
     out = copy.deepcopy(run)
     out['metrics'] = _metrics(run)
+    out['prior_reviews'] = _prior_reviews(run, team)
+    out['current_gold'] = _current_gold(team, {k: g for k, g in _catalog(team)['gold'].items() if k in out['prior_reviews']})
     out['sources'] = _source_urls(out['items'], team, rid)
     if not out['revealed']:
         for slot in out['slots']:
@@ -592,7 +632,11 @@ def _save_review(run, body, actor, can_final):
     latest = cell['reviews'][-1] if cell['reviews'] else None
     if latest and all(latest.get(k) == value for k, value in data.items()) and (not body.get('finalize') or cell.get('final')):
         return
-    data.update(by=actor, at=time.time(), id=_id(), was_blind=not run['revealed'])
+    if cell.get('final'):
+        for previous in cell['reviews']:
+            if previous['id'] == cell['final']['id']:
+                previous['was_final'] = True
+    data.update(by=actor, at=time.time(), id=_id(), was_blind=not run['revealed'], was_final=bool(body.get('finalize')))
     cell['reviews'].append(data)
     cell['review_revision'] += 1
     cell['final'] = data if body.get('finalize') else None
@@ -839,15 +883,27 @@ def delete_run(body, team):
     with LOCK:
         if (team, rid) in ACTIVE:
             raise ValueError('실행 중인 실험은 삭제할 수 없습니다')
-    c = _catalog(team)
-    if any(g.get('run_id') == rid for g in c['gold'].values()):
-        raise ValueError('정답셋에 반영된 결과가 있는 실험은 삭제할 수 없습니다')
-    if any(a.get('run_id') == rid for a in c['active'].values()):
-        raise ValueError('버전 채택 근거로 쓰인 실험은 삭제할 수 없습니다')
-    if not _get(key, team):
-        raise ValueError('이 팀에 해당 실험이 없습니다')
-    _store().delete_report(key, team)
-    _update(CATALOG, team, lambda cat: cat.update(runs=[r for r in cat['runs'] if r['id'] != rid]), c)
+    with ER.cas_lock(CATALOG, team):
+        for attempt in range(15):
+            before = _get(CATALOG, team)
+            c = copy.deepcopy(before or _catalog(team))
+            if any(g.get('run_id') == rid for g in c['gold'].values()):
+                raise ValueError('정답셋에 반영된 결과가 있는 실험은 삭제할 수 없습니다')
+            if any(a.get('run_id') == rid for a in c['active'].values()):
+                raise ValueError('버전 채택 근거로 쓰인 실험은 삭제할 수 없습니다')
+            run = _get(key, team)
+            if not run:
+                raise ValueError('이 팀에 해당 실험이 없습니다')
+            if any(cell.get('final') or cell.get('final_cancellations') or any(r.get('was_final') for r in cell.get('reviews', [])) for cell in run['cells'].values()):
+                raise ValueError('확정 검수 이력이 있는 실험은 삭제할 수 없습니다')
+            c['runs'] = [r for r in c['runs'] if r['id'] != rid]
+            # 목록 제거와 삭제 표식을 묶어, 확인 직후 저장된 확정 이력을 지우지 않는다.
+            if _store().compare_report(CATALOG, before, c, team=team, guard=(key, run), guard_payload={'deleted': True}):
+                _store().delete_report(key, team)
+                break
+            ER.cas_backoff(attempt)
+        else:
+            raise ValueError('다른 검수가 저장되었습니다 · 결과를 다시 불러오세요')
     return {'ok': True}
 
 

@@ -1,6 +1,9 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 async function main(){
  const window={};vm.runInNewContext(fs.readFileSync('prism/vendor/app-24-keywordlab.js','utf8'),{window,clearTimeout,setTimeout,crypto:require('node:crypto')});
+ const makeApp=window.PRISM_APP_PARTS[0];
+ // Legacy save tests isolate transport; freshness/confirmation is exercised separately below.
+ window.PRISM_APP_PARTS[0]=()=>({...makeApp(),kwConfirmOverwrite:async()=>true});
  const a=window.PRISM_APP_PARTS[0]();a._authHeaders=()=>({});a.reviewer='검수자';
  assert.equal(a.kwReady(),false);a.kwChooseMode('single');a.kwSlots[0]={model:'solar',version_id:'v1'};
  assert.equal(a.kwReady(),false);a.kwLead='한국은행이 금리를 인하했다';a.kwEntities='한국은행';assert.equal(a.kwReady(),true);
@@ -54,13 +57,13 @@ async function main(){
  b.kwRunData={target:'sentence',cells:{'s:A':{id:'s:A',status:'failed',review_revision:0,sentence:{draft:'긴 문장 초안'},reviews:[]}}};
  b.kwOpenReview({key:'s'},{label:'A'});assert.equal(b.kwReview.target,'sentence');assert.equal(b.kwReview.judgments[0].original,'긴 문장 초안');assert.equal(b.kwTab,'run');
  // 상세 검수: 다음 콘텐츠는 같은 조합 우선 · 실패 셀 건너뜀 · 저장 후 다음 미검수 · 삭제 시 선택값 정리
- const d=window.PRISM_APP_PARTS[0]();d.kwCatalog={versions:[],gold:[]};
+ const d=window.PRISM_APP_PARTS[0]();d.kwOpenRun=async()=>true;d.kwCatalog={versions:[],gold:[]};
  const cell=(id,status,reviews)=>({id,status,review_revision:0,refined:{keywords:[{text:'한국은행 금리',kind:'combo'}]},reviews,final:null});
  const it=[{key:'i1'},{key:'i2'},{key:'i3'}],sl=[{label:'A'},{label:'B'}];
  d.kwRunData={items:it,slots:sl,cells:{'i1:A':cell('i1:A','done',[]),'i1:B':cell('i1:B','done',[]),'i2:A':cell('i2:A','failed',[]),'i2:B':cell('i2:B','done',[{judgments:[{verdict:'accept',reason:'',corrected:'한국은행 금리'}],additions:[],no_keywords:false,note:''}]),'i3:B':cell('i3:B','done',[])}};
- d.kwOpenReview(it[0],sl[1]);assert.equal(d.kwReviewGo(1),true);assert.equal(d.kwReview.cell_id,'i2:B');
- d.kwOpenReview(it[0],sl[0]);d.kwReviewGo(1);assert.equal(d.kwReview.cell_id,'i2:B');assert.equal(d.kwReviewGo(-1),true);assert.equal(d.kwReview.cell_id,'i1:B');
- assert.equal(d.kwNextPending(),true);assert.equal(d.kwReview.cell_id,'i3:B');d.kwNextPending();assert.equal(d.kwReview.cell_id,'i1:A');
+ d.kwOpenReview(it[0],sl[1]);assert.equal(await d.kwReviewGo(1),true);assert.equal(d.kwReview.cell_id,'i2:B');
+ d.kwOpenReview(it[0],sl[0]);await d.kwReviewGo(1);assert.equal(d.kwReview.cell_id,'i2:B');assert.equal(await d.kwReviewGo(-1),true);assert.equal(d.kwReview.cell_id,'i1:B');
+ assert.equal(await d.kwNextPending(),true);assert.equal(d.kwReview.cell_id,'i3:B');await d.kwNextPending();assert.equal(d.kwReview.cell_id,'i1:A');
  assert.equal(d.kwSlotState(d.kwRunData.cells['i2:A']),'실패');assert.equal(d.kwInKeywords('한국은행'),true);assert.equal(d.kwInKeywords('물가'),false);
  d.kwVersion={id:'v9',model:'solar',number:2,title:'t'};d.kwSlots[0].version_id='v9';d.kwLoopVersion='v9';d.kwCatalog.active={};
  d.kwRequest=async(q,data)=>{sent=data;return{ok:true}};d.kwLoad=async()=>{};const confirm0=window.confirm;window.confirm=()=>true;
@@ -70,7 +73,7 @@ async function main(){
  assert.deepEqual(d.kwItemState(it[0])[0],'미검수');assert.equal(d.kwItemState(it[1])[0],'판정됨');
  d.kwRunData.cells['i3:A']=cell('i3:A','failed',[]);assert.equal(d.kwItemState(it[2])[0],'미검수');
  d.kwRunData.cells['i1:A'].reviews=[{judgments:[{verdict:'accept',reason:'',corrected:'x'}],additions:[],no_keywords:false,note:''}];
- assert.equal(d.kwItemState(it[0])[0],'검수 중');d.kwOpenItem(it[0]);assert.equal(d.kwReview.cell_id,'i1:B');
+ assert.equal(d.kwItemState(it[0])[0],'검수 중');await d.kwOpenItem(it[0]);assert.equal(d.kwReview.cell_id,'i1:B');
  d.kwRunData.cells['i2:B'].final={};assert.equal(d.kwItemState(it[1])[0],'확정');
  delete d.kwRunData.cells['i3:B'];assert.equal(d.kwItemState(it[2])[0],'대기');
  // 실험 기록 삭제: 확인 후 선택·상세·결과를 비운다
@@ -87,7 +90,7 @@ async function main(){
  await f.kwSaveReview();assert.match(f.kwError,/사유/);assert.equal(requests,0);
  f.kwReview.judgments[0].reason='표현 문제';
  const dirty=f.kwReviewSnapshot();
- assert.equal(f.kwReviewGo(1),false);f.kwCloseReview();f.kwChangeTab('prompts');f.kwTargetChange('sentence');
+ assert.equal(await f.kwReviewGo(1),false);f.kwCloseReview();f.kwChangeTab('prompts');f.kwTargetChange('sentence');
  await f.kwOpenRun('other');assert.equal(f.kwRunId,'r');assert.equal(f.kwTab,'run');assert.equal(f.kwTarget,'keyword');assert.equal(f.kwReviewSnapshot(),dirty);
  let prevented=false;f.kwBeforeUnload({preventDefault(){prevented=true}});assert.equal(prevented,true);
  await f.kwSaveReview();assert.match(f.kwError,/통신 실패/);assert.equal(f.kwReviewSnapshot(),dirty);assert.equal(f.kwReviewDirty(),true);
@@ -96,12 +99,12 @@ async function main(){
    await new Promise(resolve=>finishPost=resolve);
    return {ok:true,revision:1,cell:{id:data.cell_id,review_revision:1,reviews:[{judgments:data.judgments,additions:[],no_keywords:false,note:data.note}],final:null}};
  };
- const saving=f.kwSaveReview();assert.equal(f.kwBusy,true);assert.equal(f.kwReviewGo(1),false);f.kwCloseReview();assert.equal(f.kwReview.cell_id,'i1:A');
- finishPost();await saving;assert.equal(f.kwReview.cell_id,'i1:A');assert.equal(f.kwReviewDirty(),false);assert.match(f.kwError,/판단은 저장했지만/);assert.equal(f.kwMessage,'');
+ const saving=f.kwSaveReview();assert.equal(f.kwBusy,true);assert.equal(await f.kwReviewGo(1),false);f.kwCloseReview();assert.equal(f.kwReview.cell_id,'i1:A');
+ await new Promise(setImmediate);finishPost();await saving;assert.equal(f.kwReview.cell_id,'i1:A');assert.equal(f.kwReviewDirty(),false);assert.match(f.kwError,/판단은 저장했지만/);assert.equal(f.kwMessage,'');
  const stale=JSON.parse(JSON.stringify(f.kwRunData));stale.revision=0;stale.cells['i1:A'].reviews=[];stale.cells['i1:A'].review_revision=0;
  f.kwRequest=async()=>({ok:true,run:stale});await f.kwOpenRun('r');
  assert.equal(f.kwRunData.cells['i1:A'].review_revision,1);assert.equal(f.kwRunData.cells['i1:A'].reviews[0].note,'검수 메모');
- assert.equal(f.kwReviewGo(1),true);assert.equal(f.kwReviewGo(-1),true);assert.equal(f.kwReview.note,'검수 메모');assert.equal(f.kwReview.judgments[0].verdict,'edit');
+ assert.equal(await f.kwReviewGo(1),true);assert.equal(await f.kwReviewGo(-1),true);assert.equal(f.kwReview.note,'검수 메모');assert.equal(f.kwReview.judgments[0].verdict,'edit');
  f.kwReview.note='아직 저장하지 않은 메모';const savedReviews=JSON.stringify(f.kwRunData.cells['i1:A'].reviews);
  window.confirm=()=>false;await f.kwDiscardReview();assert.equal(f.kwReview.note,'아직 저장하지 않은 메모');
  window.confirm=()=>true;await f.kwDiscardReview();window.confirm=confirm0;
@@ -134,6 +137,7 @@ async function main(){
  done.kwRunData={id:'r',revision:0,items:[it[0]],slots:[sl[0]],cells:{'i1:A':cell('i1:A','done',[])}};
  done.kwOpenReview(it[0],sl[0]);done.kwReview.judgments[0].verdict='accept';let completeCalls=0,requestId;
  done.kwRequest=async(query,data)=>{
+   if(!data) return {ok:true,run:JSON.parse(JSON.stringify(done.kwRunData))};
    completeCalls++;assert.equal(data.action,'complete_review');
    if(completeCalls===1){requestId=data.request_id;throw Error('응답 유실');}
    assert.equal(data.request_id,requestId);
@@ -150,7 +154,7 @@ async function main(){
  done.kwReview.note='수정';assert.equal(done.kwCompletionDone(),false);
  assert.equal(markup.includes('kwSaveGold()'),false);assert.equal(markup.includes('kwSaveReview(true)'),false);
  assert.match(markup,/검수 완료·정답셋 저장/);assert.match(markup,/name="kw-gold-partition" value="evaluation"/);
- assert.match(markup,/<fieldset class="detailview__eval" x-bind:disabled="kwBusy"/);
+ assert.match(markup,/<fieldset class="dc-body" x-bind:disabled="kwBusy \|\| kwReview.readOnly"/);
  console.log('Keyword workspace client: persistence, completion retries, validation, navigation and final cancellation passed');
  // 개선 실행 조건과 요청 중 상태, 실패 후 재시도, 결과 가져오기를 검증한다.
  const improve=window.PRISM_APP_PARTS[0]();improve.kwTab='improve';
@@ -173,6 +177,54 @@ async function main(){
  improve.kwUseProposal();assert.equal(improve.kwTab,'prompts');assert.equal(focus,'kw-version-draft');assert.equal(improve.kwDraft.rules,proposal.rules);assert.equal(improve.kwDraft.proposal_id,'p');
  improve.kwTab='improve';improve.kwLoad=async()=>{};
  improve.kwRequest=async()=>({ok:true,tuning:{status:'running'}});await improve.kwStartTuning();assert.equal(improve.kwCatalog.tuning.status,'running');assert.equal(improve.kwImproving,'');assert.match(improve.kwMessage,/시작했습니다/);
+
+ // 목록 검색·필터는 선택과 원본 순서를 바꾸지 않고, 개선용·평가용·문장 정답을 구분한다.
+ const list=window.PRISM_APP_PARTS[0]();
+ const gold=(key,title,category,at,partition='development',target='keyword')=>({item_key:key,key,title,partition,target,at,by:'검수자',meta:{summary:'검수 리드문',content_category:[category],entities:[{name:'서울'}]},keywords:[{text:'폭염 대처'}]});
+ list.kwCatalog={gold:[gold('old','폭염에 잠 못 이루는 밤','Weather',1),gold('new','서울 여행','Travel',3),gold('eval','평가 표본','Weather',2,'evaluation'),{...gold('sentence','문장 정답','Weather',4,'development','sentence'),sentences:[{text:'서울의 폭염 대처를 안내한다'}]}]};
+ list.catKo=c=>({Weather:'날씨',Travel:'여행'})[c] || c;
+ list.kwTraining=['old'];list.kwEvaluation=['eval'];
+ const before=JSON.stringify(list.kwCatalog.gold);
+ assert.deepEqual(Array.from(list.kwGoldRows('development'),g=>g.item_key),['new','old']);
+ assert.deepEqual(Array.from(list.kwGoldRows('development','날씨 서울'),g=>g.item_key),['old']);
+ assert.equal(list.kwGoldRows('development','TRAVEL')[0].item_key,'new');
+ assert.equal(list.kwGoldRows('development','폭염 대처','Travel')[0].item_key,'new');
+ assert.equal(list.kwGoldRows('development','없음').length,0);
+ assert.deepEqual(Array.from(list.kwGoldRows('development','','',true),g=>g.item_key),['old']);
+ assert.deepEqual(Array.from(list.kwGoldRows('evaluation','','',true),g=>g.item_key),['eval']);
+ assert.deepEqual(Array.from(list.kwContentCategories(list.kwDevelopmentGold())),['Travel','Weather']);
+ assert.deepEqual(Array.from(list.kwTraining),['old']);assert.equal(JSON.stringify(list.kwCatalog.gold),before);
+ list.kwTarget='sentence';assert.equal(list.kwGoldRows('development','폭염')[0].item_key,'sentence');
+ list.kwTarget='keyword';list.kwRunData={items:list.kwCatalog.gold.slice(0,2),slots:[{label:'A'}],cells:{'old:A':cell('old:A','done',[]),'new:A':cell('new:A','failed',[])}};
+ assert.equal(list.kwResultRows('','Weather','미검수')[0].item_key,'old');
+ assert.equal(list.kwResultRows('','Weather','실패').length,0);assert.equal(list.kwResultRows('','','실패')[0].item_key,'new');
+ assert.deepEqual(Array.from(list.kwRunData.items,g=>g.item_key),['old','new']);
+
+ // 저장 직전 최신 검수를 확인: 취소 시 입력/리비전 보존, 확인 시 그 리비전만 덮어쓴다.
+ const fresh=makeApp();fresh.kwRunId='run';fresh.kwCatalog={gold:[]};
+ fresh.kwRunData={id:'run',items:[{key:'key'}],slots:[{label:'A'}],cells:{'key:A':cell('key:A','done',[])}};
+ fresh.kwOpenReview({key:'key'},{label:'A'});fresh.kwReview.judgments[0].verdict='accept';
+ fresh.kwReview.completionRequest={id:'request'};
+ const server={...fresh.kwRunData,cells:{'key:A':{...fresh.kwRunData.cells['key:A'],review_revision:7,reviews:[{by:'먼저 검수한 사람',at:10,keywords:[{text:'기존 결과'}]}]}},current_gold:{key:{id:'gold-7',by:'확정자',at:11,keywords:[{text:'확정 결과'}]}},prior_reviews:{key:[]}};
+ fresh.kwRequest=async()=>({run:server});let warning='';window.confirm=t=>{warning=t;return false};
+ const oldRevision=fresh.kwReview.expected_revision,draftBefore=fresh.kwReviewSnapshot();
+ assert.equal(await fresh.kwConfirmOverwrite(fresh.kwReview,'run',true),false);
+ assert.equal(fresh.kwReview.expected_revision,oldRevision);assert.equal(fresh.kwReviewSnapshot(),draftBefore);
+ assert.match(warning,/작업 중 다른 검수/);assert.match(warning,/확정자/);assert.match(warning,/확정 결과/);assert.match(warning,/이력/);
+ window.confirm=()=>true;assert.equal(await fresh.kwConfirmOverwrite(fresh.kwReview,'run',true),true);
+ assert.equal(fresh.kwReview.expected_revision,7);assert.equal(fresh.kwReview.completionRequest.expected_gold_id,'gold-7');
+ assert.equal(fresh.kwReviewSnapshot(),draftBefore);
+ fresh.kwReview.completionRequest.submitted=true;fresh.kwRequest=()=>{throw Error('재시도 전 조회 금지')};
+ assert.equal(await fresh.kwConfirmOverwrite(fresh.kwReview,'run',true),true);
+ window.confirm=confirm0;
+ // 이전 실행의 저장 결과가 있으면 읽기 전용으로 진입한다. 입력 메타가 다른 항목에는 섞이지 않는다.
+ const entry=makeApp();entry.kwRunId='run';entry.kwCatalog={gold:[]};
+ entry.kwRunData={id:'run',revision:0,status:'done',items:[{key:'key'}],slots:[{label:'A'}],cells:{'key:A':cell('key:A','done',[])},prior_reviews:{key:[{first_by:'선행 검수자'}]}};
+ entry.kwRequest=async()=>({run:entry.kwRunData});
+ assert.equal(await entry.kwEnterReview({key:'key'},{label:'A'}),true);assert.equal(entry.kwReview.readOnly,true);
+ assert.equal(entry.kwPriorReviews({key:'other'}).length,0);
+ await entry.kwEnableReview();assert.equal(entry.kwReview.readOnly,false);
+ console.log('keyword review freshness, overwrite consent and prior-review entry passed');
 
 }
 main().catch(e=>{console.error(e);process.exitCode=1});
