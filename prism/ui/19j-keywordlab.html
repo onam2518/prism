@@ -81,11 +81,26 @@
         <div class="control-row"><button type="button" class="ds-btn ds-btn--solid ds-btn--c-primary" x-bind:disabled="!kwReady() || !kwCatalog?.can_manage" x-on:click="kwStart()" x-text="kwBusy ? '실행 준비 중…' : kwMode==='single' ? '단일 모델 테스트 실행' : kwCount+'개 조합 비교 실행'"></button></div>
       </div>
     </section>
-  <div class="control-row kw-history" x-show="kwTab==='run' || kwTab==='prompts'">
+  <div class="control-row kw-history" x-show="kwTab==='prompts'">
     <label for="kw-history" class="ds-label">실험 기록</label>
     <select id="kw-history" class="field" x-bind:disabled="kwBusy" x-bind:value="kwRunId" x-on:change="kwOpenRun($event.target.value).then(()=>{$event.target.value=kwRunId})"><option value="">실험 선택</option><template x-for="r in kwRuns()" x-bind:key="r.id"><option x-bind:value="r.id" x-bind:selected="kwRunId===r.id" x-text="kwDate(r.created_at)+' · 콘텐츠 '+r.n+'개 · '+r.slots+'조합'"></option></template></select>
     <button class="ds-btn ds-btn--ghost ds-btn--s-sm" x-on:click="kwLoad()">새로고침</button><button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-show="kwTab==='run'" x-bind:disabled="!kwRunData || kwRunData.status==='running'" x-on:click="kwDownloadCsv()" data-tip="콘텐츠 × 조합 한 행 · 제목·본문·엔티티·핵심 키워드·핵심 문장·검수 결과" data-tip-pos="bottom">CSV 받기</button><button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" x-show="kwTab==='run' && kwCatalog?.can_manage" x-bind:disabled="!kwRunData || kwRunData.status==='running' || kwBusy" x-on:click="kwDeleteRun()" data-tip="정답셋 반영·버전 채택에 쓰인 실험은 삭제할 수 없습니다" data-tip-pos="bottom">기록 삭제</button>
   </div>
+  <div class="stepline" x-show="kwTab==='run'"><span class="stepline__no">STEP 5</span><b>실험 기록</b><span class="meta">지난 실험을 골라 결과를 확인하고 검수합니다</span></div>
+  <section class="panel" x-show="kwTab==='run'" aria-label="실험 기록">
+    <div class="panel-hd"><b>실험 기록</b><span class="meta tnum" x-text="kwRuns().length+'건 · 행을 누르면 아래에 실행 결과가 열립니다'"></span><span class="ml-auto control-row"><button class="ds-btn ds-btn--ghost ds-btn--s-sm" x-on:click="kwLoad()">새로고침</button><button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-show="kwTab==='run'" x-bind:disabled="!kwRunData || kwRunData.status==='running'" x-on:click="kwDownloadCsv()" data-tip="콘텐츠 × 조합 한 행 · 제목·본문·엔티티·핵심 키워드·핵심 문장·검수 결과" data-tip-pos="bottom">CSV 받기</button><button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" x-show="kwTab==='run' && kwCatalog?.can_manage" x-bind:disabled="!kwRunData || kwRunData.status==='running' || kwBusy" x-on:click="kwDeleteRun()" data-tip="정답셋에 반영된 실험은 삭제할 수 없습니다" data-tip-pos="bottom">기록 삭제</button></span></div>
+    <div class="panel-bd dc-body">
+      <div class="overflow-auto" style="max-height:320px"><table class="ds-table"><thead><tr><th>실행 일시</th><th>콘텐츠</th><th>조합</th><th>상태</th></tr></thead><tbody>
+        <template x-for="r in kwRuns()" x-bind:key="'kr'+r.id"><tr class="kwl-row" role="button" tabindex="0" x-bind:class="kwRunId===r.id ? 'is-sel' : ''" x-bind:aria-current="kwRunId===r.id ? 'true' : 'false'" x-on:click="kwBusy || kwOpenRun(r.id)" x-on:keydown.enter.prevent="kwBusy || kwOpenRun(r.id)">
+          <td class="text-ink tnum" x-text="kwDate(r.created_at)"></td>
+          <td class="text-muted tnum" x-text="r.n+'건'"></td>
+          <td class="text-muted tnum" x-text="r.slots+'개'"></td>
+          <td><span class="ds-badge ds-badge--status" x-show="kwRunId===r.id">열림</span></td>
+        </tr></template>
+        <tr x-show="!kwRuns().length"><td colspan="4" class="text-xs text-muted">아직 실행한 실험이 없습니다</td></tr>
+      </tbody></table></div>
+    </div>
+  </section>
   <section class="panel" x-show="kwRunData && kwTab==='run'" x-data="{ query:'', category:'', state:'', rows:[] }" x-effect="rows=kwResultRows(query,category,state)" aria-label="실행 결과 콘텐츠 목록">
     <div class="panel-hd"><b>실행 결과</b><span class="meta" x-text="kwRunData ? kwState(kwRunData) : ''"></span><button class="ds-btn ds-btn--outline ds-btn--s-sm ml-auto" x-show="kwRunData && !kwRunData.revealed && kwCatalog?.can_manage" x-on:click="kwReveal()">모델·버전 공개</button></div>
     <div class="panel-bd dc-body"><p role="status" x-show="kwRunData?.error" x-text="kwRunData?.error || ''"></p>
@@ -368,13 +383,15 @@
     <div class="stepline"><span class="stepline__no" x-text="'STEP '+(kwTarget==='keyword' ? 4 : 3)"></span><b>실행</b><span class="meta" x-text="kwTarget==='keyword' ? '실행 유형을 고르고 실행' : '개선안 1개 작성'"></span></div>
     <section class="panel" aria-label="실행" x-bind:aria-busy="Boolean(kwImproving)">
       <section class="panel-bd dc-body">
-        <fieldset class="kwd-gap-sm" x-show="kwTarget==='keyword'" x-bind:disabled="kwBusy || kwCatalog?.tuning?.status==='running'" aria-label="실행 유형">
-          <legend class="dve__lbl">실행 유형</legend>
-          <div style="display:flex;flex-direction:column;align-items:flex-start;gap:var(--ds-space-2)"><label class="kw-check"><input type="radio" name="kw-run-type" value="once" x-model="kwImproveMode">단건 개선 · 개선안 1개를 만들어 평가</label>
-          <label class="kw-check"><input type="radio" name="kw-run-type" value="auto" x-model="kwImproveMode">반복 개선 · 개선과 평가를 최대<input class="field" type="number" min="1" max="10" step="1" aria-label="최대 반복 횟수" style="width:64px" x-model.number="kwTuneRounds" x-bind:disabled="kwImproveMode!=='auto'">회 반복</label></div>
-        </fieldset>
+        <section class="dc-body" x-show="kwTarget==='keyword'">
+          <p class="ds-label" id="kw-run-type-label">실행 유형</p>
+          <div class="ds-segmented" role="group" aria-labelledby="kw-run-type-label">
+            <template x-for="m in [['once','단건 개선'],['auto','반복 개선']]" x-bind:key="m[0]"><button type="button" class="ds-segmented__item" x-bind:aria-pressed="kwImproveMode===m[0] ? 'true' : 'false'" x-bind:disabled="kwBusy || kwCatalog?.tuning?.status==='running'" x-on:click="kwImproveMode=m[0]" x-text="m[1]"></button></template>
+          </div>
+          <label class="ds-label" x-show="kwImproveMode==='auto'">최대 반복 횟수<input class="field" type="number" min="1" max="10" step="1" x-model.number="kwTuneRounds" x-bind:disabled="kwBusy || kwCatalog?.tuning?.status==='running'"></label>
+        </section>
         <ul class="ds-bullets">
-          <li x-show="kwTarget==='keyword'" x-text="'개선용 '+kwTraining.length+'개 · 평가용 '+kwEvaluation.length+'개'+(kwAuto() ? ' · 최대 '+kwTuneRounds+'회' : '')+' · 모델 호출 비용 발생'"></li>
+          <li x-show="kwTarget==='keyword'" x-text="(kwAuto() ? '개선과 평가를 최대 '+kwTuneRounds+'회 반복' : '개선안 1개를 만들어 평가')+' · 개선용 '+kwTraining.length+'개 · 평가용 '+kwEvaluation.length+'개 · 모델 호출 비용 발생'"></li>
           <li x-show="kwTarget!=='keyword'" x-text="'개선용 정답 '+kwTraining.length+'개로 개선안 작성'"></li>
         </ul>
         <section class="control-row">
