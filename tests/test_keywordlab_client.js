@@ -165,12 +165,12 @@ async function main(){
  improve.kwTraining=['stale'];assert.match(improve.kwImproveIssue(),/변경/);improve.kwTraining=['dev0'];
  improve.kwCatalog.gold.push({item_key:'eval',partition:'evaluation'});improve.kwEvaluation=['eval'];
  improve.kwTuneRounds=0;assert.match(improve.kwImproveIssue(true),/1~10/);improve.kwTuneRounds=3;
- assert.equal(improve.kwImproveIssue(true),'');improve.kwCatalog.tuning={status:'running'};assert.match(improve.kwImproveIssue(),/실행 중/);improve.kwCatalog.tuning=null;
+ assert.equal(improve.kwImproveIssue(true),'');assert.equal(improve.kwAuto(),false);improve.kwCatalog.tuning={status:'running'};assert.match(improve.kwImproveIssue(),/실행 중/);assert.equal(improve.kwAuto(),true);improve.kwCatalog.tuning=null;improve.kwImproveMode='auto';assert.equal(improve.kwAuto(),true);improve.kwImproveMode='once';
  const proposal={id:'p',target:'keyword',parent_id:'base',model:'solar-pro4',rules:'완성 규칙',changes:[{reason:'누락',change:'주제 포함'}]};
  let finish,focus;improve.kwFocus=id=>{focus=id};improve.kwRequest=async(q,data)=>{sent=data;return new Promise(resolve=>{finish=resolve})};
  const compilePending=improve.kwCompile();assert.equal(improve.kwBusy,true);assert.equal(improve.kwImproving,'manual');assert.equal(sent.compiler_model,'timely|claude-fable-5');
- improve.kwLoad=async()=>{};improve.kwCatalog.versions.push({id:'v2',model:'solar-pro4',number:2,title:'1회 개선'});
- await improve.kwCompile();finish({ok:true,proposal,version:{id:'v2',model:'solar-pro4',number:2,title:'1회 개선'}});await compilePending;
+ improve.kwLoad=async()=>{};improve.kwCatalog.versions.push({id:'v2',model:'solar-pro4',number:2,title:'단건 개선'});
+ await improve.kwCompile();finish({ok:true,proposal,version:{id:'v2',model:'solar-pro4',number:2,title:'단건 개선'}});await compilePending;
  assert.equal(improve.kwBusy,false);assert.equal(improve.kwImproving,'');assert.equal(improve.kwProposal.rules,proposal.rules);assert.equal(improve.kwProposal.version.id,'v2');assert.match(improve.kwMessage,/저장했습니다/);assert.equal(focus,'kw-proposal-result');
  const saved=improve.kwProposal;
  improve.kwRequest=async()=>{throw new Error('모델 호출 실패 · timeout')};await improve.kwCompile();
