@@ -8,6 +8,13 @@ async function main(){
  assert.equal(a.kwReady(),false);a.kwChooseMode('single');a.kwSlots[0]={model:'solar',version_id:'v1'};
  assert.equal(a.kwReady(),false);a.kwLead='한국은행이 금리를 인하했다';a.kwEntities='한국은행';assert.equal(a.kwReady(),true);
  a.kwModel(a.kwSlots[0],'gpt');assert.equal(a.kwSlots[0].version_id,'');
+ // 엑셀 업로드 입력: 반영 행이 있어야 실행 가능 · 반영 결과는 행 번호순 · 이름 없는 행은 '엑셀 N행'
+ {const x=window.PRISM_APP_PARTS[0]();x._authHeaders=()=>({});x.kwChooseMode('single');x.kwSlots[0]={model:'solar',version_id:'v1'};x.kwSource='excel';
+  assert.equal(x.kwReady(),false);
+  x.kwExcel={name:'t.xlsx',rows:[{row:3,title:'',meta:{summary:'s',entities:['e']}}],rejected:[{row:2,title:'b',meta:{summary:'',entities:[]},reason:'리드문 없음'}]};
+  assert.equal(x.kwReady(),true);assert.equal(x.kwExcelRows()[0].row,2);
+  let xs;x.kwRequest=async(q,d)=>{xs=d;return{id:'r9'}};x.kwOpenRun=async()=>true;x.kwLoad=async()=>{};
+  await x.kwStart();assert.equal(xs.rows.length,1);assert.equal(xs.rows[0].title,'엑셀 3행');assert.equal(xs.meta,undefined);}
  let sent;a._afetch=async(url,opt)=>{sent=JSON.parse(opt.body);return{json:async()=>({ok:true})}};
  await a.kwRequest('',{action:'review'});assert.equal(sent.reviewer,'검수자');
  a.kwRunData={cells:{'key:A':{id:'key:A',status:'done',review_revision:2,refined:{keywords:[{text:'한국은행',kind:'single'}]},reviews:[],final:null}}};

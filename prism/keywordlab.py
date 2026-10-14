@@ -231,15 +231,83 @@ def _items(body, team):
         if not rows:
             raise ValueError('엔티티가 있는 정답셋이 없습니다')
         return [_item(c, m, h) for h, c, m in ER._sample_rows(rows, n)]
-    meta = body.get('meta')
+    if 'rows' in body:                               # 엑셀 업로드에서 반영한 행
+        rows = body['rows']
+        if not isinstance(rows, list) or not 1 <= len(rows) <= MAX_ITEMS or not all(isinstance(r, dict) for r in rows):
+            raise ValueError('엑셀 반영 행은 1~30건입니다')
+        return [_meta_item(r.get('title'), r.get('meta')) for r in rows]
+    return [_meta_item(body.get('title'), body.get('meta'))]
+
+
+def _meta_item(title, meta):
+    """직접 입력·엑셀 행 공통 검사 · 리드문 필수."""
     if not isinstance(meta, dict) or not isinstance(meta.get('summary'), str) or not meta['summary'].strip():
         raise ValueError('리드문을 입력하세요')
     if len(meta['summary']) > 20000 or any(not isinstance(meta.get(k, []), list) or
         not all(isinstance(x, str) and len(x) <= 300 for x in meta.get(k, [])) or len(meta.get(k, [])) > 100
         for k in ('entities', 'intent', 'content_category')):
         raise ValueError('입력 메타 형식·길이를 확인하세요')
-    return [_item({'title': body.get('title')}, {k: meta.get(k, [] if k != 'summary' else '')
-                    for k in ('summary', 'entities', 'intent', 'content_category')})]
+    if title is not None and (not isinstance(title, str) or len(title) > 300):
+        raise ValueError('콘텐츠 이름은 300자 이내입니다')
+    return _item({'title': title}, {k: meta.get(k, [] if k != 'summary' else '')
+                                    for k in ('summary', 'entities', 'intent', 'content_category')})
+
+
+EXCEL_HEADERS = ['콘텐츠 이름', '리드문', '엔티티', '인텐트', '카테고리']
+EXCEL_MAX_BYTES = 2 * 1024 * 1024
+
+
+def excel_template():
+    """핵심 키워드 실험 입력 양식(.xlsx) · 값 여러 개는 쉼표로 구분."""
+    from .runops import build_template_xlsx
+    return build_template_xlsx(rows=[EXCEL_HEADERS, ['예시) 기준금리 인하', '한국은행이 기준금리를 0.25%p 내렸다.',
+                                                     '한국은행, 이창용', '속보', '경제']])
+
+
+def parse_excel(body):
+    """엑셀·CSV 업로드 → 반영 행과 제외 사유 · 실행은 하지 않는다(반영 결과를 보고 실행)."""
+    import base64, os, tempfile
+    from .ingest import read_table
+    name, data = str(body.get('name') or ''), body.get('data')
+    ext = os.path.splitext(name)[1].lower()
+    if ext not in ('.xlsx', '.csv') or not isinstance(data, str):
+        raise ValueError('xlsx 또는 csv 파일을 올리세요')
+    try:
+        raw = base64.b64decode(data, validate=True)
+    except ValueError:
+        raise ValueError('파일을 읽지 못했습니다')
+    if not raw or len(raw) > EXCEL_MAX_BYTES:
+        raise ValueError('파일은 2MB 이하여야 합니다')
+    fd, path = tempfile.mkstemp(suffix=ext)
+    try:
+        with os.fdopen(fd, 'wb') as f:
+            f.write(raw)
+        headers, table = read_table(path)
+    except ValueError:
+        raise
+    except Exception:
+        raise ValueError('파일 형식을 읽지 못했습니다 · 양식을 받아 다시 작성하세요')
+    finally:
+        os.unlink(path)
+    if '리드문' not in headers:
+        raise ValueError('리드문 열이 없습니다 · 양식을 받아 다시 작성하세요')
+    split = lambda v: [x.strip() for x in re.split(r'[,;|\n]', str(v or '')) if x.strip()]
+    rows, rejected = [], []
+    for n, r in enumerate(table, 2):                 # 엑셀 행 번호(1행=머리줄)
+        title = str(r.get('콘텐츠 이름') or '').strip()
+        if not any(str(v or '').strip() for v in r.values()):
+            continue
+        meta = {'summary': str(r.get('리드문') or '').strip(), 'entities': split(r.get('엔티티')),
+                'intent': split(r.get('인텐트')), 'content_category': split(r.get('카테고리'))}
+        reason = ('리드문 없음' if not meta['summary'] else '엔티티 없음' if not meta['entities']
+                  else '30건 초과' if len(rows) >= MAX_ITEMS else '')
+        if not reason:
+            try:
+                _meta_item(title or None, meta)
+            except ValueError as exc:
+                reason = str(exc)
+        (rejected if reason else rows).append({'row': n, 'title': title, 'meta': meta, **({'reason': reason} if reason else {})})
+    return {'ok': True, 'rows': rows, 'rejected': rejected}
 
 
 def _prepare_items(body, team, target):
@@ -940,6 +1008,7 @@ def action(body, team=None, actor='', can_manage=False, can_final=False):
         if op == 'reveal': return reveal(body, team)
         if op == 'compile': return compile_proposal(body, team, actor)
         if op == 'save_version': return save_version(body, team)
+        if op == 'parse_excel': return parse_excel(body)
         if op == 'delete_gold': return delete_gold(body, team, actor)
         raise ValueError('지원하지 않는 작업입니다')
     except (ValueError, TypeError, KeyError) as exc:

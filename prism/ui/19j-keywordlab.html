@@ -46,7 +46,7 @@
     <div class="stepline" x-show="kwMode"><span class="stepline__no">STEP 3</span><b>콘텐츠 선택</b><span class="meta" x-text="kwMode==='single' ? '테스트할 콘텐츠와 건수 선택' : '모든 조합에 동일한 콘텐츠·입력 메타 적용'"></span></div>
     <section class="panel" x-show="kwMode">
       <div class="panel-bd dc-body">
-        <div class="control-row"><label class="selctl"><span class="selctl__lbl">입력 방식</span><select class="field" aria-label="콘텐츠 입력 방식" x-model="kwSource" x-on:change="kwSourceChanged()"><option value="direct">메타 직접 입력</option><option value="sample">콘텐츠 정답셋에서 샘플</option><option value="hash">콘텐츠 정답셋 해시 지정</option><option value="reuse">기존 실험의 입력 재사용</option></select></label></div>
+        <div class="control-row"><label class="selctl"><span class="selctl__lbl">입력 방식</span><select class="field" aria-label="콘텐츠 입력 방식" x-model="kwSource" x-on:change="kwSourceChanged()"><option value="direct">메타 직접 입력</option><option value="excel" x-bind:disabled="kwTarget!=='keyword'">엑셀 업로드</option><option value="sample">콘텐츠 정답셋에서 샘플</option><option value="hash">콘텐츠 정답셋 해시 지정</option><option value="reuse">기존 실험의 입력 재사용</option></select></label></div>
         <div x-show="kwSource==='direct'" class="fn-stack">
           <label class="fn"><span class="ds-label">콘텐츠 이름 · 선택</span><input class="field" x-model="kwTitle" placeholder="실험 기록에 표시할 이름"></label>
           <label class="fn"><span class="ds-label">리드문 · 필수</span><textarea class="field" rows="3" x-model="kwLead" placeholder="발행된 리드문을 입력하세요"></textarea></label>
@@ -55,6 +55,28 @@
             <label class="fn"><span class="ds-label">인텐트 · 선택</span><input class="field" x-model="kwIntents" placeholder="쉼표로 구분"></label>
           </div>
           <label class="fn"><span class="ds-label">카테고리 · 선택</span><input class="field" x-model="kwCategories" placeholder="쉼표로 구분"></label>
+        </div>
+        <div x-show="kwSource==='excel'" class="dc-body">
+          <div class="control-row"><button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-on:click="kwExcelTemplate()">엑셀 양식 받기</button></div>
+          <label class="dropzone" x-bind:class="kwXlsDrag ? 'drag' : ''" x-on:dragover.prevent="kwXlsDrag=true" x-on:dragleave.prevent="kwXlsDrag=false" x-on:drop.prevent="kwXlsDrag=false;kwExcelPick($event.dataTransfer.files[0])">
+            <span class="name" x-text="kwXlsDrag ? '여기에 놓기' : ((kwExcel ? kwExcel.name : '선택된 파일 없음')+' · 끌어다 놓기 가능')"></span>
+            <span class="pick"><svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>엑셀 업로드</span>
+            <input type="file" accept=".xlsx,.csv" class="sr-only" x-bind:disabled="kwBusy" x-on:change="kwExcelPick($event.target.files[0]);$event.target.value=''">
+          </label>
+          <ul class="ds-bullets"><li>열: 콘텐츠 이름 · 리드문(필수) · 엔티티(필수) · 인텐트 · 카테고리<ul><li>값이 여러 개면 쉼표로 구분합니다</li><li>한 번에 최대 30건 · 2MB 이하 xlsx·csv</li></ul></li></ul>
+          <template x-if="kwExcel"><section class="dc-body" aria-live="polite">
+            <p class="ds-label" x-text="'반영 결과 · 반영 '+kwExcel.rows.length+'건 · 제외 '+kwExcel.rejected.length+'건'"></p>
+            <div class="overflow-auto" style="max-height:320px"><table class="ds-table"><thead><tr><th>행</th><th>콘텐츠 이름</th><th>리드문</th><th>엔티티</th><th>상태</th></tr></thead><tbody>
+              <template x-for="r in kwExcelRows()" x-bind:key="'xr'+r.row"><tr>
+                <td class="text-muted tnum" x-text="r.row"></td>
+                <td class="text-ink" x-text="r.title || '·'"></td>
+                <td class="text-muted"><p class="kwl-ellipsis" x-bind:title="r.meta.summary" x-text="r.meta.summary || '·'"></p></td>
+                <td class="text-muted" x-text="r.meta.entities.join(' · ') || '·'"></td>
+                <td><span class="ds-badge" x-bind:class="r.reason ? 'ds-badge--warning' : 'ds-badge--success'" x-text="r.reason ? '제외 · '+r.reason : '반영'"></span></td>
+              </tr></template>
+              <tr x-show="!kwExcelRows().length"><td colspan="5" class="text-xs text-muted">읽을 수 있는 행이 없습니다</td></tr>
+            </tbody></table></div>
+          </section></template>
         </div>
         <div x-show="kwSource==='sample'" class="dc-body">
           <div class="control-row"><label for="kw-sample" class="ds-label">샘플 수</label><input id="kw-sample" type="number" min="1" max="30" class="field kw-count-field" x-model.number="kwSample"><span class="meta">최대 30건</span></div>
