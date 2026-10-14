@@ -169,11 +169,13 @@ async function main(){
  const proposal={id:'p',target:'keyword',parent_id:'base',model:'solar-pro4',rules:'완성 규칙',changes:[{reason:'누락',change:'주제 포함'}]};
  let finish,focus;improve.kwFocus=id=>{focus=id};improve.kwRequest=async(q,data)=>{sent=data;return new Promise(resolve=>{finish=resolve})};
  const compilePending=improve.kwCompile();assert.equal(improve.kwBusy,true);assert.equal(improve.kwImproving,'manual');assert.equal(sent.compiler_model,'timely|claude-fable-5');
- await improve.kwCompile();finish({ok:true,proposal});await compilePending;
- assert.equal(improve.kwBusy,false);assert.equal(improve.kwImproving,'');assert.equal(improve.kwProposal,proposal);assert.equal(focus,'kw-proposal-result');
+ improve.kwLoad=async()=>{};improve.kwCatalog.versions.push({id:'v2',model:'solar-pro4',number:2,title:'1회 개선'});
+ await improve.kwCompile();finish({ok:true,proposal,version:{id:'v2',model:'solar-pro4',number:2,title:'1회 개선'}});await compilePending;
+ assert.equal(improve.kwBusy,false);assert.equal(improve.kwImproving,'');assert.equal(improve.kwProposal.rules,proposal.rules);assert.equal(improve.kwProposal.version.id,'v2');assert.match(improve.kwMessage,/저장했습니다/);assert.equal(focus,'kw-proposal-result');
+ const saved=improve.kwProposal;
  improve.kwRequest=async()=>{throw new Error('모델 호출 실패 · timeout')};await improve.kwCompile();
- assert.match(improve.kwError,/timeout/);assert.equal(improve.kwProposal,proposal);assert.equal(improve.kwTraining[0],'dev0');assert.equal(focus,'kw-improve-status');assert.equal(improve.kwBusy,false);
- improve.kwUseProposal();assert.equal(improve.kwTab,'prompts');assert.equal(focus,'kw-version-draft');assert.equal(improve.kwDraft.rules,proposal.rules);assert.equal(improve.kwDraft.proposal_id,'p');
+ assert.match(improve.kwError,/timeout/);assert.equal(improve.kwProposal,saved);assert.equal(improve.kwTraining[0],'dev0');assert.equal(focus,'kw-improve-status');assert.equal(improve.kwBusy,false);
+ improve.kwShowProposalVersion();assert.equal(improve.kwTab,'prompts');assert.equal(improve.kwVersion.id,'v2');
  improve.kwTab='improve';improve.kwLoad=async()=>{};
  improve.kwRequest=async()=>({ok:true,tuning:{status:'running'}});await improve.kwStartTuning();assert.equal(improve.kwCatalog.tuning.status,'running');assert.equal(improve.kwImproving,'');assert.match(improve.kwMessage,/시작했습니다/);
 

@@ -837,6 +837,15 @@ def compile_proposal(body, team, actor):
     return {'ok': True, 'proposal': {k: val for k, val in proposal.items() if k not in ('input', 'system')}}
 
 
+def improve_once(body, team, actor):
+    """1회 개선 · 개선안을 바로 새 버전으로 저장한다(오토파일럿 후보와 같은 계보 경로)."""
+    p = compile_proposal(body, team, actor)['proposal']
+    v = create_version({'target': p['target'], 'model': p['model'], 'rules': p['rules'], 'title': '1회 개선',
+                        'parent_id': p['parent_id'], 'proposal_id': p['id'],
+                        'note': '\n'.join(c['reason'] + ': ' + c['change'] for c in p['changes'])}, team, actor)['version']
+    return {'ok': True, 'proposal': p, 'version': v}
+
+
 def delete_version(body, team):
     """저장한 버전 삭제 · 실험 기록은 실행 시 복사한 사본을 쓰므로 그대로 남는다."""
     ident = body.get('version_id')
@@ -905,7 +914,7 @@ def action(body, team=None, actor='', can_manage=False, can_final=False):
         if op == 'cancel_final': return cancel_final(body, team, actor, can_final)
         if op == 'gold': return confirm_gold(body, team, actor, can_final)
         if op == 'reveal': return reveal(body, team)
-        if op == 'compile': return compile_proposal(body, team, actor)
+        if op == 'compile': return improve_once(body, team, actor)
         raise ValueError('지원하지 않는 작업입니다')
     except (ValueError, TypeError, KeyError) as exc:
         return {'ok': False, 'error': str(exc)}
