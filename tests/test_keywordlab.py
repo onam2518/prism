@@ -201,6 +201,24 @@ class KeywordLabTest(unittest.TestCase):
         self.assertEqual({r['모델·버전'] for r in rows}, {'비공개'})              # 공개 전엔 가림
         self.assertEqual(model, 'blind')
 
+    def test_large_run_saves_cells_in_batches(self):
+        v = self.version()
+        rows = [{'title': f'c{i}', 'meta': {'summary': f'리드 {i}', 'entities': ['한국은행'], 'intent': [], 'content_category': []}} for i in range(25)]
+        with patch.object(K.threading, 'Thread'):
+            rid = K.start({'slots': [{'model': v['model'], 'version_id': v['id']}], 'rows': rows}, 'a', 'tester')['id']
+        key, writes, real = K._key('run', rid), [], K._update
+        def counting(k, team, change, *args, **kw):
+            if k == key:
+                writes.append(1)
+            return real(k, team, change, *args, **kw)
+        with patch.object(E, '_llm', return_value=(None, True, '')), patch.object(K, '_update', side_effect=counting):
+            K._run(rid, 'a')
+        run = K._get(key, 'a')
+        self.assertEqual((run['status'], len(run['cells'])), ('done', 25))
+        self.assertEqual(len(writes), 3 + 1)                                  # 10·10·5 묶음 + 완료 표시
+        with self.assertRaises(ValueError):
+            K.start({'slots': [{'model': v['model'], 'version_id': v['id']}], 'rows': rows * 5}, 'a', 'tester')   # 125건 > 100
+
     def test_review_acknowledges_persisted_revision_without_revealing_model(self):
         run = self.run_case(1)
         cell = next(iter(run['cells'].values()))

@@ -19,7 +19,7 @@
             <button type="button" class="ds-segmented__item" x-bind:aria-pressed="kwMode==='compare' ? 'true' : 'false'" x-on:click="kwChooseMode('compare')">모델·버전 비교 실험</button>
           </div>
         </fieldset>
-        <ul class="ds-bullets" x-show="!kwMode"><li>단일 모델 테스트는 모델 1개로 콘텐츠 1~30건을 확인합니다</li><li>비교 실험은 동일한 콘텐츠에서 모델·프롬프트 버전 2~3개를 비교합니다</li></ul>
+        <ul class="ds-bullets" x-show="!kwMode"><li>단일 모델 테스트는 모델 1개로 콘텐츠 1~100건을 확인합니다</li><li>비교 실험은 동일한 콘텐츠에서 모델·프롬프트 버전 2~3개를 비교합니다</li></ul>
         <div x-show="kwMode==='compare'" class="control-row">
           <label class="selctl"><span class="selctl__lbl">비교 조합</span><select class="field" aria-label="비교 조합" x-model.number="kwCount"><option value="2">2개 조합</option><option value="3">3개 조합</option></select></label>
           <label class="kw-check"><input type="checkbox" x-model="kwBlind">모델·버전 가리고 검수</label>
@@ -63,7 +63,7 @@
             <span class="pick"><svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>엑셀 업로드</span>
             <input type="file" accept=".xlsx,.csv" class="sr-only" x-bind:disabled="kwBusy" x-on:change="kwExcelPick($event.target.files[0]);$event.target.value=''">
           </label>
-          <ul class="ds-bullets"><li>열: 콘텐츠 이름 · 리드문(필수) · 엔티티(필수) · 인텐트 · 카테고리<ul><li>값이 여러 개면 쉼표로 구분합니다</li><li>한 번에 최대 30건 · 2MB 이하 xlsx·csv</li></ul></li></ul>
+          <ul class="ds-bullets"><li>열: 콘텐츠 이름 · 리드문(필수) · 엔티티(필수) · 인텐트 · 카테고리<ul><li>값이 여러 개면 쉼표로 구분합니다</li><li>한 번에 최대 100건 · 2MB 이하 xlsx·csv</li></ul></li></ul>
           <template x-if="kwExcel"><section class="dc-body" aria-live="polite">
             <p class="ds-label" x-text="'반영 결과 · 반영 '+kwExcel.rows.length+'건 · 제외 '+kwExcel.rejected.length+'건'"></p>
             <div class="overflow-auto" style="max-height:320px"><table class="ds-table"><thead><tr><th>행</th><th>콘텐츠 이름</th><th>리드문</th><th>엔티티</th><th>상태</th></tr></thead><tbody>
@@ -79,10 +79,10 @@
           </section></template>
         </div>
         <div x-show="kwSource==='sample'" class="dc-body">
-          <div class="control-row"><label for="kw-sample" class="ds-label">샘플 수</label><input id="kw-sample" type="number" min="1" max="30" class="field kw-count-field" x-model.number="kwSample"><span class="meta">최대 30건</span></div>
+          <div class="control-row"><label for="kw-sample" class="ds-label">샘플 수</label><input id="kw-sample" type="number" min="1" max="100" class="field kw-count-field" x-model.number="kwSample"><span class="meta">최대 100건</span></div>
           <ul class="ds-bullets"><li>엔티티가 있는 콘텐츠 정답셋에서 입력한 수만큼 가져옵니다</li></ul>
         </div>
-        <label x-show="kwSource==='hash'" class="fn"><span class="ds-label" x-text="'콘텐츠 해시 · 최대 30개'"></span><textarea class="field" x-model="kwHashes" rows="2" placeholder="줄바꿈 또는 쉼표로 구분"></textarea></label>
+        <label x-show="kwSource==='hash'" class="fn"><span class="ds-label" x-text="'콘텐츠 해시 · 최대 100개'"></span><textarea class="field" x-model="kwHashes" rows="2" placeholder="줄바꿈 또는 쉼표로 구분"></textarea></label>
         <label x-show="kwSource==='reuse'" class="fn"><span class="ds-label">입력을 재사용할 실험</span><select class="field" x-model="kwReuse" x-on:change="kwLoadInputRun(kwReuse)"><option value="">실험 선택</option><template x-for="r in kwReusableRuns()" x-bind:key="r.id"><option x-bind:value="r.id" x-text="kwTargetLabel(r.target || 'keyword')+' · '+kwDate(r.created_at)+' · 콘텐츠 '+r.n+'건'" x-bind:selected="String(r.id) === String(kwReuse)"></option></template></select></label>
         <div x-show="kwTarget==='sentence'" class="content-section dc-body">
           <b class="fn__title">문장에 사용할 핵심 키워드</b>

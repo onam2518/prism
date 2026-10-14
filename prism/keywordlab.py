@@ -19,7 +19,8 @@ _SV = None
 CATALOG = 'keyword_lab_catalog_v1'
 ACTIVE = set()
 LOCK = threading.Lock()
-MAX_ITEMS = 30
+MAX_ITEMS = 100
+SAVE_EVERY = 10            # 결과 칸을 몇 개씩 묶어 저장할지(실험 기록 전체를 다시 쓰므로 칸마다 쓰면 DB 부하)
 VERDICTS = ('accept', 'edit', 'exclude', 'hold')
 REASONS = ('근거 부족', '대상·관계 오류', '의미 왜곡', '범위 부적합', '중복', '표현 문제', '입력 메타 문제', '기타')
 
@@ -196,7 +197,7 @@ def _items(body, team):
     if 'gold_keys' in body:
         keys = body['gold_keys']
         if not isinstance(keys, list) or not 1 <= len(keys) <= MAX_ITEMS or not all(isinstance(k, str) for k in keys) or len(set(keys)) != len(keys):
-            raise ValueError('정답을 중복 없이 1~30개 선택하세요')
+            raise ValueError(f'정답을 중복 없이 1~{MAX_ITEMS}개 선택하세요')
         gold = _current_gold(team)
         if any(k not in gold or _target(gold[k]) != 'keyword' for k in keys):
             raise ValueError('사용할 키워드 정답을 다시 확인하세요')
@@ -209,7 +210,7 @@ def _items(body, team):
     if body.get('hashes'):
         hashes = body['hashes']
         if not isinstance(hashes, list) or not 1 <= len(hashes) <= MAX_ITEMS or len(set(hashes)) != len(hashes):
-            raise ValueError('중복 없이 정답셋 해시를 1~30개 지정하세요')
+            raise ValueError(f'중복 없이 정답셋 해시를 1~{MAX_ITEMS}개 지정하세요')
         out = []
         for h in hashes:
             content, meta = ER._content_of(h, team)
@@ -220,7 +221,7 @@ def _items(body, team):
     if body.get('sample'):
         n = body['sample']
         if type(n) is not int or not 1 <= n <= MAX_ITEMS:
-            raise ValueError('샘플 수는 1~30개입니다')
+            raise ValueError(f'샘플 수는 1~{MAX_ITEMS}개입니다')
         from .store import golden_hash
         rows = []
         for r in _store().get_golden(team) or []:
@@ -234,7 +235,7 @@ def _items(body, team):
     if 'rows' in body:                               # 엑셀 업로드에서 반영한 행
         rows = body['rows']
         if not isinstance(rows, list) or not 1 <= len(rows) <= MAX_ITEMS or not all(isinstance(r, dict) for r in rows):
-            raise ValueError('엑셀 반영 행은 1~30건입니다')
+            raise ValueError(f'엑셀 반영 행은 1~{MAX_ITEMS}건입니다')
         return [_meta_item(r.get('title'), r.get('meta')) for r in rows]
     return [_meta_item(body.get('title'), body.get('meta'))]
 
@@ -300,7 +301,7 @@ def parse_excel(body):
         meta = {'summary': str(r.get('리드문') or '').strip(), 'entities': split(r.get('엔티티')),
                 'intent': split(r.get('인텐트')), 'content_category': split(r.get('카테고리'))}
         reason = ('리드문 없음' if not meta['summary'] else '엔티티 없음' if not meta['entities']
-                  else '30건 초과' if len(rows) >= MAX_ITEMS else '')
+                  else f'{MAX_ITEMS}건 초과' if len(rows) >= MAX_ITEMS else '')
         if not reason:
             try:
                 _meta_item(title or None, meta)
@@ -431,14 +432,27 @@ def _run(rid, team, should_stop=None):
         except Exception as exc:
             result.update(status='failed', error=str(exc)[:500])
         result['elapsed_ms'] = round((time.time() - begin) * 1000)
+        with plock:
+            pending[cid] = result
+            batch = dict(pending) if len(pending) >= SAVE_EVERY else None
+            if batch:
+                pending.clear()
+        if batch:
+            flush(batch)
+    pending, plock = {}, threading.Lock()
+    def flush(batch):
         def save(latest):
-            latest['cells'][cid] = result
+            latest['cells'].update(batch)
             latest['updated_at'] = time.time()
             latest['revision'] += 1
         _update(key, team, save)
     try:
-        with ThreadPoolExecutor(max_workers=3) as pool:
-            list(pool.map(one, [(it, slot) for it in run['items'] for slot in run['slots']]))
+        try:
+            with ThreadPoolExecutor(max_workers=3) as pool:
+                list(pool.map(one, [(it, slot) for it in run['items'] for slot in run['slots']]))
+        finally:
+            if pending:                              # 남은 칸은 중단돼도 저장(이미 낸 모델 호출 결과 보존)
+                flush(dict(pending))
         _update(key, team, lambda r: r.update(status='done', updated_at=time.time()))
     except Exception:
         _update(key, team, lambda r: r.update(status='interrupted', error='실험 저장 또는 실행이 중단되었습니다 · 같은 입력으로 새 실험을 실행하세요'))
