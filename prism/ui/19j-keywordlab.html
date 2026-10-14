@@ -80,28 +80,12 @@
         </div>
         <div x-show="kwSource==='sheet'" class="dc-body">
           <div class="control-row">
-            <a class="ds-btn ds-btn--outline ds-btn--s-sm" x-show="kwCatalog?.sheet?.template_url" x-bind:href="kwCatalog?.sheet?.template_url || null" target="_blank" rel="noopener noreferrer">템플릿 사본 만들기</a>
-            <span x-show="!kwCatalog?.sheet?.template_url" data-tip="템플릿 준비 중" data-tip-pos="bottom"><button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" disabled>템플릿 사본 만들기</button></span>
+            <a class="ds-btn ds-btn--outline ds-btn--s-sm" x-bind:href="kwCatalog?.sheet?.template_url || null" target="_blank" rel="noopener noreferrer">템플릿 사본 만들기</a>
+            <button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-bind:disabled="kwBusy || !kwCatalog?.can_manage || !kwSlots[0]?.version_id" x-on:click="kwSheetIssue()" x-text="kwCatalog?.sheet?.connected ? '연결 코드 다시 만들기' : '연결 코드 만들기'"></button>
           </div>
-          <label class="fn"><span class="ds-label">연결 코드</span><input class="field" type="password" x-model="kwSheetCode" x-bind:placeholder="kwCatalog?.sheet?.url ? '저장됨 · 바꿀 때만 입력' : '시트 메뉴 프리즘 › 연결 코드 보기에서 복사'" autocomplete="off"></label>
-          <p class="meta" x-show="kwCatalog?.sheet?.url" x-text="'연결된 주소 · '+(kwCatalog?.sheet?.url || '')"></p>
-          <div class="control-row">
-            <button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-bind:disabled="kwBusy || !kwCatalog?.can_manage || !kwSheetCode.trim()" x-on:click="kwSheetSave()">설정 저장</button>
-            <label class="kw-check"><input type="checkbox" x-model="kwSheetPending" x-on:change="kwSheet=null">미검수도 다시 생성</label>
-            <button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-bind:disabled="kwBusy || !kwCatalog?.can_manage || !kwCatalog?.sheet?.url" x-on:click="kwSheetPreview()">시트 불러오기</button>
-          </div>
-          <ul class="ds-bullets"><li>템플릿 사본을 만들고 시트 메뉴 프리즘 › 양식 만들기를 누릅니다</li><li>확장 프로그램 › Apps Script 에서 웹앱으로 배포합니다(나로 실행 · 링크가 있는 모든 사용자)</li><li>시트 메뉴 프리즘 › 연결 코드 보기에서 복사한 코드를 위 칸에 붙여 넣고 저장합니다</li></ul>
-          <template x-if="kwSheet"><section class="dc-body" aria-live="polite">
-            <p class="ds-label" x-text="'불러온 결과 · 읽음 '+kwSheet.read+'행 · 처리 대상 '+kwSheet.rows.length+'건 · 건너뜀 '+kwSheet.skipped.length+'건'"></p>
-            <div class="overflow-auto" style="max-height:320px"><table class="ds-table"><thead><tr><th>행</th><th>제목</th><th>상태</th></tr></thead><tbody>
-              <template x-for="r in kwSheetRows()" x-bind:key="'sr'+r.row"><tr>
-                <td class="text-muted tnum" x-text="r.row"></td>
-                <td class="text-ink" x-text="r.title || '·'"></td>
-                <td><span class="ds-badge" x-bind:class="r.reason ? 'ds-badge--warning' : 'ds-badge--success'" x-text="r.reason ? '건너뜀 · '+r.reason : '처리 대상'"></span></td>
-              </tr></template>
-              <tr x-show="!kwSheetRows().length"><td colspan="3" class="text-xs text-muted">읽을 수 있는 행이 없습니다</td></tr>
-            </tbody></table></div>
-          </section></template>
+          <p class="meta" x-show="kwCatalog?.sheet?.connected" x-text="'연결됨 · 키워드 '+(kwCatalog?.sheet?.model || '')+' · 발급 '+kwDate(kwCatalog?.sheet?.issued_at)"></p>
+          <label class="fn" x-show="kwSheetCode"><span class="ds-label">연결 코드 · 지금만 보입니다</span><input class="field" type="text" readonly x-bind:value="kwSheetCode" x-on:focus="$event.target.select()"></label>
+          <ul class="ds-bullets"><li>STEP 2 에서 모델·프롬프트 버전을 고르고 연결 코드를 만듭니다(다시 만들면 이전 코드는 막힘)</li><li>템플릿 사본에서 시트 메뉴 프리즘 › 양식 만들기 → 연결 설정에 코드를 붙여 넣습니다</li><li>시트 메뉴 프리즘 › 실행으로 시작하고, 끝나면 결과 받기로 행에 적습니다 · 실험은 아래 실험 기록에 남습니다</li></ul>
         </div>
         <div x-show="kwSource==='sample'" class="dc-body">
           <div class="control-row"><label for="kw-sample" class="ds-label">샘플 수</label><input id="kw-sample" type="number" min="1" max="100" class="field kw-count-field" x-model.number="kwSample"><span class="meta">최대 100건</span></div>
@@ -151,7 +135,7 @@
   <section class="panel" x-show="kwRunData && kwTab==='run'" x-data="{ query:'', category:'', state:'', rows:[] }" x-effect="rows=kwResultRows(query,category,state)" aria-label="실행 결과 콘텐츠 목록">
     <div class="panel-hd"><b>실행 결과</b><span class="meta" x-text="kwRunData ? kwState(kwRunData) : ''"></span><button class="ds-btn ds-btn--outline ds-btn--s-sm ml-auto" x-show="kwRunData && !kwRunData.revealed && kwCatalog?.can_manage" x-on:click="kwReveal()">모델·버전 공개</button></div>
     <div class="panel-bd dc-body"><p role="status" x-show="kwRunData?.error" x-text="kwRunData?.error || ''"></p>
-      <div class="control-row" role="status" x-show="kwRunData?.sheet"><span class="meta tnum" x-text="kwSheetSummary()"></span><span class="ds-hint--error" x-show="kwRunData?.sheet?.write_error" x-text="'시트 기재 실패 · '+(kwRunData?.sheet?.write_error || '')"></span><button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-show="kwRunData?.sheet && kwRunData?.status!=='running' && (kwRunData?.sheet?.write_error || !kwRunData?.sheet?.written_at) && kwCatalog?.can_manage" x-bind:disabled="kwBusy" x-on:click="kwSheetWrite()">시트 다시 기재</button></div>
+      <div class="control-row" role="status" x-show="kwRunData?.sheet"><span class="meta tnum" x-text="kwSheetSummary()"></span><span class="ds-hint--error" x-show="kwRunData?.sheet?.write_error" x-text="kwRunData?.sheet?.write_error || ''"></span></div>
       <!-- 결과 목록(콘텐츠 검수 목록과 같은 결) · 행 = 콘텐츠 · 행 클릭 = 다음 판정할 조합으로 상세 검수 · 조합 셀 클릭 = 그 조합 -->
       <section class="filterbar control-row" aria-label="실행 결과 검색·필터">
           <input class="field" type="search" aria-label="실행 결과 검색" placeholder="제목·카테고리·엔티티 검색" x-model.debounce.150ms="query">
