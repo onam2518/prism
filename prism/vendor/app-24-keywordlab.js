@@ -472,8 +472,7 @@ window.PRISM_APP_PARTS.push(() => ({
   },
   kwImpMode() {const t=this.kwCatalog?.tuning;return t?.status==='running' ? (t.max_rounds===1 ? 'once' : 'auto') : this.kwImproveMode;},
   kwAuto() {return this.kwTarget==='keyword' && this.kwImpMode()==='auto';},
-  // ponytail: 단건=1회 튜닝으로 구분 · 반복 탭에서 1회로 돌린 기록은 단건 탭에 보임
-  kwTuning() {const t=this.kwCatalog?.tuning;return t && this.kwTarget==='keyword' && (t.max_rounds===1)===(this.kwImpMode()==='once') ? t : null;},
+  kwTuning() {const t=this.kwCatalog?.tuning;return t && this.kwTarget==='keyword' ? t : null;},   // 실행 유형과 관계없이 마지막 실행
   kwTuneCandidates() {
     const vs=this.kwCatalog?.versions || [];
     return (this.kwTuning()?.history || []).filter(h=>h.round>0).map(h=>({...h,version:vs.find(v=>v.id===h.version_id)})).filter(h=>h.version);

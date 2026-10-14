@@ -189,7 +189,7 @@ async function main(){
  improve.kwLoad=async()=>{improve.kwCatalog.versions.find(v=>v.id==='c1').draft=undefined};
  improve.kwRequest=async(q,data)=>{sent=data;return {ok:true}};await improve.kwSaveCandidate();
  assert.equal(sent.action,'save_version');assert.equal(sent.version_id,'c1');assert.ok(!improve.kwSaveTarget().version.draft);
- improve.kwImproveMode='auto';assert.equal(improve.kwTuning(),null);improve.kwImproveMode='once';improve.kwCatalog.tuning=null;
+ improve.kwImproveMode='auto';assert.equal(improve.kwTuning().version_id,'base');improve.kwImproveMode='once';improve.kwCatalog.tuning=null;
 
  // 목록 검색·필터는 선택과 원본 순서를 바꾸지 않고, 개선용·평가용·문장 정답을 구분한다.
  const list=window.PRISM_APP_PARTS[0]();
