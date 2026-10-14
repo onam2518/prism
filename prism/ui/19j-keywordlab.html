@@ -1,5 +1,5 @@
-<template x-if="mod === 'lab'"><template x-if="labTab === 'entref' && ['run','prompts','improve'].includes(kwTab)">
-<div x-show="labTab === 'entref' && ['run','prompts','improve'].includes(kwTab)" x-cloak class="w-full dc-body kw-workspace" x-on:beforeunload.window="kwBeforeUnload($event)">
+<template x-if="mod === 'lab'"><template x-if="labTab === 'entref' && ['run','prompts','improve','sheet'].includes(kwTab)">
+<div x-show="labTab === 'entref' && ['run','prompts','improve','sheet'].includes(kwTab)" x-cloak class="w-full dc-body kw-workspace" x-on:beforeunload.window="kwBeforeUnload($event)">
   <div class="control-row"><label class="selctl"><span class="selctl__lbl">실험 대상</span><select class="field" aria-label="실험 대상" x-bind:value="kwTarget" x-bind:disabled="kwBusy" x-on:change="kwTargetChange($event.target.value);$event.target.value=kwTarget"><option value="keyword">핵심 키워드</option><option value="sentence">핵심 문장</option></select></label><span class="meta" x-text="kwTarget==='sentence' ? '문장 검수·정답셋·프롬프트 개선' : '키워드별 검수·정답셋·프롬프트 개선'"></span></div>
   <ul class="ds-bullets" role="alert" x-show="kwError" x-data="{ lines: [] }" x-effect="lines=sents(kwError)">
         <li x-bind:class="kwError ? 'ds-hint--error' : ''"><span x-text="lines[0]"></span><ul x-show="lines.length>1"><template x-for="(line,i) in lines.slice(1)" x-bind:key="i"><li x-bind:class="kwError ? 'ds-hint--error' : ''" x-text="line"></li></template></ul></li>
@@ -46,7 +46,7 @@
     <div class="stepline" x-show="kwMode"><span class="stepline__no">STEP 3</span><b>콘텐츠 선택</b><span class="meta" x-text="kwMode==='single' ? '테스트할 콘텐츠와 건수 선택' : '모든 조합에 동일한 콘텐츠·입력 메타 적용'"></span></div>
     <section class="panel" x-show="kwMode">
       <div class="panel-bd dc-body">
-        <div class="control-row"><label class="selctl"><span class="selctl__lbl">입력 방식</span><select class="field" aria-label="콘텐츠 입력 방식" x-model="kwSource" x-on:change="kwSourceChanged()"><option value="direct">메타 직접 입력</option><option value="excel" x-bind:disabled="kwTarget!=='keyword'">엑셀 업로드</option><option value="sheet" x-bind:disabled="kwMode!=='single' || kwTarget!=='keyword'">구글 시트 연동</option><option value="sample">콘텐츠 정답셋에서 샘플</option><option value="hash">콘텐츠 정답셋 해시 지정</option><option value="reuse">기존 실험의 입력 재사용</option></select></label></div>
+        <div class="control-row"><label class="selctl"><span class="selctl__lbl">입력 방식</span><select class="field" aria-label="콘텐츠 입력 방식" x-model="kwSource" x-on:change="kwSourceChanged()"><option value="direct">메타 직접 입력</option><option value="excel" x-bind:disabled="kwTarget!=='keyword'">엑셀 업로드</option><option value="sample">콘텐츠 정답셋에서 샘플</option><option value="hash">콘텐츠 정답셋 해시 지정</option><option value="reuse">기존 실험의 입력 재사용</option></select></label></div>
         <div x-show="kwSource==='direct'" class="fn-stack">
           <label class="fn"><span class="ds-label">콘텐츠 이름 · 선택</span><input class="field" x-model="kwTitle" placeholder="실험 기록에 표시할 이름"></label>
           <label class="fn"><span class="ds-label">리드문 · 필수</span><textarea class="field" rows="3" x-model="kwLead" placeholder="발행된 리드문을 입력하세요"></textarea></label>
@@ -77,15 +77,6 @@
               <tr x-show="!kwExcelRows().length"><td colspan="5" class="text-xs text-muted">읽을 수 있는 행이 없습니다</td></tr>
             </tbody></table></div>
           </section></template>
-        </div>
-        <div x-show="kwSource==='sheet'" class="dc-body">
-          <div class="control-row">
-            <a class="ds-btn ds-btn--outline ds-btn--s-sm" x-bind:href="kwCatalog?.sheet?.template_url || null" target="_blank" rel="noopener noreferrer">템플릿 사본 만들기</a>
-            <button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-bind:disabled="kwBusy || !kwCatalog?.can_manage" x-on:click="kwSheetIssue()" x-text="kwCatalog?.sheet?.connected ? '연결 코드 다시 만들기' : '연결 코드 만들기'"></button>
-          </div>
-          <p class="meta" x-show="kwCatalog?.sheet?.connected" x-text="'연결됨 · 발급 '+kwDate(kwCatalog?.sheet?.issued_at)"></p>
-          <label class="fn" x-show="kwSheetCode"><span class="ds-label">연결 코드 · 지금만 보입니다</span><input class="field" type="text" readonly x-bind:value="kwSheetCode" x-on:focus="$event.target.select()"></label>
-          <ul class="ds-bullets"><li>연결 코드를 만듭니다(인증만 · 다시 만들면 이전 코드는 막힘)</li><li>템플릿 사본에서 시트 메뉴 프리즘 › 양식 만들기 → 연결 설정에 코드를 붙여 넣고, 설정 탭에서 원천 메타 모델·핵심키워드 프롬프트를 고릅니다</li><li>시트 메뉴 실행(원천 메타)·실행(핵심키워드)·실행(둘 다)로 시작하고, 끝나면 결과 받기로 행에 적습니다 · 키워드 실행은 아래 실험 기록에 남습니다</li></ul>
         </div>
         <div x-show="kwSource==='sample'" class="dc-body">
           <div class="control-row"><label for="kw-sample" class="ds-label">샘플 수</label><input id="kw-sample" type="number" min="1" max="100" class="field kw-count-field" x-model.number="kwSample"><span class="meta">최대 100건</span></div>
@@ -327,6 +318,19 @@
       <label class="ds-label">저장한 버전<select class="field" x-on:change="kwViewVersion($event.target.value)"><option value="">버전 선택</option><template x-for="v in kwAllVersions()" x-bind:key="v.id"><option x-bind:value="v.id" x-text="v.model+' · '+kwVersionLabel(v)"></option></template></select></label>
       <template x-if="kwVersion"><div class="dc-body"><b x-text="kwVersion.model+' · '+kwVersionLabel(kwVersion)"></b><pre class="ds-code" x-text="kwVersion.rules"></pre><details><summary>실제 호출 프롬프트·검사 규칙</summary><pre class="ds-code" x-text="kwVersion.system+'\n\n'+kwVersion.review_system"></pre><p class="meta" x-text="kwVersion.fingerprint"></p></details><div class="control-row"><button class="ds-btn ds-btn--outline" x-on:click="kwCloneVersion()">복제하여 새 버전 작성</button><button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger" x-show="kwCatalog?.can_manage" x-bind:disabled="kwBusy || kwAdopted(kwVersion)" x-bind:data-tip="kwAdopted(kwVersion) ? '채택 중인 버전은 삭제할 수 없습니다' : '실행한 실험 기록·정답셋은 유지됩니다'" data-tip-pos="top" x-on:click="kwDeleteVersion()">버전 삭제</button></div></div></template>
       <div class="fn" id="kw-version-draft" tabindex="-1"><b class="fn__title">새 버전</b><label class="ds-label">대상 모델</label><x-modelpick key="kwdraft" value="kwDraft.model" set="kwDraft.model=$v;kwDraft.parent_id='';kwDraft.proposal_id=''" groups="textGroups" first-label="모델 선택" first-value="" width="260px" tip="프롬프트가 적용될 모델"></x-modelpick><label class="ds-label">버전 이름<input class="field" maxlength="100" x-model="kwDraft.title"></label><label class="ds-label">프롬프트 규칙<textarea class="field" rows="16" maxlength="8000" x-model="kwDraft.rules"></textarea></label><label class="ds-label">변경 이유<textarea class="field" rows="3" maxlength="2000" x-model="kwDraft.note"></textarea></label><button class="ds-btn ds-btn--solid ds-btn--c-primary" x-bind:disabled="kwBusy || !kwDraft.model || !kwDraft.title.trim() || !kwCatalog?.can_manage" x-on:click="kwSaveVersion()">새 버전 저장</button></div>
+    </div></section>
+  </section>
+  <section role="tabpanel" id="kw-panel-sheet" aria-labelledby="kw-tab-sheet" x-show="kwTab==='sheet'" class="dc-body">
+    <section class="panel"><div class="panel-hd"><b>구글 시트 연동</b><span class="meta">시트에서 실행 · 실험 기록과 검수는 실행·비교 탭</span></div><div class="panel-bd dc-body">
+      <div class="control-row">
+        <a class="ds-btn ds-btn--outline ds-btn--s-sm" x-bind:href="kwCatalog?.sheet?.template_url || null" target="_blank" rel="noopener noreferrer">템플릿 사본 만들기</a>
+        <button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-bind:disabled="kwBusy || !kwCatalog?.can_manage" x-on:click="kwSheetIssue()" x-text="kwCatalog?.sheet?.connected ? '연결 코드 다시 만들기' : '연결 코드 만들기'"></button>
+      </div>
+      <p class="meta" x-text="kwCatalog?.sheet?.connected ? '연결됨 · 발급 '+kwDate(kwCatalog.sheet.issued_at) : '연결 안 됨'"></p>
+      <label class="fn" x-show="kwSheetCode"><span class="ds-label">연결 코드 · 지금만 보입니다</span><input class="field" type="text" readonly x-bind:value="kwSheetCode" x-on:focus="$event.target.select()"></label>
+      <ul class="ds-bullets"><li>연결 코드는 인증만 합니다 · 다시 만들면 이전 코드는 바로 막힙니다</li></ul>
+      <b>시트에서 쓰는 순서</b>
+      <ol class="ds-bullets"><li>템플릿 사본에서 시트 메뉴 프리즘 › 양식 만들기</li><li>프리즘 › 연결 설정에 연결 코드 붙여 넣기</li><li>설정 탭에서 원천 메타 모델·핵심키워드 프롬프트 고르기</li><li>프리즘 › 실행(원천 메타)·실행(핵심키워드)·실행(둘 다)</li><li>끝나면 프리즘 › 결과 받기로 행에 적기 · 키워드 실행은 실행·비교 탭 실험 기록에 남고 검수도 그곳에서 합니다</li></ol>
     </div></section>
   </section>
   <section role="tabpanel" id="kw-panel-improve" aria-labelledby="kw-tab-improve" x-show="kwTab==='improve'" class="dc-body">

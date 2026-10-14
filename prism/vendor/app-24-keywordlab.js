@@ -1,7 +1,7 @@
 /* 키워드·문장 공통 실험 · 결과 검수 · 프롬프트 관리 */
 window.PRISM_APP_PARTS = window.PRISM_APP_PARTS || [];
 window.PRISM_APP_PARTS.push(() => ({
-  kwTab: 'run', kwTabs: [['run','실행·비교'], ['improve','프롬프트 개선'], ['prompts','프롬프트 관리']], kwImproving: '',
+  kwTab: 'run', kwTabs: [['run','실행·비교'], ['improve','프롬프트 개선'], ['prompts','프롬프트 관리'], ['sheet','구글 시트 연동']], kwImproving: '',
   kwTarget:'keyword', kwKeywordSource:'manual', kwSentenceKeywords:'', kwKeywordSlot:'', kwInputRun:null, kwInputLoading:false,
   kwCatalog: null, kwBusy: false, kwError: '', kwMessage: '', kwRunData: null, kwRunId: '', _kwTimer: null,
   kwMode: '', kwCount: 1, kwDraftSlot: null, kwSlots: [{model:'',version_id:''},{model:'',version_id:''},{model:'',version_id:''}],
@@ -78,7 +78,6 @@ window.PRISM_APP_PARTS.push(() => ({
   kwState(run) { return ({running:'실행 중',done:'완료',interrupted:'중단'})[run.status] || run.status; },
   kwChooseMode(mode) {
     this.kwMode=mode; this.kwCount=mode==='single' ? 1 : 2;
-    if(mode!=='single' && this.kwSource==='sheet') {this.kwSource='direct';this.kwSourceChanged();}
     this.kwError='';
   },
   kwReusableRuns() {return ((this.kwCatalog || {}).runs || []).filter(r=>(this.kwTarget==='sentence' || (r.target || 'keyword')==='keyword'));},
@@ -90,8 +89,6 @@ window.PRISM_APP_PARTS.push(() => ({
     if(new Set(slots.map(s=>s.version_id)).size!==slots.length) return '서로 다른 모델·프롬프트 조합을 선택하세요';
     if(this.kwSource==='direct' && (!this.kwLead.trim() || (this.kwTarget==='keyword' && !this.kwSplit(this.kwEntities).length))) return this.kwTarget==='sentence' ? '리드문을 입력하세요' : '리드문과 엔티티를 입력하세요';
     if(this.kwSource==='excel' && !this.kwExcel?.rows?.length) return '엑셀 파일을 올려 반영할 콘텐츠를 확인하세요';
-    if(this.kwSource==='sheet' && (this.kwMode!=='single' || this.kwTarget!=='keyword')) return '구글 시트 연동은 단일 모델 키워드 테스트에서만 쓸 수 있습니다';
-    if(this.kwSource==='sheet') return '구글 시트 연동은 시트 메뉴 프리즘 › 실행으로 시작합니다';
     if(this.kwSource==='sample' && (!Number.isInteger(this.kwSample) || this.kwSample<1 || this.kwSample>100)) return '샘플 수는 1~100건으로 입력하세요';
     if(this.kwSource==='hash') {
       const hashes=this.kwHashes.split(/[\s,]+/).filter(Boolean);
@@ -341,7 +338,7 @@ window.PRISM_APP_PARTS.push(() => ({
       this.kwExcel={name:file.name,rows:r.rows,rejected:r.rejected};
     } catch(e) {this.kwError=e.message;} finally {this.kwBusy=false;}
   },
-  // 구글 시트 연동(시트 → 프리즘) · 연결 코드 발급 = STEP 2 버전·모델을 묶고 이전 코드 무효 · 코드는 이 화면에서 한 번만 보인다
+  // 구글 시트 연동(시트 → 프리즘) · 구글 시트 연동 탭 · 연결 코드 발급 = 인증만 · 이전 코드 무효 · 코드는 이 화면에서 한 번만 보인다
   async kwSheetIssue() {
     if(this.kwCatalog?.sheet?.connected && !confirm('새 연결 코드를 만들면 이전 코드는 바로 막힙니다. 계속할까요?')) return;
     this.kwBusy=true;this.kwError='';this.kwMessage='';
