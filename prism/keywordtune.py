@@ -1,4 +1,4 @@
-"""키워드 정답 재현을 위한 자동 튜닝. 후보 버전만 만들며 채택은 검수자에게 맡긴다."""
+"""키워드 정답 재현을 위한 자동 튜닝. 후보 버전을 만들고 결과 검수는 사람에게 맡긴다."""
 import copy
 import threading
 import time
@@ -142,7 +142,7 @@ def _loop(run, team):
             _checkpoint(run, team)
             version = K.create_version({'model': proposal['model'], 'rules': proposal['rules'],
                                          'title': '자동 튜닝 ' + str(number), 'parent_id': best['version_id'],
-                                         'proposal_id': proposal['id'], 'note': '오토파일럿 후보 · 적용·채택 전 검수 필요'}, team, run['by'])['version']
+                                         'proposal_id': proposal['id'], 'note': '오토파일럿 후보 · 결과 검수 필요'}, team, run['by'])['version']
             _save(team, ident, phase='후보 평가')
             result_id, metrics = _experiment(run, team, version['id'], run['evaluation_keys'])
             if metrics['exact_total'] != best['total']:

@@ -163,13 +163,9 @@ class KeywordLabTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'개발용'):
             K.compile_proposal({'version_id':run['slots'][0]['version']['id'],'compiler_model':'solar-pro3','gold_keys':[gold['item_key']]},'a','tester')
 
-    def test_delete_version_keeps_runs_blocks_adopted_and_never_reuses_number(self):
+    def test_delete_version_keeps_runs_and_never_reuses_number(self):
         run = self.run_case(count=2)
-        for cell in run['cells'].values(): self.final(run, cell)
-        K.reveal({'run_id': run['id']}, 'a')
-        adopted, other = (s['version']['id'] for s in run['slots'])
-        K.adopt({'run_id': run['id'], 'version_id': adopted}, 'a')
-        self.assertFalse(K.action({'action': 'delete', 'version_id': adopted}, 'a', 'tester', True)['ok'])
+        other = run['slots'][1]['version']['id']
         self.assertTrue(K.action({'action': 'delete', 'version_id': other}, 'a', 'tester', True)['ok'])
         self.assertNotIn(other, [v['id'] for v in K.catalog('a')['versions']])
         self.assertIn(other, [s['version']['id'] for s in K._get(K._key('run', run['id']), 'a')['slots']])
@@ -218,11 +214,8 @@ class KeywordLabTest(unittest.TestCase):
         K.reveal({'run_id': run['id']}, 'a')
         saved = K._get(key, 'a')
         self.assertEqual((saved['status'], saved['revealed']), ('interrupted', True))
-        a, b = ({s['label']: s['version']['id'] for s in saved['slots']}[x] for x in 'AB')
-        with self.assertRaisesRegex(ValueError, '최종 확정'): K.adopt({'run_id': run['id'], 'version_id': b}, 'a')
-        self.assertTrue(K.adopt({'run_id': run['id'], 'version_id': a}, 'a')['ok'])
 
-    def test_delete_run_blocks_gold_adopted_running_and_clears(self):
+    def test_delete_run_blocks_gold_running_and_clears(self):
         run = self.run_case(count=1)
         cell = next(iter(run['cells'].values()))
         self.final(run, cell)
@@ -244,7 +237,7 @@ class KeywordLabTest(unittest.TestCase):
         v = self.version()
         for slots in ([],[{'model':'solar-pro3'}],[{'model':'wrong','version_id':v['id']}], [{'model':v['model'],'version_id':v['id']}]*2):
             self.assertFalse(K.action({'action':'start','slots':slots,'meta':self.meta},'a','tester',True)['ok'])
-        for action in ('version','delete','start','compile','adopt'):
+        for action in ('version','delete','start','compile'):
             self.assertFalse(K.action({'action':action},'a','tester')['ok'])
 
     def test_provider_selection_is_preserved(self):
@@ -464,21 +457,12 @@ class SentenceLabTest(unittest.TestCase):
         self.assertEqual(result['cell']['reviews'][-1]['sentences'], gold['sentences'])
         self.assertEqual(K.catalog('a')['gold'], [keyword_gold])
 
-    def test_sentence_training_and_adoption_do_not_overwrite_keyword_state(self):
-        kwrun=self.run_case(1)
-        for c in kwrun['cells'].values():self.final(kwrun,c)
-        K.reveal({'run_id':kwrun['id']},'a')
-        kwvid=kwrun['slots'][0]['version']['id']
-        K.adopt({'run_id':kwrun['id'],'version_id':kwvid},'a')
+    def test_sentence_training_does_not_overwrite_keyword_state(self):
         run=self.sentence_run();b=self.sentence_final(run)
         g=K.confirm_gold(b,'a','tester',True)['gold']
         vid=run['slots'][0]['version']['id']
         with patch.object(E,'_llm',return_value=(None,True,'')):
             K.compile_proposal({'version_id':vid,'compiler_model':'solar-pro3','gold_keys':[g['item_key']]},'a','tester')
-        K.reveal({'run_id':run['id']},'a')
-        K.adopt({'run_id':run['id'],'version_id':vid},'a')
-        self.assertEqual(K.catalog('a')['active']['solar-pro3']['version_id'],kwvid)
-        self.assertEqual(K.catalog('a')['active']['sentence|solar-pro3']['version_id'],vid)
         b.update(expected_revision=1,partition='evaluation',expected_gold_id=g['id'])
         K.review(b,'a','tester',True)
         with self.assertRaisesRegex(ValueError,'개선에 사용'):K.confirm_gold(b,'a','tester',True)
