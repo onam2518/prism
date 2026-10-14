@@ -15,6 +15,15 @@ async function main(){
   assert.equal(x.kwReady(),true);assert.equal(x.kwExcelRows()[0].row,2);
   let xs;x.kwRequest=async(q,d)=>{xs=d;return{id:'r9'}};x.kwOpenRun=async()=>true;x.kwLoad=async()=>{};
   await x.kwStart();assert.equal(xs.rows.length,1);assert.equal(xs.rows[0].title,'엑셀 3행');assert.equal(xs.meta,undefined);}
+ // 구글 시트 입력: 연결 코드 저장 본문 {action,code} · 미리보기 대상이 있어야 실행 · 실행은 sheet:{include_pending}만 · 비교 모드면 direct 복귀
+ {const x=window.PRISM_APP_PARTS[0]();x._authHeaders=()=>({});x.kwChooseMode('single');x.kwSlots[0]={model:'solar',version_id:'v1'};x.kwSource='sheet';x.kwCatalog={sheet:{}};
+  let xs;x.kwRequest=async(q,d)=>{xs=d;return d.action==='sheet_preview' ? {read:3,rows:[{row:4,title:'b'}],skipped:[{row:2,title:'a',reason:'검수 완료'}]} : {id:'r9'}};x.kwOpenRun=async()=>true;x.kwLoad=async()=>{};
+  x.kwSheetCode=' https://script.google.com/macros/s/a/exec#k ';await x.kwSheetSave();
+  assert.equal(JSON.stringify(xs),JSON.stringify({action:'sheet_config',code:'https://script.google.com/macros/s/a/exec#k'}));assert.equal(x.kwCatalog.sheet.url,'https://script.google.com/macros/s/a/exec');assert.equal(x.kwSheetCode,'');
+  assert.equal(x.kwReady(),false);x.kwSheetPending=true;await x.kwSheetPreview();assert.equal(xs.include_pending,true);
+  assert.equal(x.kwReady(),true);assert.equal(x.kwSheetRows()[0].row,2);
+  await x.kwStart();assert.equal(JSON.stringify(xs.sheet),'{"include_pending":true}');assert.equal(xs.rows,undefined);assert.equal(xs.meta,undefined);
+  x.kwChooseMode('compare');assert.equal(x.kwSource,'direct');}
  let sent;a._afetch=async(url,opt)=>{sent=JSON.parse(opt.body);return{json:async()=>({ok:true})}};
  await a.kwRequest('',{action:'review'});assert.equal(sent.reviewer,'검수자');
  a.kwRunData={cells:{'key:A':{id:'key:A',status:'done',review_revision:2,refined:{keywords:[{text:'한국은행',kind:'single'}]},reviews:[],final:null}}};
