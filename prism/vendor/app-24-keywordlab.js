@@ -7,7 +7,7 @@ window.PRISM_APP_PARTS.push(() => ({
   kwMode: '', kwCount: 1, kwDraftSlot: null, kwSlots: [{model:'',version_id:''},{model:'',version_id:''},{model:'',version_id:''}],
   kwSource: 'direct', kwSample: 3, kwHashes: '', kwReuse: '', kwTitle: '', kwLead: '', kwEntities: '', kwIntents: '', kwCategories: '', kwBlind: true,
   kwDraft: {model:'',title:'',rules:'',note:'',parent_id:'',proposal_id:''}, kwVersion: null,
-  kwReview: null, _kwSavedReview: '', kwReviewView: 'meta', kwSideOpen: {ents:false,rej:false}, kwAutoNext: false, kwCompiler: '', kwLoopVersion: '', kwTraining: [], kwEvaluation: [], kwTuneRounds: 3, _kwTuneTimer: null, kwProposal: null, kwAdoptVersion: '',
+  kwReview: null, _kwSavedReview: '', kwReviewView: 'meta', kwSideOpen: {ents:false,rej:false}, kwAutoNext: false, kwCompiler: '', kwLoopVersion: '', kwTraining: [], kwEvaluation: [], kwTuneRounds: 3, _kwTuneTimer: null, kwProposal: null,
   async kwRequest(query='', data=null) {
     const r = await (await this._afetch('/lab-keywords' + query, data ? {
       method:'POST', headers:this._authHeaders(), body:JSON.stringify({...data,reviewer:this.reviewer || ''})
@@ -49,7 +49,7 @@ window.PRISM_APP_PARTS.push(() => ({
     this.kwTarget=target; clearTimeout(this._kwTimer); this.kwRunId='';this.kwRunData=null;this.kwReview=null;
     this.kwSlots.forEach(s=>s.version_id='');this.kwVersion=null;this.kwDraftSlot=null;
     this.kwDraft={target,model:'',title:'',rules:this.kwDefaultRules(),note:'',parent_id:'',proposal_id:''};
-    this.kwLoopVersion='';this.kwTraining=[];this.kwEvaluation=[];this.kwProposal=null;this.kwAdoptVersion='';
+    this.kwLoopVersion='';this.kwTraining=[];this.kwEvaluation=[];this.kwProposal=null;
     this.kwSource='direct';this.kwReuse='';this.kwKeywordSource='manual';this.kwKeywordSlot='';this.kwInputRun=null;
     this.kwError='';this.kwMessage='';
   },
@@ -161,7 +161,6 @@ window.PRISM_APP_PARTS.push(() => ({
     this.kwDraft={target:v.target || 'keyword',model:v.model,title:v.title+' 개선',rules:v.rules,note:'',parent_id:v.id,proposal_id:''};
     this.kwMessage='복제했습니다 · 변경 후 새 버전으로 저장하세요';
   },
-  kwAdopted(v) {return Object.values(this.kwCatalog?.active || {}).some(a=>a.version_id===v?.id);},
   async kwDeleteVersion() {
     const v=this.kwVersion;
     if(!v || this.kwBusy || !window.confirm(v.model+' · '+this.kwVersionLabel(v)+' 버전을 삭제합니다.\n실행한 실험 기록·정답셋은 유지되며 되돌릴 수 없습니다.')) return;
@@ -172,7 +171,6 @@ window.PRISM_APP_PARTS.push(() => ({
       this.kwSlots.forEach(s=>{if(s.version_id===v.id) s.version_id='';});
       if(this.kwDraft.parent_id===v.id) this.kwDraft.parent_id='';
       if(this.kwLoopVersion===v.id) {this.kwLoopVersion='';this.kwProposal=null;}
-      if(this.kwAdoptVersion===v.id) this.kwAdoptVersion='';
       this.kwVersion=null; await this.kwLoad(); this.kwMessage=this.kwVersionLabel(v)+' 삭제 완료';
     } catch(e){this.kwError=e.message;} finally{this.kwBusy=false;}
   },
@@ -509,8 +507,8 @@ window.PRISM_APP_PARTS.push(() => ({
   async kwOpenTuningCandidate(candidate) {
     if(!candidate || !this.kwCanLeaveReview())return;
     if(await this.kwOpenRun(candidate.run_id)) {
-      this.kwAdoptVersion=candidate.version_id;this.kwChangeTab('run');
-      this.kwMessage='튜닝 후보의 결과를 검수하세요. 적용·채택은 자동으로 처리하지 않습니다.';
+      this.kwChangeTab('run');
+      this.kwMessage='튜닝 후보의 결과를 검수하세요.';
     }
   },
   async kwCompile() {
@@ -529,11 +527,5 @@ window.PRISM_APP_PARTS.push(() => ({
     this.kwDraft={target:p.target || 'keyword',model:p.model,title:'검수 기반 개선',rules:p.rules,note:p.changes.map(c=>c.reason+': '+c.change).join('\n'),parent_id:p.parent_id,proposal_id:p.id};
     this.kwChangeTab('prompts');this.kwMessage='개선안을 확인하고 새 버전으로 저장하세요. 저장 후 실행·비교에서 이 버전을 선택하면 추출 결과를 확인할 수 있습니다.';
     this.kwFocus('kw-version-draft');
-  },
-  async kwAdopt() {
-    if(this.kwBusy)return;this.kwBusy=true;this.kwError='';
-    try {await this.kwRequest('',{action:'adopt',run_id:this.kwRunId,version_id:this.kwAdoptVersion});
-      await this.kwLoad();this.kwMessage='기본 사용 후보로 채택했습니다 · 실행 시 모델·버전 선택은 유지됩니다';}
-    catch(e){this.kwError=e.message;}finally{this.kwBusy=false;}
   }
 }));

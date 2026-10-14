@@ -65,10 +65,9 @@ async function main(){
  d.kwOpenReview(it[0],sl[0]);await d.kwReviewGo(1);assert.equal(d.kwReview.cell_id,'i2:B');assert.equal(await d.kwReviewGo(-1),true);assert.equal(d.kwReview.cell_id,'i1:B');
  assert.equal(await d.kwNextPending(),true);assert.equal(d.kwReview.cell_id,'i3:B');await d.kwNextPending();assert.equal(d.kwReview.cell_id,'i1:A');
  assert.equal(d.kwSlotState(d.kwRunData.cells['i2:A']),'실패');assert.equal(d.kwInKeywords('한국은행'),true);assert.equal(d.kwInKeywords('물가'),false);
- d.kwVersion={id:'v9',model:'solar',number:2,title:'t'};d.kwSlots[0].version_id='v9';d.kwLoopVersion='v9';d.kwCatalog.active={};
+ d.kwVersion={id:'v9',model:'solar',number:2,title:'t'};d.kwSlots[0].version_id='v9';d.kwLoopVersion='v9';
  d.kwRequest=async(q,data)=>{sent=data;return{ok:true}};d.kwLoad=async()=>{};const confirm0=window.confirm;window.confirm=()=>true;
  await d.kwDeleteVersion();window.confirm=confirm0;assert.equal(sent.action,'delete');assert.equal(d.kwSlots[0].version_id,'');assert.equal(d.kwLoopVersion,'');assert.equal(d.kwVersion,null);
- d.kwCatalog.active={m:{version_id:'v1'}};assert.equal(d.kwAdopted({id:'v1'}),true);
  // 결과 목록: 콘텐츠 상태 · 행 클릭은 판정 안 한 조합부터
  assert.deepEqual(d.kwItemState(it[0])[0],'미검수');assert.equal(d.kwItemState(it[1])[0],'판정됨');
  d.kwRunData.cells['i3:A']=cell('i3:A','failed',[]);assert.equal(d.kwItemState(it[2])[0],'미검수');

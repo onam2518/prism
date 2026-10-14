@@ -113,7 +113,7 @@ class KeywordTuningTest(unittest.TestCase):
         text = '정답' if '# 검수 보완' in args[4] else '오답'
         return {'refined': {'keywords': [{'text': text, 'kind': 'single'}]}, 'tokens': {'in': 1, 'out': 1, 'cost_usd': 0}}
 
-    def test_tunes_to_exact_match_without_adoption_or_evaluation_leak(self):
+    def test_tunes_to_exact_match_without_evaluation_leak(self):
         version, rows = self.dataset()
         run = self.start_tuning(version, rows)
         gold_before = copy.deepcopy(K._catalog('a')['gold'])
@@ -123,7 +123,6 @@ class KeywordTuningTest(unittest.TestCase):
         self.assertEqual(state['status'], 'done', state)
         self.assertEqual([h['matched'] for h in state['history']], [0, 1])
         self.assertEqual(state['best']['total'], 1)
-        self.assertEqual(K._catalog('a')['active'], {})
         self.assertEqual(K._catalog('a')['gold'], gold_before)
         candidate = K._version(state['best']['version_id'], 'a')
         proposal = K._get(K._key('proposal', candidate['proposal_id']), 'a')
@@ -132,7 +131,6 @@ class KeywordTuningTest(unittest.TestCase):
         self.assertEqual(proposal['input']['reviews'][0]['current_output'][0]['text'], '오답')
         self.assertNotIn('평가 전용', str(proposal['input']))
         self.assertIsNone(T.status('b'))
-        self.assertFalse(K.action({'action': 'adopt', 'run_id': state['best']['run_id'], 'version_id': candidate['id']}, 'a', 'x', can_manage=True)['ok'])
 
     def test_exact_scoring_counts_extra_missing_case_empty_and_failed_results(self):
         version, rows = self.dataset()

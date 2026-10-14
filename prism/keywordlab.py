@@ -86,7 +86,7 @@ def _update(key, team, change, default=None, guard=None):
 
 
 def _catalog(team):
-    return _get(CATALOG, team) or {'versions': [], 'runs': [], 'gold': {}, 'active': {}}
+    return _get(CATALOG, team) or {'versions': [], 'runs': [], 'gold': {}}
 
 
 def _current_gold(team, gold=None):
@@ -138,7 +138,7 @@ def catalog(team=None):
     # 긴 프롬프트는 버전 선택 후 상세에서만 조회한다.
     return {'ok': True, 'versions': [{k: v for k, v in x.items() if k not in ('system', 'rules', 'review_system', 'guide')}
                                     for x in reversed(c['versions'])],
-            'runs': list(reversed(c['runs'])), 'gold': list(_current_gold(team, c['gold']).values()), 'active': c['active'],
+            'runs': list(reversed(c['runs'])), 'gold': list(_current_gold(team, c['gold']).values()),
             'default_rules': cfg['keyword']['rules'], 'rules_by_target': {t: cfg[t]['rules'] for t in ER.CALLS},
             'reasons': REASONS, 'tuning': keywordtune.status(team)}
 
@@ -837,23 +837,6 @@ def compile_proposal(body, team, actor):
     return {'ok': True, 'proposal': {k: val for k, val in proposal.items() if k not in ('input', 'system')}}
 
 
-def adopt(body, team):
-    v = _version(body.get('version_id'), team)
-    run = _settle(body.get('run_id'), team)
-    if not run or run['status'] not in ('done', 'interrupted') or not run['revealed']:
-        raise ValueError('완료 후 공개된 비교 실험을 선택하세요')
-    slot = next((s for s in run['slots'] if s['version']['id'] == v['id']), None)
-    if not slot:
-        raise ValueError('이 실험에서 평가한 버전이 아닙니다')
-    cells = [c for c in run['cells'].values() if c['slot'] == slot['label']]
-    if len(cells) != len(run['items']) or any(c['status'] != 'done' or not c.get('final') for c in cells):   # 중단 실험은 생성 안 된 칸이 있으면 거절
-        raise ValueError('해당 버전의 모든 결과를 최종 확정한 뒤 채택하세요')
-    def change(c):
-        c['active'][('sentence|' if _target(v) == 'sentence' else '') + v['model']] = {'version_id': v['id'], 'run_id': run['id'], 'at': time.time()}
-    _update(CATALOG, team, change, _catalog(team), guard=(_key('run', run['id']), run))
-    return {'ok': True}
-
-
 def delete_version(body, team):
     """저장한 버전 삭제 · 실험 기록은 실행 시 복사한 사본을 쓰므로 그대로 남는다."""
     ident = body.get('version_id')
@@ -861,8 +844,6 @@ def delete_version(body, team):
         v = next((x for x in c['versions'] if x['id'] == ident), None)
         if not v:
             raise ValueError('이 팀에 해당 프롬프트 버전이 없습니다')
-        if any(a.get('version_id') == ident for a in c['active'].values()):
-            raise ValueError('채택 중인 버전은 삭제할 수 없습니다 · 다른 버전을 채택한 뒤 삭제하세요')
         c['versions'].remove(v)
         # 개선에 노출된 콘텐츠 기록은 지우지 않는다(평가셋 지정 차단 유지).
         field = _training_field(_target(v))
@@ -877,7 +858,7 @@ def delete_version(body, team):
 
 def delete_run(body, team):
     """실험 기록 삭제 · 문서 행을 지우고 목록에서 뺀다.
-    정답·채택이 참조하는 실험은 개선 루프가 원본 검수를 다시 확인하므로 지우지 않는다."""
+    정답이 참조하는 실험은 개선 루프가 원본 검수를 다시 확인하므로 지우지 않는다."""
     rid = body.get('run_id')
     key = _key('run', rid)
     with LOCK:
@@ -889,8 +870,6 @@ def delete_run(body, team):
             c = copy.deepcopy(before or _catalog(team))
             if any(g.get('run_id') == rid for g in c['gold'].values()):
                 raise ValueError('정답셋에 반영된 결과가 있는 실험은 삭제할 수 없습니다')
-            if any(a.get('run_id') == rid for a in c['active'].values()):
-                raise ValueError('버전 채택 근거로 쓰인 실험은 삭제할 수 없습니다')
             run = _get(key, team)
             if not run:
                 raise ValueError('이 팀에 해당 실험이 없습니다')
@@ -912,7 +891,7 @@ def action(body, team=None, actor='', can_manage=False, can_final=False):
         return {'ok': False, 'error': '요청 형식을 확인하세요'}
     try:
         op = body.get('action')
-        if op in ('version', 'delete', 'delete_run', 'start', 'compile', 'adopt', 'reveal', 'tune_start', 'tune_stop') and not can_manage:
+        if op in ('version', 'delete', 'delete_run', 'start', 'compile', 'reveal', 'tune_start', 'tune_stop') and not can_manage:
             raise ValueError('실험 관리 권한이 필요합니다')
         if op in ('tune_start', 'tune_stop'):
             from . import keywordtune
@@ -927,7 +906,6 @@ def action(body, team=None, actor='', can_manage=False, can_final=False):
         if op == 'gold': return confirm_gold(body, team, actor, can_final)
         if op == 'reveal': return reveal(body, team)
         if op == 'compile': return compile_proposal(body, team, actor)
-        if op == 'adopt': return adopt(body, team)
         raise ValueError('지원하지 않는 작업입니다')
     except (ValueError, TypeError, KeyError) as exc:
         return {'ok': False, 'error': str(exc)}
