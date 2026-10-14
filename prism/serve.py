@@ -3280,6 +3280,12 @@ def _p_lab_keywords(h, body):
                      privileged, privileged or is_final_reviewer(uid, h._req_team()))
 
 
+@_post_route("/sheet-sync")                          # 구글 시트(Code.gs)가 직접 호출 · 로그인 대신 팀 연결 코드(sha256 대조)
+def _p_sheet_sync(h, body):
+    from . import sheetsync
+    return sheetsync.handle(body)
+
+
 @_post_route("/lab-entrefine-try", gate="super")     # 엔티티 재처리 한 건(정답셋 해시 또는 직접 입력)
 def _p_lab_entrefine_try(h, body):
     return ER.try_one(json.loads(body or b"{}"), team=h._req_team())

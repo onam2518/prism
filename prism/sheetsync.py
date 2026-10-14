@@ -1,115 +1,78 @@
-"""키워드 실험실 · 구글 시트 연동 1단계(시트 행 읽기 → 대상 선별 → 결과 기재).
+"""키워드 실험실 · 구글 시트 연동(시트 → 프리즘 호출 · A안).
 
-시트 쪽은 Apps Script 웹앱(docs/SHEET_SYNC.md) · GET 으로 행을 읽고 POST 로 결과 칸을 쓴다.
-팀별 설정은 report `keyword_lab_sheet` = {url, key} · 키는 응답·로그·오류 문구에 내보내지 않는다.
+사내 계정은 Apps Script 웹앱을 외부 공개로 배포할 수 없어, 시트(Code.gs)가 UrlFetchApp 으로 POST /sheet-sync 를 부른다.
+연결 코드 = '<팀>.<비밀>' · 프리즘엔 sha256 만 저장(평문은 발급 응답에 1회) · 키에 프롬프트 버전·모델이 묶인다.
+op: run(행 → 실험 시작) · result(완료된 행의 기재 값) · written(시트 기재 결과 보고). docs/SHEET_SYNC.md
 """
+import hashlib
+import hmac
 import json
 import re
+import secrets
 import time
-import urllib.error
-import urllib.parse
-import urllib.request
 
 from . import keywordlab as KL
 from .store import content_hash
 
 CONFIG = 'keyword_lab_sheet'
-URL_RE = re.compile(r'https://script\.google\.com/(?:a/macros/[A-Za-z0-9.-]+/|macros/)s/[A-Za-z0-9_-]+/exec')
 TEMPLATE_URL = 'https://docs.google.com/spreadsheets/d/10v-uIRGSiqpLXv3EbQIEvyMWufVh67b6wiiC9Oiifk0/copy'
-MAX_ROWS = 5000
-WRITE_CHUNK = 50
-TIMEOUT = 30
-MAX_BYTES = 20 * 1024 * 1024
-REDIRECT_HOSTS = ('script.google.com', 'script.googleusercontent.com')
+MAX_ROWS = 300                                   # Code.gs 가 상태로 거른 뒤 보내는 상한 · 본문 상한(32MB) 안
 LIMITS = {'제목': 300, '본문': 20000}           # 그 외 입력 칸은 2000
 INPUT_COLUMNS = ('콘텐츠키', '서비스', '제목', '본문', '원문 링크')
 RESULT_COLUMNS = ('리드문', '엔티티', '인텐트', '카테고리', '핵심키워드', '핵심문장', '모델', '처리 시각', '상태', '프리즘 해시', '실험 ID', '오류')
 OVER = f'{KL.MAX_ITEMS}건 초과 · 다음 실행에서 처리'
+DENIED = '연결 코드가 맞지 않습니다 · 프리즘에서 새로 발급해 시트 메뉴 프리즘 › 연결 설정에 넣으세요'
+CODE_RE = re.compile(r'([\w-]{1,64})\.([\w-]{40,64})')
 
 
 def _config(team):
     return KL._get(CONFIG, team) or {}
 
 
+def _hash(code):
+    return hashlib.sha256(code.encode()).hexdigest()
+
+
 def public_config(team):
     c = _config(team)
-    return {'url': c.get('url', ''), 'has_key': bool(c.get('key')), 'template_url': TEMPLATE_URL}
+    return {'connected': bool(c.get('key_hash')), 'version_id': c.get('version_id', ''), 'model': c.get('model', ''),
+            'issued_at': c.get('issued_at'), 'template_url': TEMPLATE_URL}
 
 
-def save_config(body, team):
-    if body.get('code') is not None:                # 연결 코드 '<웹앱 url>#<key>' · 키 안에 '#' 이 있을 수 있어 첫 '#' 기준
-        url, _, key = str(body['code']).strip().partition('#')
-        url, key = url.strip(), key.strip()
-    else:
-        url, key = str(body.get('url') or '').strip(), str(body.get('key') or '').strip()
-    if not URL_RE.fullmatch(url):
-        raise ValueError('웹앱 주소는 https://script.google.com/macros/s/…/exec 형태여야 합니다')
-    if key and not 8 <= len(key) <= 200:
-        raise ValueError('비밀 키는 8~200자로 입력하세요')
-    if not key and not _config(team).get('key'):
-        raise ValueError('비밀 키를 입력하세요')
-    KL._update(CONFIG, team, lambda c: c.update(url=url, **({'key': key} if key else {})), {})
-    return {'ok': True, 'sheet': public_config(team)}
+def issue(body, team, actor):
+    """관리자: 연결 코드 발급(이전 코드 무효) · 코드에 STEP 2 의 프롬프트 버전·모델을 묶는다."""
+    slot = body.get('slot') if isinstance(body.get('slot'), dict) else {}
+    v = KL._version(slot.get('version_id'), team)
+    if KL._target(v) != 'keyword' or v['model'] != slot.get('model'):
+        raise ValueError('핵심 키워드 프롬프트 버전과 모델을 STEP 2 에서 고르세요')
+    code = f"{team or '-'}.{secrets.token_urlsafe(32)}"
+    KL._update(CONFIG, team, lambda c: (c.clear(), c.update(key_hash=_hash(code), version_id=v['id'], model=v['model'],
+                                                           by=actor, issued_at=time.time())), {})
+    return {'ok': True, 'code': code, 'sheet': public_config(team)}
 
 
-class _Redirect(urllib.request.HTTPRedirectHandler):
-    """Apps Script 의 302(googleusercontent) 만 따라간다 · 다른 호스트면 None → HTTPError."""
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        u = urllib.parse.urlsplit(newurl)
-        if u.scheme != 'https' or u.hostname not in REDIRECT_HOSTS:
-            return None
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
+def _team(code):
+    """연결 코드 → 팀 · 형식·팀·해시 어느 쪽이 틀려도 같은 거절(팀 열거 방지)."""
+    m = CODE_RE.fullmatch(code) if isinstance(code, str) else None
+    team = None if not m or m.group(1) == '-' else m.group(1)
+    saved = _config(team).get('key_hash', '') if m else ''
+    if not saved or not hmac.compare_digest(saved, _hash(code)):
+        raise PermissionError(DENIED)
+    return team
 
 
-_OPENER = urllib.request.build_opener(_Redirect())
-
-
-def _call(req, key):
-    """웹앱 호출 · 오류 문구에 URL·키를 싣지 않는다."""
-    try:
-        with _OPENER.open(req, timeout=TIMEOUT) as r:
-            raw = r.read(MAX_BYTES + 1)
-    except urllib.error.HTTPError as exc:
-        raise ValueError(f'시트 웹앱 호출 실패 (HTTP {exc.code})')
-    except (urllib.error.URLError, OSError):
-        raise ValueError('시트 웹앱에 연결하지 못했습니다 · 주소와 배포 상태를 확인하세요')
-    if len(raw) > MAX_BYTES:
-        raise ValueError('시트 웹앱 응답이 너무 큽니다 · 처리한 행을 다른 시트로 옮기세요')
-    try:
-        data = json.loads(raw or b'{}')
-    except ValueError:
-        raise ValueError('시트 웹앱 응답을 읽지 못했습니다 · 배포 상태를 확인하세요')
-    if not isinstance(data, dict) or data.get('ok') is not True:
-        err = data.get('error') if isinstance(data, dict) else ''
-        err = str(err or '시트 웹앱이 오류를 돌려줬습니다').replace(key, '***')[:200]
-        raise ValueError('시트 비밀 키가 맞지 않습니다' if err == 'unauthorized' else err)
-    return data
-
-
-def _ready(team):
-    c = _config(team)
-    if not c.get('url') or not c.get('key'):
-        raise ValueError('구글 시트 연동 설정(웹앱 주소·비밀 키)을 먼저 저장하세요')
-    return c
-
-
-def fetch_rows(team):
-    """시트 행 → [{row, values{열 이름: 문자열}}] · 형식이 어긋나면 전체를 거절한다(신뢰 경계)."""
-    c = _ready(team)
-    data = _call(urllib.request.Request(c['url'] + '?' + urllib.parse.urlencode({'key': c['key']})), c['key'])
-    rows = data.get('rows')
-    if not isinstance(rows, list):
-        raise ValueError('시트 웹앱 응답 형식이 다릅니다')
-    if len(rows) > MAX_ROWS:
-        raise ValueError(f'시트 행이 {MAX_ROWS}건을 넘습니다 · 처리한 행을 다른 시트로 옮기세요')
+def _rows(rows):
+    """시트가 보낸 행 → [{row, values{열 이름: 문자열}}] · 형식이 어긋나면 전체를 거절한다(신뢰 경계)."""
+    if not isinstance(rows, list) or len(rows) > MAX_ROWS:
+        raise ValueError(f'행 형식이 다르거나 {MAX_ROWS}행을 넘습니다')
     out = []
     for r in rows:
         if not isinstance(r, dict) or type(r.get('row')) is not int or r['row'] < 2 or not isinstance(r.get('values'), dict):
-            raise ValueError('시트 웹앱 응답 형식이 다릅니다')
+            raise ValueError('행 형식이 다릅니다 · Code.gs 를 최신으로 바꾸세요')
         out.append({'row': r['row'], 'values': {str(k).strip(): '' if v is None else str(v).strip() for k, v in r['values'].items()}})
     cols = {k for r in out for k in r['values']}
     if out and (not cols & {'제목', '본문'} or '상태' not in cols):
-        raise ValueError('시트 양식이 다릅니다 · Apps Script 의 setup 을 실행하세요')
+        raise ValueError('시트 양식이 다릅니다 · 시트 메뉴 프리즘 › 양식 만들기를 실행하세요')
     return out
 
 
@@ -145,25 +108,6 @@ def select(rows, include_pending=False):
     return targets, skipped
 
 
-def preview(body, team):
-    rows = fetch_rows(team)
-    targets, skipped = select(rows, body.get('include_pending') is True)
-    return {'ok': True, 'read': len(rows), 'rows': [{'row': t['row'], 'title': t['title']} for t in targets], 'skipped': skipped}
-
-
-def write(team, updates):
-    """[{row, values, expect}] 를 50행씩 기재 · 반환: (기재 행 수, 위치가 바뀌어 건너뛴 행 번호들)."""
-    c = _ready(team)
-    written, mismatched = 0, []
-    for i in range(0, len(updates), WRITE_CHUNK):
-        req = urllib.request.Request(c['url'], method='POST', headers={'Content-Type': 'application/json'},
-                                     data=json.dumps({'key': c['key'], 'updates': updates[i:i + WRITE_CHUNK]}, ensure_ascii=False).encode())
-        data = _call(req, c['key'])                      # 302 → googleusercontent GET 은 _Redirect 가 따라간다
-        written += int(data.get('written') or 0)
-        mismatched += [n for n in data.get('mismatched') or [] if type(n) is int]
-    return written, mismatched
-
-
 def _kst(ts):
     return time.strftime('%Y-%m-%d %H:%M', time.gmtime(ts + 9 * 3600))
 
@@ -189,3 +133,42 @@ def updates_of(run):
             # 정렬·행 삽입으로 위치가 바뀐 행엔 쓰지 않도록 원문과 대조(Code.gs)
             'expect': {'제목': it['content'].get('title', ''), '콘텐츠키': it['content'].get('item_unique_key', '')}})
     return out
+
+
+def _run(body, team):
+    run = KL._get(KL._key('run', body.get('id')), team)
+    if not run or 'sheet' not in run:
+        raise ValueError('시트에서 시작한 실험이 아닙니다')
+    return run
+
+
+def handle(raw):
+    """POST /sheet-sync 본문 → 응답 dict · 로그인 대신 연결 코드로 팀을 정한다."""
+    try:
+        body = json.loads(raw or b'{}')
+        if not isinstance(body, dict):
+            raise ValueError('요청 형식을 확인하세요')
+        team, op = _team(body.get('key')), body.get('op')
+        if op == 'run':
+            c = _config(team)
+            out = KL.start({'target': 'keyword', 'slots': [{'model': c['model'], 'version_id': c['version_id']}],
+                            'sheet': {'rows': body.get('rows'), 'include_pending': body.get('include_pending') is True}},
+                           team, '구글 시트')
+            s = _run(out, team)['sheet']
+            return {'ok': True, 'id': out['id'], 'targets': s['targets'], 'skipped': s['skipped']}
+        if op == 'result':                       # 실행 중이어도 끝난 행은 먼저 받아 적을 수 있다
+            KL._settle(body.get('id'), team)
+            run = _run(body, team)
+            return {'ok': True, 'status': run['status'], 'total': len(run['items']), 'updates': updates_of(run)}
+        if op == 'written':
+            written, mismatched = body.get('written'), body.get('mismatched')
+            if type(written) is not int or type(mismatched) is not int:
+                raise ValueError('기재 결과 형식을 확인하세요')
+            _run(body, team)
+            KL._update(KL._key('run', body['id']), team, lambda r: r['sheet'].update(
+                written=written, mismatched=mismatched, written_at=time.time(),
+                write_error=f'{mismatched}개 행 위치가 바뀌어 기재하지 않았습니다 · 정렬·삽입 없이 결과 받기를 다시 누르세요' if mismatched else ''))
+            return {'ok': True}
+        raise ValueError('지원하지 않는 작업입니다')
+    except (ValueError, TypeError, KeyError, PermissionError) as exc:
+        return {'ok': False, 'error': str(exc)[:300]}

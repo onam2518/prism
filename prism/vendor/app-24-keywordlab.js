@@ -5,7 +5,7 @@ window.PRISM_APP_PARTS.push(() => ({
   kwTarget:'keyword', kwKeywordSource:'manual', kwSentenceKeywords:'', kwKeywordSlot:'', kwInputRun:null, kwInputLoading:false,
   kwCatalog: null, kwBusy: false, kwError: '', kwMessage: '', kwRunData: null, kwRunId: '', _kwTimer: null,
   kwMode: '', kwCount: 1, kwDraftSlot: null, kwSlots: [{model:'',version_id:''},{model:'',version_id:''},{model:'',version_id:''}],
-  kwSource: 'direct', kwExcel: null, kwSheet: null, kwSheetCode: '', kwSheetPending: false, kwXlsDrag: false, kwSample: 3, kwHashes: '', kwReuse: '', kwTitle: '', kwLead: '', kwEntities: '', kwIntents: '', kwCategories: '', kwBlind: true,
+  kwSource: 'direct', kwExcel: null, kwSheetCode: '', kwXlsDrag: false, kwSample: 3, kwHashes: '', kwReuse: '', kwTitle: '', kwLead: '', kwEntities: '', kwIntents: '', kwCategories: '', kwBlind: true,
   kwDraft: {model:'',title:'',rules:'',note:'',parent_id:'',proposal_id:''}, kwVersion: null,
   kwReview: null, _kwSavedReview: '', kwReviewView: 'meta', kwSideOpen: {ents:false,rej:false}, kwAutoNext: false, kwCompiler: '', kwLoopVersion: '', kwTraining: [], kwEvaluation: [], kwTuneRounds: 3, _kwTuneTimer: null, kwProposal: null, kwImproveMode: 'once', kwPickVersion: '',
   async kwRequest(query='', data=null) {
@@ -50,7 +50,7 @@ window.PRISM_APP_PARTS.push(() => ({
     this.kwSlots.forEach(s=>s.version_id='');this.kwVersion=null;this.kwDraftSlot=null;
     this.kwDraft={target,model:'',title:'',rules:this.kwDefaultRules(),note:'',parent_id:'',proposal_id:''};
     this.kwLoopVersion='';this.kwTraining=[];this.kwEvaluation=[];this.kwProposal=null;this.kwPickVersion='';
-    this.kwSource='direct';this.kwExcel=null;this.kwSheet=null;this.kwReuse='';this.kwKeywordSource='manual';this.kwKeywordSlot='';this.kwInputRun=null;
+    this.kwSource='direct';this.kwExcel=null;this.kwReuse='';this.kwKeywordSource='manual';this.kwKeywordSlot='';this.kwInputRun=null;
     this.kwError='';this.kwMessage='';
   },
   kwAllVersions() {return (this.kwCatalog?.versions || []).filter(v=>(v.target || 'keyword')===this.kwTarget && !v.draft);},   // 초안(저장 전 후보)은 숨김
@@ -91,7 +91,7 @@ window.PRISM_APP_PARTS.push(() => ({
     if(this.kwSource==='direct' && (!this.kwLead.trim() || (this.kwTarget==='keyword' && !this.kwSplit(this.kwEntities).length))) return this.kwTarget==='sentence' ? '리드문을 입력하세요' : '리드문과 엔티티를 입력하세요';
     if(this.kwSource==='excel' && !this.kwExcel?.rows?.length) return '엑셀 파일을 올려 반영할 콘텐츠를 확인하세요';
     if(this.kwSource==='sheet' && (this.kwMode!=='single' || this.kwTarget!=='keyword')) return '구글 시트 연동은 단일 모델 키워드 테스트에서만 쓸 수 있습니다';
-    if(this.kwSource==='sheet' && !this.kwSheet?.rows?.length) return '시트를 불러와 처리할 행을 확인하세요';
+    if(this.kwSource==='sheet') return '구글 시트 연동은 시트 메뉴 프리즘 › 실행으로 시작합니다';
     if(this.kwSource==='sample' && (!Number.isInteger(this.kwSample) || this.kwSample<1 || this.kwSample>100)) return '샘플 수는 1~100건으로 입력하세요';
     if(this.kwSource==='hash') {
       const hashes=this.kwHashes.split(/[\s,]+/).filter(Boolean);
@@ -124,7 +124,6 @@ window.PRISM_APP_PARTS.push(() => ({
       if(this.kwSource==='reuse') data.source_run=this.kwReuse;
       else if(this.kwSource==='sample') data.sample=Number(this.kwSample);
       else if(this.kwSource==='hash') data.hashes=this.kwHashes.split(/[\s,]+/).filter(Boolean);
-      else if(this.kwSource==='sheet') data.sheet={include_pending:this.kwSheetPending};
       else if(this.kwSource==='excel') data.rows=this.kwExcel.rows.map(r=>({title:r.title || '엑셀 '+r.row+'행',meta:r.meta}));
       else Object.assign(data,{title:this.kwTitle,meta:{summary:this.kwLead,entities:this.kwSplit(this.kwEntities),
         intent:this.kwSplit(this.kwIntents),content_category:this.kwSplit(this.kwCategories)}});
@@ -342,32 +341,20 @@ window.PRISM_APP_PARTS.push(() => ({
       this.kwExcel={name:file.name,rows:r.rows,rejected:r.rejected};
     } catch(e) {this.kwError=e.message;} finally {this.kwBusy=false;}
   },
-  // 구글 시트 연동 · 연결 코드(웹앱 주소#키) 저장 → 미리보기(대상·건너뜀) · 실행 때 서버가 다시 읽고 고른다
-  async kwSheetSave() {
+  // 구글 시트 연동(시트 → 프리즘) · 연결 코드 발급 = STEP 2 버전·모델을 묶고 이전 코드 무효 · 코드는 이 화면에서 한 번만 보인다
+  async kwSheetIssue() {
+    if(this.kwCatalog?.sheet?.connected && !confirm('새 연결 코드를 만들면 이전 코드는 바로 막힙니다. 계속할까요?')) return;
     this.kwBusy=true;this.kwError='';this.kwMessage='';
     try {
-      const code=this.kwSheetCode.trim(), r=await this.kwRequest('',{action:'sheet_config',code});
-      this.kwSheetCode='';this.kwSheet=null;this.kwCatalog={...this.kwCatalog,sheet:r.sheet || {...this.kwCatalog?.sheet,url:code.split('#')[0],has_key:true}};
-      this.kwMessage='시트 연동 설정을 저장했습니다';
+      const r=await this.kwRequest('',{action:'sheet_key',slot:{...this.kwSlots[0]}});
+      this.kwSheetCode=location.origin+'/sheet-sync#'+r.code;this.kwCatalog={...this.kwCatalog,sheet:r.sheet};
+      this.kwMessage='연결 코드를 만들었습니다 · 시트 메뉴 프리즘 › 연결 설정에 붙여 넣으세요';
     } catch(e) {this.kwError=e.message;} finally {this.kwBusy=false;}
   },
-  async kwSheetPreview() {
-    this.kwBusy=true;this.kwError='';this.kwSheet=null;
-    try {
-      const r=await this.kwRequest('',{action:'sheet_preview',include_pending:this.kwSheetPending});
-      this.kwSheet={read:r.read,rows:r.rows || [],skipped:r.skipped || []};
-    } catch(e) {this.kwError=e.message;} finally {this.kwBusy=false;}
-  },
-  kwSheetRows() {return [...(this.kwSheet?.rows || []),...(this.kwSheet?.skipped || [])].sort((a,b)=>a.row-b.row);},
   kwSheetSummary() {
     const s=this.kwRunData?.sheet; if(!s) return '';
-    return ['구글 시트 · 읽음 '+s.read+'행','대상 '+s.targets+'건','건너뜀 '+s.skipped+'건',s.meta_failed ? '메타 실패 '+s.meta_failed+'건' : '',
-      s.written_at ? '기재 '+s.written+'건 · '+this.kwDate(s.written_at) : this.kwRunData.status==='running' ? '실행 후 기재' : ''].filter(Boolean).join(' · ');
-  },
-  async kwSheetWrite() {
-    this.kwBusy=true;this.kwError='';this.kwMessage='';
-    try {await this.kwRequest('',{action:'sheet_write',id:this.kwRunId});this.kwMessage='시트에 다시 기재했습니다';}
-    catch(e) {this.kwError=e.message;} finally {await this.kwOpenRun(this.kwRunId);this.kwBusy=false;}   // 실패해도 기재 결과(write_error) 갱신
+    return ['구글 시트 · 받은 행 '+s.read+'행','대상 '+s.targets+'건','건너뜀 '+s.skipped+'건',s.meta_failed ? '메타 실패 '+s.meta_failed+'건' : '',
+      s.written_at ? '기재 '+s.written+'건 · '+this.kwDate(s.written_at) : '시트 메뉴 프리즘 › 결과 받기로 기재'].filter(Boolean).join(' · ');
   },
   kwExcelRows() {return [...(this.kwExcel?.rows || []),...(this.kwExcel?.rejected || [])].sort((a,b)=>a.row-b.row);},
   // 실행 결과 엑셀 · 현재 값만(최종 확정이면 확정값, 아니면 모델 결과) · 파일명은 서버 규칙

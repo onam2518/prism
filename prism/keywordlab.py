@@ -195,9 +195,9 @@ def _item(content, meta, hash_=''):
 
 
 def _items(body, team):
-    if isinstance(body.get('sheet'), dict):          # 화면 미리보기는 믿지 않고 서버에서 다시 읽어 고른다
+    if isinstance(body.get('sheet'), dict):          # 시트(Code.gs)가 보낸 행 · 형식은 여기서 다시 검사
         from . import sheetsync
-        rows = sheetsync.fetch_rows(team)
+        rows = sheetsync._rows(body['sheet'].get('rows'))
         targets, skipped = sheetsync.select(rows, body['sheet'].get('include_pending') is True)
         if not targets:
             raise ValueError('처리할 행이 없습니다')
@@ -483,11 +483,6 @@ def _run(rid, team, should_stop=None):
     except Exception:
         end = {'status': 'interrupted', 'error': '실험 저장 또는 실행이 중단되었습니다 · 같은 입력으로 새 실험을 실행하세요'}
     try:
-        if 'sheet' in run:                           # 상태 저장 전에 기재 → 화면 폴링은 기재까지 끝나야 멈춤
-            try:
-                sheet_write({'id': rid}, team)
-            except Exception:
-                pass                                 # 기재 실패는 write_error 로 남고 실험 결과엔 영향 없음
         _update(key, team, lambda r: r.update(end, updated_at=time.time()))
     except Exception:
         _update(key, team, lambda r: r.update(status='interrupted', error='실험 저장 또는 실행이 중단되었습니다 · 같은 입력으로 새 실험을 실행하세요'))
@@ -558,25 +553,6 @@ def _sheet_meta(rid, team, run, should_stop=None):
                 x.update(item_keys=keys, dataset_id=dataset)
     _update(CATALOG, team, relink, _catalog(team))
     return run
-
-
-def sheet_write(body, team):
-    """실험 결과를 시트에 (다시) 기재 · 실패해도 실험은 그대로 두고 write_error 에만 남긴다."""
-    from . import sheetsync
-    key = _key('run', body.get('id'))
-    run = _get(key, team)
-    if not run or 'sheet' not in run:
-        raise ValueError('구글 시트에서 시작한 실험이 아닙니다')
-    try:
-        written, mismatched = sheetsync.write(team, sheetsync.updates_of(run))
-        error = f'{len(mismatched)}개 행 위치가 바뀌어 기재하지 않았습니다 · 정렬·삽입 없이 시트 다시 기재' if mismatched else ''
-    except Exception as exc:
-        written, error = None, str(exc)[:300] if isinstance(exc, ValueError) else '시트 기재에 실패했습니다'
-    def save(r):
-        r['sheet'].update(write_error=error, **({'written': written, 'written_at': time.time(), 'mismatched': len(mismatched)}
-                                                 if written is not None else {}))
-    run = _update(key, team, save)
-    return {'ok': not error, 'sheet': run['sheet'], **({'error': error} if error else {})}
 
 
 def _settle(rid, team):
@@ -1150,7 +1126,7 @@ def action(body, team=None, actor='', can_manage=False, can_final=False):
     try:
         op = body.get('action')
         if op in ('version', 'delete', 'delete_run', 'start', 'compile', 'save_version', 'delete_gold', 'reveal', 'tune_start', 'tune_stop',
-                  'sheet_config', 'sheet_preview', 'sheet_write') and not can_manage:
+                  'sheet_key') and not can_manage:
             raise ValueError('실험 관리 권한이 필요합니다')
         if op in ('tune_start', 'tune_stop'):
             from . import keywordtune
@@ -1168,10 +1144,9 @@ def action(body, team=None, actor='', can_manage=False, can_final=False):
         if op == 'save_version': return save_version(body, team)
         if op == 'parse_excel': return parse_excel(body)
         if op == 'delete_gold': return delete_gold(body, team, actor)
-        if op in ('sheet_config', 'sheet_preview'):
+        if op == 'sheet_key':
             from . import sheetsync
-            return sheetsync.save_config(body, team) if op == 'sheet_config' else sheetsync.preview(body, team)
-        if op == 'sheet_write': return sheet_write(body, team)
+            return sheetsync.issue(body, team, actor)
         raise ValueError('지원하지 않는 작업입니다')
     except (ValueError, TypeError, KeyError) as exc:
         return {'ok': False, 'error': str(exc)}

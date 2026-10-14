@@ -1,30 +1,37 @@
 # 구글 시트 연동 (키워드 실험실)
 
-키워드 실험실 STEP 3 입력 방식 **구글 시트 연동**은 시트의 콘텐츠를 읽어 메타 4종(리드문·엔티티·인텐트·카테고리)과
-핵심키워드를 만들고, 결과를 같은 시트 행에 다시 적는다. 프리즘은 시트에 붙인 Apps Script 웹앱 하나만 호출한다.
+구글 시트의 콘텐츠로 메타 4종(리드문·엔티티·인텐트·카테고리)과 핵심키워드를 만들고, 결과를 같은 시트 행에 다시 적는다.
+**시트가 프리즘을 부른다.** 시트에 붙은 Apps Script(Code.gs)가 `POST <프리즘 주소>/sheet-sync` 를 호출한다.
+(사내 계정은 Apps Script 웹앱을 외부 공개로 배포할 수 없어, 프리즘이 시트를 부르는 방식은 쓰지 않는다)
 
-- 사용 조건: 단일 모델 테스트 · 대상 키워드
+- 사용 조건: 핵심 키워드 프롬프트 버전 1개 · 모델 1개(연결 코드를 만들 때 STEP 2 에서 고른 조합으로 고정)
 - 한 번에 최대 100건 · 넘는 행은 다음 실행에서 처리
-- 결과는 키워드 실험실 실험 기록(미검수)으로도 남는다 · 검수는 실험실 검수 화면에서
+- 결과는 키워드 실험실 실험 기록(미검수 · 실행자 `구글 시트`)으로도 남는다 · 검수는 실험실 검수 화면에서
 - 시트에서 고친 검수 결과를 프리즘으로 가져오는 동기화는 2단계(이번 범위 아님)
 
 ## 설정 절차
 
-1. 프리즘 키워드 실험실 STEP 3 에서 **구글 시트 연동**을 고르고 **템플릿 사본 만들기**를 누른다.
-   구글이 내 드라이브에 사본을 만든다(프리즘 코드가 이미 들어 있다).
-2. 사본 시트 메뉴 **프리즘 › 양식 만들기**를 누른다. 처음 한 번은 권한 승인 창이 뜬다.
-   첫 시트 이름이 `프리즘 연동` 으로 바뀌고 1행에 입력 5열 · 결과 12열 머리줄이 생긴다
-   (입력 열과 결과 열은 배경색으로 구분 · `상태` 열은 목록에서만 고름 · 있는 머리줄은 덮지 않고 없는 열만 추가).
-   입력 열 5개에 콘텐츠를 채운다.
-3. 메뉴 **확장 프로그램 › Apps Script** 에서 **배포 › 새 배포 › 유형: 웹 앱** · 실행 사용자 **나** ·
-   액세스 권한 **링크가 있는 모든 사용자** 로 배포한다.
-4. 시트로 돌아와 메뉴 **프리즘 › 연결 코드 보기**를 누르고 나온 코드를 복사한다.
-   비밀 키가 없으면 이때 자동으로 만들어 스크립트 속성 `PRISM_KEY` 에 저장한다. 배포 전이면 먼저 배포하라는 안내가 뜬다.
-5. 프리즘 STEP 3 **연결 코드** 칸에 붙여 넣고 **설정 저장** → **시트 불러오기**로 처리 대상과 건너뛸 행을 확인한 뒤
-   STEP 4 에서 실행한다.
+1. 프리즘 키워드 실험실 STEP 2 에서 **단일 모델 · 핵심 키워드** 로 모델과 프롬프트 버전을 고른다.
+2. STEP 3 입력 방식 **구글 시트 연동**에서 **연결 코드 만들기**를 누른다. 코드는 이 화면에서 한 번만 보인다.
+   다시 만들면 이전 코드는 바로 막힌다(팀에 코드 1개 · 버전·모델을 바꿀 때도 다시 만든다).
+3. **템플릿 사본 만들기**로 내 드라이브에 사본을 만든다(Code.gs 가 들어 있다).
+4. 사본 시트 메뉴 **프리즘 › 양식 만들기**를 누른다. 처음 한 번은 권한 승인 창이 뜬다(외부 서비스 연결 포함).
+5. 메뉴 **프리즘 › 연결 설정**에 2번의 코드를 붙여 넣는다.
+6. 입력 열을 채우고 **프리즘 › 실행**을 누른다. 몇 분 뒤 **프리즘 › 결과 받기**를 누르면 결과 열이 채워진다.
+   실행 중에 눌러도 끝난 행부터 적는다 · 다시 눌러도 같은 값을 다시 적을 뿐이다.
 
-연결 코드는 `웹앱 주소#비밀 키` 한 줄이다. 남에게 보이지 않게 다룬다.
-코드를 고친 뒤에는 **배포 관리 › 수정 › 새 버전**으로 다시 배포해야 반영된다(주소는 그대로).
+연결 코드는 `<프리즘 주소>/sheet-sync#<팀>.<비밀>` 한 줄이다. 남에게 보이지 않게 다룬다.
+프리즘은 코드의 sha256 만 저장한다.
+
+## 메뉴
+
+| 메뉴 | 하는 일 |
+|---|---|
+| 양식 만들기 | 머리줄·서식·상태 목록 생성 · 있는 머리줄은 덮지 않고 없는 열만 끝에 추가 |
+| 연결 설정 | 연결 코드 저장(스크립트 속성 `PRISM_CODE`) |
+| 실행 | 상태가 빈 행·`실패` 행을 프리즘으로 보내 실험 시작 |
+| 미검수 포함 다시 실행 | 위 + `미검수` 행 |
+| 결과 받기 | 마지막 실행의 결과를 행에 적고 기재 건수를 프리즘에 알림 |
 
 ## 열
 
@@ -49,36 +56,37 @@
 | 결과 | 오류 | 실패 사유 |
 
 열 순서는 `setup` 이 만든 순서(위 표 순서)다. 이름으로 찾으므로 열을 옮겨도 동작하지만 이름은 바꾸지 않는다(앞뒤 공백 무시).
-`상태` 열과 `제목`·`본문` 중 하나가 없으면 웹앱이 `양식이 다릅니다 · setup 을 실행하세요` 오류를 돌려준다.
+`상태` 열과 `제목`·`본문` 중 하나가 없으면 실행이 `양식이 다릅니다` 로 멈춘다.
 
 ## 다시 실행할 때 고르는 행
 
 - 상태가 빈 행과 `실패` 행을 처리한다
-- `미검수` 행은 건너뛴다 · 화면에서 **미검수도 다시 생성**을 켜면 포함
+- `미검수` 행은 건너뛴다 · 메뉴 **미검수 포함 다시 실행**이면 포함
 - `검수 완료` · `반영됨` 행은 항상 건너뛴다
-- 대상이 100건을 넘으면 시트 행 순서로 100건만 처리하고 나머지는 다음 실행으로 미룬다
-- 실행 중에는 정렬·행 삽입·삭제를 하지 않는다 · 읽을 때와 제목·콘텐츠키가 달라진 행은 기록하지 않는다
+- 시트는 상태로 거른 행을 최대 300행까지 보낸다 · 대상이 100건을 넘으면 시트 행 순서로 100건만 처리하고 나머지는 다음 실행으로 미룬다
+- 실행 중에는 정렬·행 삽입·삭제를 하지 않는다 · 결과 받기 때 제목·콘텐츠키가 달라진 행은 적지 않는다
+
+## 프리즘 API (`POST /sheet-sync`)
+
+로그인 대신 본문 `key`(연결 코드 `#` 뒤)로 팀을 정한다. 코드가 틀리면 형식·팀·비밀 어느 쪽이든 같은 오류를 돌려준다.
+
+| op | 본문 | 응답 |
+|---|---|---|
+| `run` | `rows:[{row, values:{열 이름: 값}}]` · `include_pending` | `{ok, id, targets, skipped}` |
+| `result` | `id` | `{ok, status, total, updates:[{row, values, expect}]}` · 끝난 행만 |
+| `written` | `id, written, mismatched` (정수) | `{ok}` · 실험 기록 화면에 기재 건수 표시 |
 
 ## Code.gs
 
 ```javascript
-// 프리즘 키워드 실험실 · 구글 시트 연동 웹앱
-// 시트 메뉴 프리즘 › 양식 만들기(setup) · 연결 코드 보기(connectCode)
-// GET  ?key=비밀키  → {ok, rows:[{row, values:{열 이름: 값}}]}  (첫 시트 · 빈 행 제외)
-// POST {key, updates:[{row, values:{열 이름: 값}, expect:{제목, 콘텐츠키}}]} → {ok, written, mismatched}  (없는 열은 머리줄 끝에 추가)
-
-function json_(obj) {
-  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
-}
-
-function authorized_(key) {
-  var saved = PropertiesService.getScriptProperties().getProperty('PRISM_KEY');
-  return Boolean(saved) && typeof key === 'string' && key === saved;
-}
+// 프리즘 키워드 실험실 · 구글 시트 연동(시트 → 프리즘)
+// 메뉴 프리즘 › 양식 만들기 · 연결 설정 · 실행 · 미검수 포함 다시 실행 · 결과 받기
+// POST <프리즘>/sheet-sync {key, op:'run'|'result'|'written', ...}
 
 var INPUT_COLS = ['콘텐츠키', '서비스', '제목', '본문', '원문 링크'];
 var RESULT_COLS = ['리드문', '엔티티', '인텐트', '카테고리', '핵심키워드', '핵심문장', '모델', '처리 시각', '상태', '프리즘 해시', '실험 ID', '오류'];
 var STATES = ['미검수', '실패', '검수 완료', '반영됨'];
+var MAX_SEND = 300;
 
 function sheet_() {
   return SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
@@ -94,31 +102,17 @@ function headers_(sh) {
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('프리즘')
     .addItem('양식 만들기', 'setupMenu')
-    .addItem('연결 코드 보기', 'connectCode')
+    .addItem('연결 설정', 'connect')
+    .addSeparator()
+    .addItem('실행', 'runNew')
+    .addItem('미검수 포함 다시 실행', 'runPending')
+    .addItem('결과 받기', 'fetchResult')
     .addToUi();
 }
 
 function setupMenu() {
   setup();
-  SpreadsheetApp.getUi().alert('프리즘 양식을 만들었습니다. 입력 열을 채운 뒤 웹앱으로 배포하고 연결 코드를 확인하세요.');
-}
-
-// 연결 코드 = 웹앱 주소#비밀 키 · 키가 없으면 새로 만들어 스크립트 속성에 저장
-function connectCode() {
-  var ui = SpreadsheetApp.getUi();
-  var url = ScriptApp.getService().getUrl() || '';
-  var props = PropertiesService.getScriptProperties();
-  var key = props.getProperty('PRISM_KEY');
-  if (!key) {
-    key = (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, '');
-    props.setProperty('PRISM_KEY', key);
-  }
-  if (!/\/exec$/.test(url)) {
-    ui.alert('비밀 키', '#' + key + '\n\n웹앱 주소를 찾지 못했습니다. 배포하지 않았다면 먼저 배포하세요(웹 앱 · 나로 실행 · 링크가 있는 모든 사용자). ' +
-      '배포 관리에서 웹앱 URL(/exec)을 복사해 #키 앞에 붙이면 연결 코드가 됩니다.', ui.ButtonSet.OK);
-    return;
-  }
-  ui.alert('연결 코드', url + '#' + key + '\n\n프리즘 키워드 실험실 STEP 3 연결 코드 칸에 붙여 넣으세요. 다른 사람에게 보이지 않게 다루세요.', ui.ButtonSet.OK);
+  SpreadsheetApp.getUi().alert('프리즘 양식을 만들었습니다. 프리즘 › 연결 설정에 연결 코드를 넣고 입력 열을 채우세요.');
 }
 
 // 메뉴 또는 편집기에서 실행 · 프리즘 양식(머리줄·서식·상태 목록)을 만든다 · 있는 머리줄은 덮지 않고 없는 열만 끝에 추가
@@ -145,28 +139,68 @@ function setup() {
   sh.getRange(2, stateCol, Math.max(sh.getMaxRows() - 1, 1), 1).setDataValidation(rule);
 }
 
-function doGet(e) {
-  if (!authorized_(e && e.parameter && e.parameter.key)) return json_({ok: false, error: 'unauthorized'});
-  var sh = sheet_();
-  var head = headers_(sh);
-  if (head.indexOf('상태') < 0 || (head.indexOf('제목') < 0 && head.indexOf('본문') < 0)) {
-    return json_({ok: false, error: '양식이 다릅니다 · setup 을 실행하세요'});
+function connect() {
+  var ui = SpreadsheetApp.getUi();
+  var r = ui.prompt('연결 설정', '프리즘 키워드 실험실 STEP 3 에서 만든 연결 코드를 붙여 넣으세요.', ui.ButtonSet.OK_CANCEL);
+  if (r.getSelectedButton() !== ui.Button.OK) return;
+  var code = r.getResponseText().trim();
+  if (!/^https:\/\/[^#\s]+\/sheet-sync#[\w-]+\.[\w-]{40,64}$/.test(code)) {
+    ui.alert('연결 코드 형식이 다릅니다 · 프리즘 화면의 코드를 그대로 복사하세요');
+    return;
   }
-  var lastRow = sh.getLastRow();
-  var rows = [];
-  if (lastRow >= 2 && head.length) {
-    var data = sh.getRange(2, 1, lastRow - 1, head.length).getDisplayValues();
-    for (var i = 0; i < data.length; i++) {
-      var values = {}, filled = false;
-      for (var c = 0; c < head.length; c++) {
-        if (!head[c]) continue;
-        values[head[c]] = data[i][c];
-        if (data[i][c] !== '') filled = true;
-      }
-      if (filled) rows.push({row: i + 2, values: values});
-    }
+  PropertiesService.getScriptProperties().setProperty('PRISM_CODE', code);
+  ui.alert('연결했습니다. 입력 열을 채우고 프리즘 › 실행을 누르세요.');
+}
+
+function call_(body) {
+  var code = PropertiesService.getScriptProperties().getProperty('PRISM_CODE');
+  if (!code) throw new Error('먼저 프리즘 › 연결 설정을 하세요');
+  var i = code.indexOf('#');
+  body.key = code.slice(i + 1);
+  var res = UrlFetchApp.fetch(code.slice(0, i), {method: 'post', contentType: 'application/json',
+    payload: JSON.stringify(body), muteHttpExceptions: true});
+  var data;
+  try { data = JSON.parse(res.getContentText()); } catch (e) { throw new Error('프리즘 응답을 읽지 못했습니다 (HTTP ' + res.getResponseCode() + ')'); }
+  if (!data.ok) throw new Error(data.error || '프리즘이 오류를 돌려줬습니다');
+  return data;
+}
+
+function runNew() { run_(false); }
+function runPending() { run_(true); }
+
+// 상태로 먼저 거른 행의 입력 열·상태만 보낸다(본문 크기) · 대상 선별은 프리즘이 다시 한다
+function run_(pending) {
+  var ui = SpreadsheetApp.getUi();
+  var sh = sheet_(), head = headers_(sh), st = head.indexOf('상태');
+  if (st < 0 || (head.indexOf('제목') < 0 && head.indexOf('본문') < 0)) {
+    ui.alert('양식이 다릅니다 · 프리즘 › 양식 만들기를 먼저 누르세요');
+    return;
   }
-  return json_({ok: true, rows: rows});
+  var allowed = pending ? ['', '실패', '미검수'] : ['', '실패'];
+  var cols = INPUT_COLS.concat(['상태']).filter(function (n) { return head.indexOf(n) >= 0; });
+  var rows = [], lastRow = sh.getLastRow();
+  var data = lastRow >= 2 ? sh.getRange(2, 1, lastRow - 1, head.length).getDisplayValues() : [];
+  for (var i = 0; i < data.length && rows.length < MAX_SEND; i++) {
+    if (allowed.indexOf(String(data[i][st]).trim()) < 0) continue;
+    var values = {}, filled = false;
+    cols.forEach(function (n) {
+      values[n] = data[i][head.indexOf(n)];
+      if (n !== '상태' && values[n] !== '') filled = true;
+    });
+    if (filled) rows.push({row: i + 2, values: values});
+  }
+  if (!rows.length) {
+    ui.alert('처리할 행이 없습니다');
+    return;
+  }
+  try {
+    var out = call_({op: 'run', rows: rows, include_pending: pending});
+    PropertiesService.getScriptProperties().setProperty('PRISM_RUN', out.id);
+    ui.alert('실행을 시작했습니다', '처리 대상 ' + out.targets + '건 · 건너뜀 ' + out.skipped + '건\n\n' +
+      '몇 분 뒤 프리즘 › 결과 받기를 누르세요. 그동안 정렬·행 삽입·삭제는 하지 마세요.', ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('실행 실패', e.message, ui.ButtonSet.OK);
+  }
 }
 
 // 모델 결과가 = + - @ 로 시작하면 수식으로 해석되지 않게 글자로 적는다
@@ -175,7 +209,7 @@ function safe_(v) {
   return /^[=+\-@]/.test(s) ? "'" + s : s;
 }
 
-// 읽을 때와 같은 행인지 확인(정렬·행 삽입으로 위치가 바뀌면 다른 콘텐츠에 덮어쓰지 않게) · 빈 값끼리는 일치
+// 보낼 때와 같은 행인지 확인(정렬·행 삽입으로 위치가 바뀌면 다른 콘텐츠에 덮어쓰지 않게) · 빈 값끼리는 일치
 function sameRow_(sh, head, row, expect) {
   if (!expect) return true;
   for (var name in expect) {
@@ -187,36 +221,49 @@ function sameRow_(sh, head, row, expect) {
   return true;
 }
 
-function doPost(e) {
-  var body;
-  try { body = JSON.parse(e.postData.contents); } catch (err) { return json_({ok: false, error: 'bad_json'}); }
-  if (!authorized_(body.key)) return json_({ok: false, error: 'unauthorized'});
-  var updates = Array.isArray(body.updates) ? body.updates : [];
-  var lock = LockService.getScriptLock();
-  if (!lock.tryLock(30000)) return json_({ok: false, error: 'busy'});
-  try {
-    var sh = sheet_();
-    var head = headers_(sh);
-    var written = 0, mismatched = [];
-    for (var i = 0; i < updates.length; i++) {
-      var u = updates[i] || {};
-      var row = Number(u.row);
-      if (!(row >= 2) || Math.floor(row) !== row || !u.values) continue;
-      if (!sameRow_(sh, head, row, u.expect)) { mismatched.push(row); continue; }
-      for (var name in u.values) {
-        if (!Object.prototype.hasOwnProperty.call(u.values, name)) continue;
-        var col = head.indexOf(String(name).trim()) + 1;
-        if (!col) {
-          head.push(String(name).trim());
-          col = head.length;
-          sh.getRange(1, col).setValue(head[col - 1]);
-        }
-        sh.getRange(row, col).setValue(safe_(u.values[name]));
+function write_(updates) {
+  var sh = sheet_(), head = headers_(sh), written = 0, mismatched = 0;
+  updates.forEach(function (u) {
+    var row = Number(u.row);
+    if (!(row >= 2) || Math.floor(row) !== row || !u.values) return;
+    if (!sameRow_(sh, head, row, u.expect)) { mismatched++; return; }
+    for (var name in u.values) {
+      if (!Object.prototype.hasOwnProperty.call(u.values, name)) continue;
+      var col = head.indexOf(String(name).trim()) + 1;
+      if (!col) {
+        head.push(String(name).trim());
+        col = head.length;
+        sh.getRange(1, col).setValue(head[col - 1]);
       }
-      written++;
+      sh.getRange(row, col).setValue(safe_(u.values[name]));
     }
-    SpreadsheetApp.flush();
-    return json_({ok: true, written: written, mismatched: mismatched});
+    written++;
+  });
+  SpreadsheetApp.flush();
+  return {written: written, mismatched: mismatched};
+}
+
+function fetchResult() {
+  var ui = SpreadsheetApp.getUi();
+  var id = PropertiesService.getScriptProperties().getProperty('PRISM_RUN');
+  if (!id) {
+    ui.alert('실행한 기록이 없습니다 · 프리즘 › 실행을 먼저 누르세요');
+    return;
+  }
+  var lock = LockService.getDocumentLock();
+  if (!lock.tryLock(30000)) {
+    ui.alert('다른 사람이 결과를 적는 중입니다 · 잠시 뒤 다시 누르세요');
+    return;
+  }
+  try {
+    var out = call_({op: 'result', id: id});
+    var w = write_(out.updates || []);
+    call_({op: 'written', id: id, written: w.written, mismatched: w.mismatched});
+    var msg = (out.status === 'running' ? '아직 실행 중입니다 · 끝난 ' : '') + w.written + '건을 적었습니다 (전체 ' + out.total + '건)';
+    if (w.mismatched) msg += '\n위치가 바뀐 ' + w.mismatched + '행은 적지 않았습니다 · 정렬·삽입을 되돌리고 다시 누르세요';
+    ui.alert('결과 받기', msg, ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('결과 받기 실패', e.message, ui.ButtonSet.OK);
   } finally {
     lock.releaseLock();
   }
@@ -225,16 +272,15 @@ function doPost(e) {
 
 ## 부록: 템플릿 없이 직접 만들기
 
-템플릿 사본 버튼이 꺼져 있으면(템플릿 준비 중) 아래처럼 직접 만든다.
-
 1. 새 구글 시트를 만들고 **확장 프로그램 › Apps Script** 를 연다. `Code.gs` 내용을 위 코드로 바꿔 저장한다.
-2. 시트 탭을 새로고침하면 메뉴 **프리즘**이 생긴다. 이후는 설정 절차 2단계부터 같다.
+2. 시트 탭을 새로고침하면 메뉴 **프리즘**이 생긴다. 이후는 설정 절차 4단계부터 같다.
 
-템플릿 원본을 만드는 사람은 위 1번까지만 하고 **연결 코드 보기**를 누르지 않는다(원본에 비밀 키가 생기지 않게).
-공유 링크 끝의 `/edit…` 를 `/copy` 로 바꾼 주소가 템플릿 사본 링크다.
+템플릿 원본을 만드는 사람은 위 1번까지만 하고 **연결 설정**을 하지 않는다(사본에 연결 코드가 따라가지 않게).
+공유 링크 끝의 `/edit…` 를 `/copy` 로 바꾼 주소가 템플릿 사본 링크다. 웹앱 배포는 필요 없다.
 
 ## 보안
 
-- 비밀 키는 Apps Script 스크립트 속성과 프리즘 팀 설정에만 둔다 · 프리즘 화면·응답에는 키 저장 여부만 보인다
-- 웹앱은 비밀 키가 맞을 때만 읽고 쓴다 · 키가 새면 스크립트 속성 `PRISM_KEY` 와 프리즘 설정을 함께 바꾼다
-- 웹앱은 시트 소유자 권한으로 실행되므로 다른 사람에게 Apps Script 편집 권한을 주지 않는다
+- 연결 코드는 시트 스크립트 속성 `PRISM_CODE` 에만 둔다 · 프리즘은 sha256 만 저장하고 화면엔 발급 직후 한 번만 보인다
+- 시트 편집자는 Apps Script 에서 코드를 볼 수 있다 · 편집 권한은 팀 안에서만 준다
+- 코드가 새면 프리즘에서 **연결 코드 다시 만들기** → 이전 코드는 즉시 막힌다
+- 코드 하나로 할 수 있는 일: 묶인 버전·모델로 실험 시작(실모델 비용) · 그 팀 시트 실험 결과 조회 · 팀당 동시 실행 1개
