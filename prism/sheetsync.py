@@ -210,7 +210,7 @@ def _start_meta(sheet, team):
 
 def _meta_run(rid, team, rec):
     try:
-        done, _ = KL.sheet_metas(rec['items'], team, rec['sheet']['meta_pick'])
+        done, _ = KL.sheet_metas(rec['items'], team, rec['sheet']['meta_pick'], rid=rid)
         for it, m, used, error in done:
             it.update(status='failed' if error else 'done', meta=m or {}, model=used, error=error[:500])
         end = {'items': rec['items'], 'status': 'done'}
@@ -221,7 +221,23 @@ def _meta_run(rid, team, rec):
     finally:
         with KL.LOCK:
             KL.ACTIVE.discard((team, rid))
+            KL.PROGRESS.pop(rid, None)
             KL.SHEET_TEAMS.discard(team)
+
+
+def progress_text(rid, mode):
+    """실행 중 진행·남은 시간 · 단계 안에서 (지난 시간 ÷ 끝난 수) × 남은 수 · 동시 처리 3건이 이미 반영된 속도."""
+    p = KL.PROGRESS.get(rid)
+    if not p:
+        return ''
+    text = f"{'원천 메타' if p['phase'] == 'meta' else '핵심키워드'} {p['done']}/{p['total']}건"
+    if not p['done']:
+        return text + ' · 남은 시간은 첫 결과가 나온 뒤 계산합니다'
+    left = (time.time() - p['started']) / p['done'] * (p['total'] - p['done'])
+    text += f' · 남은 시간 약 {max(1, round(left / 60))}분'
+    if mode == 'both' and p['phase'] == 'meta':    # ponytail: 키워드 단계 시간은 시작 뒤에야 잼 · 지난 실행 속도로 미리 잴 때 기록 추가
+        text += ' · 이어서 핵심키워드 단계(시작하면 다시 계산) · 결과는 메타 단계가 끝난 뒤부터 적힙니다'
+    return text
 
 
 def _run(body, team):
@@ -259,7 +275,8 @@ def handle(raw):
         if op == 'result':                       # 실행 중이어도 끝난 행은 먼저 받아 적을 수 있다
             KL._settle(body.get('id'), team)
             run = _run(body, team)
-            return {'ok': True, 'status': run['status'], 'total': len(run['items']), 'updates': updates_of(run)}
+            return {'ok': True, 'status': run['status'], 'total': len(run['items']), 'updates': updates_of(run),
+                    'progress': progress_text(run['id'], run['sheet'].get('mode', 'both')) if run['status'] == 'running' else ''}
         if op == 'written':
             written, mismatched = body.get('written'), body.get('mismatched')
             if type(written) is not int or type(mismatched) is not int:

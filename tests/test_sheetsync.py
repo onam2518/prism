@@ -144,6 +144,18 @@ class SheetSyncTest(unittest.TestCase):
         self.assertIn('1개 행 위치가 바뀌어', s['write_error'])
         self.assertFalse(self.call(op='written', id=rid, written='3', mismatched=0)['ok'])
 
+    def test_progress(self):
+        out = self.run_rows([row(2, '기준금리 인하'), row(3, '물가')], mode='both')
+        self.assertNotIn(out['id'], K.PROGRESS)                                       # 끝나면 진행 기록을 비운다
+        self.assertEqual(S.progress_text('없음', 'both'), '')
+        K._phase('r', 'meta', 40)
+        self.assertIn('첫 결과', S.progress_text('r', 'both'))
+        K.PROGRESS['r'].update(done=10, started=K.time.time() - 600)               # 10건에 10분 → 30건 남음 = 약 30분
+        self.assertIn('원천 메타 10/40건 · 남은 시간 약 30분 · 이어서 핵심키워드', S.progress_text('r', 'both'))
+        K._phase('r', 'keyword', 40); K._tick('r')
+        self.assertTrue(S.progress_text('r', 'both').startswith('핵심키워드 1/40건 · 남은 시간 약 1분'))
+        K.PROGRESS.pop('r')
+
     def test_meta_only(self):
         rows = [row(2, '기준금리 인하', 핵심키워드='기존'), row(3, '엔티티 없음'), row(4, '메타 있음', '미검수', 리드문='이미')]
         out = self.run_rows(rows, mode='meta', meta_model='solar-pro4')

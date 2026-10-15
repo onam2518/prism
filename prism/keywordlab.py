@@ -20,6 +20,7 @@ CATALOG = 'keyword_lab_catalog_v1'
 ACTIVE = set()
 SHEET_TEAMS = set()        # 시트 실험이 실행 중인 팀(같은 시트 행을 두 실험이 동시에 쓰지 않게)
 LOCK = threading.Lock()
+PROGRESS = {}              # 시트 실행 진행(실행 id → 단계·끝난 수·전체·단계 시작 시각) · 메모리라 재시작 시 사라짐(그땐 _settle 이 중단 처리)
 MAX_ITEMS = 100
 SAVE_EVERY = 10            # 결과 칸을 몇 개씩 묶어 저장할지(실험 기록 전체를 다시 쓰므로 칸마다 쓰면 DB 부하)
 VERDICTS = ('accept', 'edit', 'exclude', 'hold')
@@ -461,6 +462,7 @@ def _run(rid, team, should_stop=None):
         except Exception as exc:
             result.update(status='failed', error=str(exc)[:500])
         result['elapsed_ms'] = round((time.time() - begin) * 1000)
+        _tick(rid)
         with plock:
             pending[cid] = result
             batch = dict(pending) if len(pending) >= SAVE_EVERY else None
@@ -479,9 +481,11 @@ def _run(rid, team, should_stop=None):
         try:
             if 'sheet' in run and run['sheet'].get('mode', 'both') == 'both':     # 키워드만 실행은 시트 메타를 그대로 쓴다
                 run = _sheet_meta(rid, team, run, should_stop)
+            pairs = [(it, slot) for it in run['items'] for slot in run['slots'] if it['key'] + ':' + slot['label'] not in run['cells']]   # 메타 실패 칸은 건너뜀
+            if 'sheet' in run:
+                _phase(rid, 'keyword', len(pairs))
             with ThreadPoolExecutor(max_workers=3) as pool:
-                list(pool.map(one, [(it, slot) for it in run['items'] for slot in run['slots']
-                                    if it['key'] + ':' + slot['label'] not in run['cells']]))   # 메타 실패 칸은 건너뜀
+                list(pool.map(one, pairs))
         finally:
             if pending:                              # 남은 칸은 중단돼도 저장(이미 낸 모델 호출 결과 보존)
                 flush(dict(pending))
@@ -495,11 +499,23 @@ def _run(rid, team, should_stop=None):
     finally:
         with LOCK:
             ACTIVE.discard((team, rid))
+            PROGRESS.pop(rid, None)
             if 'sheet' in run:
                 SHEET_TEAMS.discard(team)
 
 
-def sheet_metas(items, team, model='', should_stop=None):
+def _phase(rid, phase, total):
+    with LOCK:
+        PROGRESS[rid] = {'phase': phase, 'done': 0, 'total': total, 'started': time.time()}
+
+
+def _tick(rid):
+    with LOCK:
+        if rid in PROGRESS:
+            PROGRESS[rid]['done'] += 1
+
+
+def sheet_metas(items, team, model='', should_stop=None, rid=None):
     """시트 행: 콘텐츠 등록 → 운영 경로(run_pipeline · model 비우면 운영 기본)로 메타 4종(DB 미검수 저장) → [(행, 메타|None, 모델, 오류)]."""
     from . import runops
     from .meta_contract import FIELDS, drop_fail
@@ -530,14 +546,19 @@ def sheet_metas(items, team, model='', should_stop=None):
             return it, m, used, '' if ER.MC.entity_names(m['entities']) else '메타 생성 결과에 엔티티가 없습니다'
         except Exception as exc:
             return it, None, '', '메타 생성 실패: ' + str(exc)[:300]
+    def counted(it):
+        out = meta(it)
+        _tick(rid)
+        return out
+    _phase(rid, 'meta', len(items))
     with ThreadPoolExecutor(max_workers=3) as pool:
-        return list(pool.map(meta, items)), add_error
+        return list(pool.map(counted, items)), add_error
 
 
 def _sheet_meta(rid, team, run, should_stop=None):
     """둘 다 실행: 메타 4종 생성 → 문항 키·해시를 실제 메타로 고정 · 메타 실패 행은 키워드 칸을 실패로 채운다."""
     label, items = run['slots'][0]['label'], run['items']
-    done, add_error = sheet_metas(items, team, run['sheet'].get('meta_pick', ''), should_stop)
+    done, add_error = sheet_metas(items, team, run['sheet'].get('meta_pick', ''), should_stop, rid)
     failed, models = {}, []
     for it, m, model, error in done:
         if m is not None:

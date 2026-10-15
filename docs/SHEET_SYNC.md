@@ -23,6 +23,7 @@
 6. 입력 열을 채우고 **프리즘 › 실행(원천 메타)** 를 누른다. 몇 분 뒤 **프리즘 › 결과 받기**를 누르면 메타 열이 채워진다.
 7. 메타 열을 필요하면 고친 뒤 **프리즘 › 실행(핵심키워드)** → **결과 받기**. 한 번에 하려면 **실행(둘 다)**.
    결과 받기는 실행 중에 눌러도 끝난 행부터 적는다 · 다시 눌러도 같은 값을 다시 적을 뿐이다.
+   실행 중이면 진행 건수와 남은 시간(지금까지 속도 기준)을 함께 보여 준다 · 실행(둘 다)는 메타 단계가 끝나야 행이 적힌다.
 
 연결 코드는 `<프리즘 주소>/sheet-sync#<팀>.<비밀>` 한 줄이다. 남에게 보이지 않게 다룬다.
 프리즘은 코드의 sha256 만 저장한다.
@@ -92,7 +93,7 @@
 |---|---|---|
 | `options` | 없음 | `{ok, meta_models, keyword_versions}` · 설정 탭 드롭다운 값 |
 | `run` | `mode`(`meta`·`keyword`·`both`) · `meta_model` · `keyword_version` · `rows:[{row, values:{열 이름: 값}}]` · `include_pending` | `{ok, id, targets, skipped}` |
-| `result` | `id` | `{ok, status, total, updates:[{row, values, expect}]}` · 끝난 행만 |
+| `result` | `id` | `{ok, status, total, updates:[{row, values, expect}], progress}` · 끝난 행만 · `progress` = 실행 중일 때 단계·건수·남은 시간 문구 |
 | `written` | `id, written, mismatched` (정수) | `{ok}` · 실험 기록 화면에 기재 건수 표시 |
 
 ## Code.gs
@@ -343,6 +344,7 @@ function fetchResult() {
     var w = write_(out.updates || []);
     call_({op: 'written', id: id, written: w.written, mismatched: w.mismatched});
     var msg = (out.status === 'running' ? '아직 실행 중입니다 · 끝난 ' : '') + w.written + '건을 적었습니다 (전체 ' + out.total + '건)';
+    if (out.progress) msg += '\n' + out.progress;
     if (w.mismatched) msg += '\n위치가 바뀐 ' + w.mismatched + '행은 적지 않았습니다 · 정렬·삽입을 되돌리고 다시 누르세요';
     ui.alert('결과 받기', msg, ui.ButtonSet.OK);
   } catch (e) {
