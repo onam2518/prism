@@ -109,6 +109,23 @@ def commit(st, ch, team, expected_row, old, new, patch=None, feedback=None, extr
         c.rollback(); raise
 
 
+def _shape(key, value, current):
+    """화면은 엔티티 이름·카테고리 경로 문자열을 보낸다 · 저장 계약(객체 배열)으로 바꾸고 기존 엔티티 타입은 유지."""
+    from . import dictionaries as D, meta_contract as MC
+    if not isinstance(value, list):
+        return value
+    if key == 'entities':
+        types = {MC.entity_name(e): e.get('type') for e in current or [] if isinstance(e, dict)}
+        return [v if isinstance(v, dict) else {'name': str(v).strip(), 'type': types.get(str(v).strip())} for v in value]
+    if key == 'content_category':
+        out = []
+        for v in value:
+            p = v if isinstance(v, dict) else D.normalize_content_category(v).split(' / ', 1)
+            out.append(p if isinstance(p, dict) else {'tier1': p[0], 'tier2': p[1] if len(p) > 1 else None})
+        return out
+    return value
+
+
 def detail(st, ch, team=None, who='', privileged=False):
     row = read_row(st, ch, team); b = basis(row)
     record = st.get_report('ops_review_' + ch, team) or {'revision': 0, 'reviews': [], 'cases': [], 'sessions': [], 'history': []}
@@ -263,6 +280,10 @@ def action(st, data, team=None, who='', privileged=False, final=False):
             if not isinstance(raw, dict) or any(k not in (*FIELDS,'finalGrade') for k in raw): raise ValueError('수정 항목을 확인하세요')
             from .dnm import validate_value
             for key,value in raw.items():
+                if key in FIELDS:
+                    cur=(row.get('item_meta') or {}).get(key)
+                    value=_shape(key,value,cur)
+                    if value==_shape(key,cur,cur): continue          # 바뀌지 않은 항목은 교정 이력·수동 확정에서 뺀다
                 if key=='finalGrade':
                     if value not in ('G','R'): raise ValueError('품질 등급을 별도로 확인하세요')
                     qm[key]=value
@@ -272,7 +293,7 @@ def action(st, data, team=None, who='', privileged=False, final=False):
                 manual = dict((row.get('item_meta') or {}).get('manual_fields') or {})
                 for key in im: manual[key]={'input_revision':b['input_revision'],'policy_version':b['policy_version'],'reviewer':who,'confirmed_at':now}
                 im['manual_fields']=manual
-            patch={'item_meta':im,'quality_meta':qm} if raw else None
+            patch={'item_meta':im,'quality_meta':qm} if im or qm else None
             new.setdefault('stages',{})['correction']={'status':'saved','by':who,'ts':now,'patch':raw}
             if cmd=='correct_final':
                 grade=qm.get('finalGrade') or (row.get('quality_meta') or {}).get('finalGrade')

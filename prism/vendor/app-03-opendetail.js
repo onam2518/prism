@@ -53,7 +53,7 @@ window.PRISM_APP_PARTS.push(() => ({
           if (!this.opsDetail) { this._err('검수 기준을 불러온 뒤 다시 저장하세요'); return; }
           r = await this.opsSave({action:'patch',patch:{entities:ents}});
           if (!(r && r.ok)) { this._err((r && r.error) || '엔티티 저장 실패'); return; }
-          this.detail.entities = ents;             // 상세·목록 사본 즉시 반영
+          this.detail.entities = ents; this.detail.entities_scored = this._entsScored(ents);   // 상세·목록 사본 즉시 반영(표시는 entities_scored 우선)
           [((this.rawData || {}).items), ((this.drillData || {}).items), ((this.finalQueue || {}).items), (this.detailNav ? this.detailNav.list : null)].forEach((list) => {
             const t = (list || []).find((x) => x.hash === this.detail.hash);
             if (t) { t.entities = ents; if (t.item_meta) t.item_meta.entities = ents; }
@@ -64,6 +64,10 @@ window.PRISM_APP_PARTS.push(() => ({
           this.loadEntLookup();                    // 사전 등재 배지 갱신
           if (this.histOpen) this.loadHistory();   // 작업 이력에 교정 행 반영
         } finally { this.entFixBusy = false; }
+      },
+      _entsScored(ents) {                          // 교정 후 표시 목록 · 남은 엔티티는 확신도 유지, 새로 넣은 것은 확신도 없음
+        const old = (this.detail && this.detail.entities_scored) || [];
+        return (ents || []).map((n) => old.find((s) => s.name === n) || { name: n, conf: null });
       },
       entLkTip(name) {
         const e = this.entLookup[name];

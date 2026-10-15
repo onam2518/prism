@@ -42,7 +42,7 @@ window.PRISM_APP_PARTS.push(() => ({
       }
       if (this.detail && this.detail.hash===r.hash) {
         this.opsDetail=r;
-        if(r.basis.token!==current.basis.token)this.opsFields.forEach(f=>{this.opsAxes[f.key]={status:'',reason:'',proposal:''};});
+        if(r.basis.token!==current.basis.token)this.opsFields.forEach(f=>{if(data.action!=='patch'||f.key in (data.patch||{}))this.opsAxes[f.key]={status:'',reason:'',proposal:''};});   // 내 교정이면 고친 항목만 다시 판정
       }
       this.liveToast('저장 완료 · 판정과 후속 조치는 별도 확인');
       await this.opsLoad();
@@ -90,7 +90,7 @@ window.PRISM_APP_PARTS.push(() => ({
   async opsCaptureFinal(row, form) {
     try {
       const r=await this.opsRequest(this.opsUrl(row.hash)); const v=r.values;
-      const names=a=>(a||[]).map(x=>typeof x==='string'?x:(x.name||x.path)).join('|');
+      const names=a=>(a||[]).map(x=>typeof x==='string'?x:(x.name||x.path||[x.tier1,x.tier2].filter(Boolean).join(' / '))).join('|');
       if ((row.summary||'')!==(v.summary||'') || names(row.entities)!==names(v.entities) || names(row.intent)!==names(v.intent) || names(row.category)!==names(v.content_category)) throw new Error('목록의 값이 변경되었습니다. 새로고침 후 다시 열어 주세요');
       form.opsSnapshot=r; return r;
     } catch(e) { form.opsError=e.message; this._err(e.message); return null; }
@@ -103,7 +103,7 @@ window.PRISM_APP_PARTS.push(() => ({
       for(const key of Object.keys(values))if(JSON.stringify(values[key])!==JSON.stringify(snapshot.values[key]))patch[key]=values[key];
       if(form.grade!==((snapshot.basis.snapshot.quality_meta||{}).finalGrade||''))patch.finalGrade=form.grade;
       const r=await this.opsRequest('/ops-review',{action:'correct_final',hash:form.hash,revision:snapshot.revision,basis_token:snapshot.basis.token,patch:patch});
-      if (this.detail && this.detail.hash===form.hash) {this.opsDetail=r;Object.assign(this.detail,{summary:form.summary,entities:form.entities,intent:form.intent,category:form.cats,grade:form.grade});}
+      if (this.detail && this.detail.hash===form.hash) {this.opsDetail=r;Object.assign(this.detail,{summary:form.summary,entities:form.entities,entities_scored:this._entsScored(form.entities),intent:form.intent,category:form.cats,grade:form.grade});}
       this.liveToast('수정값·편입 결정·작업 이력 저장 완료 · 정답셋 반영은 별도 확인');
       await this.loadFinalQueue(); if(this.histOpen)this.loadHistory();return true;
     } catch(e) {this._err(e.message);return false;}

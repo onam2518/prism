@@ -26,6 +26,20 @@ class OperationsTests(unittest.TestCase):
         return O.action(self.st,dict(action=action,hash=self.ch,revision=detail['revision'],basis_token=detail['basis']['token'],**kw),who='me',privileged=True,final=True)
     def axes(self,status='accurate'):
         return {k:{'status':status,'reason':'보류 근거' if status=='hold' else '', 'proposal':'수정 제안' if status=='needs_fix' else ''} for k in O.FIELDS}
+    def test_screen_string_values_are_saved_in_storage_shape(self):
+        # 검수 화면은 엔티티 이름·카테고리 경로 문자열을 보낸다 · 9/30 전환 후 전부 거절되던 회귀
+        self.request('patch',patch={'entities':[{'name':'손흥민','type':'PS'}]})
+        result=self.request('correct_final',patch={'entities':['손흥민','토트넘'],'content_category':['Sports / Basketball']})
+        self.assertTrue(result['ok'],result)
+        im=self.st.get_report('ops_review_'+self.ch)['stages']['correction']['patch']
+        self.assertEqual(result['values']['entities'],[{'name':'손흥민','type':'PS'},{'name':'토트넘','type':None}])
+        self.assertEqual(result['values']['content_category'],[{'tier1':'Sports','tier2':'Basketball'}])
+        self.assertEqual(set(im),{'entities','content_category'})
+        result=self.request('correct_final',patch={'entities':['손흥민','토트넘'],'summary':'리드문'})   # 그대로 보낸 값은 교정으로 남기지 않는다
+        self.assertTrue(result['ok'],result)
+        manual=self.st._conn().execute('SELECT payload FROM results WHERE content_hash=?',(self.ch,)).fetchone()[0]
+        self.assertNotIn('summary',json.loads(manual)['item_meta']['manual_fields'])
+        self.assertFalse(self.request('patch',patch={'content_category':['없는 분류']})['ok'])
     def test_status_specific_fields_are_validated_and_persisted(self):
         axes=self.axes()
         axes['summary']={'status':'needs_fix','reason':'숨겨진 보류 사유','proposal':'리드문 수치 수정'}
