@@ -33,7 +33,8 @@ class SheetSyncTest(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         self.store = Store(tmp.name + '/t.db')
         sv = types.SimpleNamespace(get_store=lambda: self.store, _report_get=lambda k, t=None, d=None: self.store.get_report(k, t) or d,
-                                   Handler=types.SimpleNamespace(server_mock=True))
+                                   Handler=types.SimpleNamespace(server_mock=True),
+                                   list_models=lambda: {'models': ['solar-decide', 'solar-pro4', 'syn-pro']})
         for module in (K, E):
             p = patch.object(module, '_SV', sv); p.start(); self.addCleanup(p.stop)
         for p in (patch.object(K, 'threading', types.SimpleNamespace(Thread=_NowThread, Lock=threading.Lock)), patch.object(E, '_llm', return_value=(None, True, ''))):
@@ -85,9 +86,10 @@ class SheetSyncTest(unittest.TestCase):
     def test_options_and_stale_choice(self):
         K.create_version({'model': 'solar-pro3', 'rules': '문장', 'title': '문장', 'target': 'sentence'}, 'a', 't')
         opts = self.call(op='options')
-        self.assertEqual((opts['keyword_versions'], opts['meta_models'][0]), (['v1 · solar-pro3 · 기준'], S.META_DEFAULT))
+        self.assertEqual((opts['keyword_versions'], opts['meta_models']), (['v1 · solar-pro3 · 기준'], [S.META_DEFAULT, 'solar-pro4']))
         self.assertIn('핵심키워드 프롬프트', self.run_rows([row(2, '글')], version='v9 · x · y')['error'])
-        self.assertIn('원천 메타 모델', self.run_rows([row(2, '글')], meta_model='없는 모델')['error'])
+        for bad in ('없는 모델', 'gpt-5.4', 'syn-pro'):                                # Upstage 채팅 모델만
+            self.assertIn('원천 메타 모델', self.run_rows([row(2, '글')], meta_model=bad)['error'])
         self.assertIn('실행 종류', self.run_rows([row(2, '글')], mode='all')['error'])
 
     def test_issue_stores_hash_only_and_rotates(self):
@@ -144,9 +146,9 @@ class SheetSyncTest(unittest.TestCase):
 
     def test_meta_only(self):
         rows = [row(2, '기준금리 인하', 핵심키워드='기존'), row(3, '엔티티 없음'), row(4, '메타 있음', '미검수', 리드문='이미')]
-        out = self.run_rows(rows, mode='meta', meta_model='gpt-5.4')
+        out = self.run_rows(rows, mode='meta', meta_model='solar-pro4')
         self.assertEqual((out['ok'], out['targets'], out['skipped']), (True, 2, 1))
-        self.assertEqual({c.kwargs['model'] for c in self.pipe.call_args_list}, {'gpt-5.4'})
+        self.assertEqual({c.kwargs['model'] for c in self.pipe.call_args_list}, {'solar-pro4'})
         self.assertEqual(K._catalog('a')['runs'], [])                                 # 실험실 실험은 만들지 않음
         res = self.call(op='result', id=out['id'])
         ok, bad = (u['values'] for u in res['updates'])

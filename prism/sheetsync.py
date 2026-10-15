@@ -13,7 +13,6 @@ import secrets
 import time
 
 from . import keywordlab as KL
-from .modelmeta import KNOWN_ROUTER_MODELS
 from .store import content_hash
 
 CONFIG = 'keyword_lab_sheet'
@@ -57,14 +56,19 @@ def _versions(team):
             if KL._target(v) == 'keyword' and not v.get('draft') and v['validator_version'] == KL.ER.KEYWORD_VALIDATION_VERSION}
 
 
+def _upstage_models():
+    """원천 메타 모델 = Upstage API /models 실목록(10분 캐시) · solar* 만 Upstage 직접 호출(llm_for_model) · decide 는 채팅 모델 아님."""
+    return [m for m in KL._SV.list_models().get('models') or [] if m.startswith('solar') and 'decide' not in m]
+
+
 def options(team):
-    return {'meta_models': [META_DEFAULT] + KNOWN_ROUTER_MODELS, 'keyword_versions': list(_versions(team))}
+    return {'meta_models': [META_DEFAULT] + _upstage_models(), 'keyword_versions': list(_versions(team))}
 
 
 def _meta_model(name):
     if name in (None, '', META_DEFAULT):
         return ''                                    # run_pipeline 운영 기본 텍스트 모델
-    if name not in KNOWN_ROUTER_MODELS:
+    if name not in _upstage_models():
         raise ValueError(STALE.format('원천 메타 모델'))
     return name
 
