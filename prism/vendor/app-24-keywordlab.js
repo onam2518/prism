@@ -121,7 +121,7 @@ window.PRISM_APP_PARTS.push(() => ({
       if(this.kwSource==='reuse') data.source_run=this.kwReuse;
       else if(this.kwSource==='sample') data.sample=Number(this.kwSample);
       else if(this.kwSource==='hash') data.hashes=this.kwHashes.split(/[\s,]+/).filter(Boolean);
-      else if(this.kwSource==='excel') data.rows=this.kwExcel.rows.map(r=>({title:r.title || '엑셀 '+r.row+'행',meta:r.meta}));
+      else if(this.kwSource==='excel') data.rows=this.kwExcel.rows.map(r=>({title:r.title || '엑셀 '+r.row+'행',meta:r.meta,source_url:r.source_url || ''}));
       else Object.assign(data,{title:this.kwTitle,meta:{summary:this.kwLead,entities:this.kwSplit(this.kwEntities),
         intent:this.kwSplit(this.kwIntents),content_category:this.kwSplit(this.kwCategories)}});
       const r=await this.kwRequest('',data); this.kwRunId=r.id; this.kwReview=null;

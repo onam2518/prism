@@ -10,7 +10,7 @@ description: 핵심키워드 실험용 메타 추출. 콘텐츠 엑셀(키·서�
 ## 준비물
 
 - 입력 엑셀: 첫 시트 · 열 후보 `콘텐츠키`·`서비스`·`displayTitle`(제목)·`body`(본문). 서식만 있는 빈 행이 많을 수 있다(1,000행처럼 보여도 실제 38건인 경우가 있었다).
-- 전달 양식: 이 스킬 폴더의 `keyword_lab_template.xlsx` (원본 `~/Downloads/keyword_lab_template.xlsx` · 열: 콘텐츠 이름 / 리드문 / 엔티티 / 인텐트 / 카테고리)
+- 전달 양식: 이 스킬 폴더의 `keyword_lab_template.xlsx` (원본 `~/Downloads/keyword_lab_template.xlsx` · 열: 콘텐츠 이름 / 리드문 / 엔티티 / 인텐트 / 카테고리 / 원문 URL(선택 · 넣으면 상세 검수에 원문 페이지 탭))
 - 스크립트: `scripts/prepare.py` · `scripts/run.py` · `scripts/deliver.py`
 - 작업 폴더: 세션 scratchpad 아래 `kw/` (로컬) · 운영 볼륨 `/data/kw` (컨테이너)
 
