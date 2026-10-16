@@ -159,11 +159,12 @@ class KeywordLabTest(unittest.TestCase):
         ok = K.parse_excel({'name': 't.xlsx', 'data': b64(K.excel_template())})
         self.assertEqual([r['row'] for r in ok['rows']], [2])                         # 양식 예시 행이 그대로 반영
         self.assertEqual(ok['rows'][0]['meta']['entities'], ['한국은행', '이창용'])
-        rows = [K.EXCEL_HEADERS, ['a', '리드1', '엔티티1; 엔티티2', '속보·사건 추적', '경제'], ['b', '', '엔티티', '', ''],
-                ['c', '리드3', '', '', ''], ['', '', '', '', '']]
+        rows = [K.EXCEL_HEADERS, ['a', '리드1', '엔티티1; 엔티티2', '속보·사건 추적', '경제', 'https://v.daum.net/v/1'], ['b', '', '엔티티', '', ''],
+                ['c', '리드3', '', '', ''], ['', '', '', '', ''], ['d', '리드5', '엔티티', '', '', 'javascript:alert(1)']]
         res = K.parse_excel({'name': 't.xlsx', 'data': b64(build_template_xlsx(rows=rows))})
         self.assertEqual(res['rows'][0]['meta']['intent'], ['속보·사건 추적'])          # 가운뎃점 값은 쪼개지 않음
-        self.assertEqual([(r['row'], r['reason']) for r in res['rejected']], [(3, '리드문 없음'), (4, '엔티티 없음')])
+        self.assertEqual([(r['row'], r['reason']) for r in res['rejected']],
+                         [(3, '리드문 없음'), (4, '엔티티 없음'), (5, '원문 URL 은 http(s) 주소여야 합니다')])   # iframe 에 쓰므로 http(s) 만
         csv_raw = ('\ufeff' + ','.join(K.EXCEL_HEADERS) + '\n' + 'x,리드,엔티티,,\n').encode()
         self.assertEqual(len(K.parse_excel({'name': 't.csv', 'data': b64(csv_raw)})['rows']), 1)
         for bad in ({'name': 't.txt', 'data': b64(b'x')}, {'name': 't.xlsx', 'data': '!!'},
@@ -172,8 +173,14 @@ class KeywordLabTest(unittest.TestCase):
             self.assertFalse(K.action(dict(bad, action='parse_excel'), 'a', 'tester')['ok'], bad['name'])
         v = self.version()
         with patch.object(K.threading, 'Thread'):
-            rid = K.start({'slots': [{'model': v['model'], 'version_id': v['id']}], 'rows': [{'title': r['title'], 'meta': r['meta']} for r in res['rows']]}, 'a', 'tester')['id']
+            rid = K.start({'slots': [{'model': v['model'], 'version_id': v['id']}], 'rows': [{'title': r['title'], 'meta': r['meta'], 'source_url': r['source_url']} for r in res['rows']]}, 'a', 'tester')['id']
         self.assertEqual(K._get(K._key('run', rid), 'a')['items'][0]['title'], 'a')
+        detail = K.run_detail(rid, 'a')['run']
+        self.assertEqual(list(detail['sources'].values()), ['https://v.daum.net/v/1'])        # 엑셀 원문 URL → 원문 페이지 탭
+        self.assertEqual(next(r for r in K.catalog('a')['runs'] if r['id'] == rid)['input'], '엑셀')   # 실험 기록 '입력' 칸
+        with patch.object(K.threading, 'Thread'):
+            again = K.start({'slots': [{'model': v['model'], 'version_id': v['id']}], 'source_run': rid}, 'a', 'tester')['id']
+        self.assertEqual(next(r for r in K.catalog('a')['runs'] if r['id'] == again)['input'], '엑셀')  # 재사용은 원래 입력을 잇는다
         with self.assertRaises(ValueError):
             K.start({'slots': [{'model': v['model'], 'version_id': v['id']}], 'rows': [{'meta': {'summary': ''}}]}, 'a', 'tester')
 

@@ -63,7 +63,7 @@
             <span class="pick"><svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>엑셀 업로드</span>
             <input type="file" accept=".xlsx,.csv" class="sr-only" x-bind:disabled="kwBusy" x-on:change="kwExcelPick($event.target.files[0]);$event.target.value=''">
           </label>
-          <ul class="ds-bullets"><li>열: 콘텐츠 이름 · 리드문(필수) · 엔티티(필수) · 인텐트 · 카테고리<ul><li>값이 여러 개면 쉼표로 구분합니다</li><li>한 번에 최대 100건 · 2MB 이하 xlsx·csv</li></ul></li></ul>
+          <ul class="ds-bullets"><li>열: 콘텐츠 이름 · 리드문(필수) · 엔티티(필수) · 인텐트 · 카테고리 · 원문 URL<ul><li>원문 URL 을 넣으면 상세 검수에서 원문 페이지 탭이 열립니다</li><li>값이 여러 개면 쉼표로 구분합니다</li><li>한 번에 최대 100건 · 2MB 이하 xlsx·csv</li></ul></li></ul>
           <template x-if="kwExcel"><section class="dc-body" aria-live="polite">
             <p class="ds-label" x-text="'반영 결과 · 반영 '+kwExcel.rows.length+'건 · 제외 '+kwExcel.rejected.length+'건'"></p>
             <div class="overflow-auto" style="max-height:320px"><table class="ds-table"><thead><tr><th>행</th><th>콘텐츠 이름</th><th>리드문</th><th>엔티티</th><th>상태</th></tr></thead><tbody>
@@ -112,14 +112,15 @@
   <section class="panel" x-show="kwTab==='run'" aria-label="실험 기록">
     <div class="panel-hd"><b>실험 기록</b><span class="meta tnum" x-text="kwRuns().length+'건 · 행을 누르면 아래에 실행 결과가 열립니다'"></span><span class="ml-auto control-row"><button class="ds-btn ds-btn--ghost ds-btn--s-sm" x-on:click="kwLoad()">새로고침</button><button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-show="kwTab==='run'" x-bind:disabled="!kwRunData || kwRunData.status==='running'" x-on:click="kwDownloadXlsx()" data-tip="콘텐츠 × 조합 한 행 · 현재 값만 · 최종 확정이면 확정값, 아니면 모델 결과" data-tip-pos="bottom">엑셀 받기</button><button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-show="kwTab==='run'" x-bind:disabled="!kwRunData || kwRunData.status==='running'" x-on:click="kwDownloadCsv()" data-tip="콘텐츠 × 조합 한 행 · 제목·본문·엔티티·핵심 키워드·핵심 문장·검수 결과" data-tip-pos="bottom">CSV 받기</button><button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" x-show="kwTab==='run' && kwCatalog?.can_manage" x-bind:disabled="!kwRunData || kwRunData.status==='running' || kwBusy" x-on:click="kwDeleteRun()" data-tip="정답셋에 반영된 실험은 삭제할 수 없습니다" data-tip-pos="bottom">기록 삭제</button></span></div>
     <div class="panel-bd dc-body">
-      <div class="overflow-auto" style="max-height:320px"><table class="ds-table"><thead><tr><th>실행 일시</th><th>콘텐츠</th><th>조합</th><th>상태</th></tr></thead><tbody>
+      <div class="overflow-auto" style="max-height:320px"><table class="ds-table"><thead><tr><th>실행 일시</th><th>입력</th><th>콘텐츠</th><th>조합</th><th>상태</th></tr></thead><tbody>
         <template x-for="r in kwRuns()" x-bind:key="'kr'+r.id"><tr class="kwl-row" role="button" tabindex="0" x-bind:class="kwRunId===r.id ? 'is-sel' : ''" x-bind:aria-current="kwRunId===r.id ? 'true' : 'false'" x-on:click="kwBusy || kwOpenRun(r.id)" x-on:keydown.enter.prevent="kwBusy || kwOpenRun(r.id)">
           <td class="text-ink tnum" x-text="kwDate(r.created_at)"></td>
+          <td class="text-muted" x-text="r.input || '·'"></td>
           <td class="text-muted tnum" x-text="r.n+'건'"></td>
           <td class="text-muted tnum" x-text="r.slots+'개'"></td>
           <td><span class="ds-badge ds-badge--status" x-show="kwRunId===r.id">열림</span></td>
         </tr></template>
-        <tr x-show="!kwRuns().length"><td colspan="4" class="text-xs text-muted">아직 실행한 실험이 없습니다</td></tr>
+        <tr x-show="!kwRuns().length"><td colspan="5" class="text-xs text-muted">아직 실행한 실험이 없습니다</td></tr>
       </tbody></table></div>
     </div>
   </section>

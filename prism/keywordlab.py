@@ -248,11 +248,32 @@ def _items(body, team):
         rows = body['rows']
         if not isinstance(rows, list) or not 1 <= len(rows) <= MAX_ITEMS or not all(isinstance(r, dict) for r in rows):
             raise ValueError(f'엑셀 반영 행은 1~{MAX_ITEMS}건입니다')
-        return [_meta_item(r.get('title'), r.get('meta')) for r in rows]
+        return [_meta_item(r.get('title'), r.get('meta'), r.get('source_url')) for r in rows]
     return [_meta_item(body.get('title'), body.get('meta'))]
 
 
-def _meta_item(title, meta):
+def _input_kind(body, team):
+    """실험 기록 표의 '입력' 칸 · 정답셋으로 했는지 업로드 데이터로 했는지. 재사용은 원래 실험의 입력을 잇는다."""
+    if isinstance(body.get('sheet'), dict):
+        return '시트'
+    if 'gold_keys' in body:
+        return '키워드 정답'
+    if body.get('source_run'):
+        return next((r.get('input', '') for r in _catalog(team)['runs'] if r['id'] == body['source_run']), '')
+    if body.get('hashes') or body.get('sample'):
+        return '정답셋'
+    return '엑셀' if 'rows' in body else '직접 입력'
+
+
+def _source_url(v):
+    """업로드 원문 링크 · iframe·새 탭에 그대로 쓰므로 http(s) 만 받는다(빈 값 허용)."""
+    v = str(v or '').strip()
+    if v and (len(v) > 2000 or not re.match(r'https?://[^\s]+$', v, re.I)):
+        raise ValueError('원문 URL 은 http(s) 주소여야 합니다')
+    return v
+
+
+def _meta_item(title, meta, source_url=None):
     """직접 입력·엑셀 행 공통 검사 · 리드문 필수."""
     if not isinstance(meta, dict) or not isinstance(meta.get('summary'), str) or not meta['summary'].strip():
         raise ValueError('리드문을 입력하세요')
@@ -262,11 +283,11 @@ def _meta_item(title, meta):
         raise ValueError('입력 메타 형식·길이를 확인하세요')
     if title is not None and (not isinstance(title, str) or len(title) > 300):
         raise ValueError('콘텐츠 이름은 300자 이내입니다')
-    return _item({'title': title}, {k: meta.get(k, [] if k != 'summary' else '')
+    return _item({'title': title, 'source_url': _source_url(source_url)}, {k: meta.get(k, [] if k != 'summary' else '')
                                     for k in ('summary', 'entities', 'intent', 'content_category')})
 
 
-EXCEL_HEADERS = ['콘텐츠 이름', '리드문', '엔티티', '인텐트', '카테고리']
+EXCEL_HEADERS = ['콘텐츠 이름', '리드문', '엔티티', '인텐트', '카테고리', '원문 URL']
 EXCEL_MAX_BYTES = 2 * 1024 * 1024
 
 
@@ -274,7 +295,7 @@ def excel_template():
     """핵심 키워드 실험 입력 양식(.xlsx) · 값 여러 개는 쉼표로 구분."""
     from .runops import build_template_xlsx
     return build_template_xlsx(rows=[EXCEL_HEADERS, ['예시) 기준금리 인하', '한국은행이 기준금리를 0.25%p 내렸다.',
-                                                     '한국은행, 이창용', '속보', '경제']])
+                                                     '한국은행, 이창용', '속보', '경제', 'https://v.daum.net/v/예시']])
 
 
 def parse_excel(body):
@@ -314,12 +335,13 @@ def parse_excel(body):
                 'intent': split(r.get('인텐트')), 'content_category': split(r.get('카테고리'))}
         reason = ('리드문 없음' if not meta['summary'] else '엔티티 없음' if not meta['entities']
                   else f'{MAX_ITEMS}건 초과' if len(rows) >= MAX_ITEMS else '')
+        url = str(r.get('원문 URL') or '').strip()
         if not reason:
             try:
-                _meta_item(title or None, meta)
+                _meta_item(title or None, meta, url)
             except ValueError as exc:
                 reason = str(exc)
-        (rejected if reason else rows).append({'row': n, 'title': title, 'meta': meta, **({'reason': reason} if reason else {})})
+        (rejected if reason else rows).append({'row': n, 'title': title, 'meta': meta, 'source_url': url, **({'reason': reason} if reason else {})})
     return {'ok': True, 'rows': rows, 'rejected': rejected}
 
 
@@ -407,7 +429,7 @@ def start(body, team, actor, background=True, gold_snapshot=None, should_stop=No
            'updated_at': time.time(), 'items': items, 'slots': slots, 'cells': {},
            'gold_snapshot': {it['key']: copy.deepcopy(golds[it['key']]) for it in items if it['key'] in golds},
            'blind': body.get('blind', True) is not False, 'revealed': body.get('blind', True) is False,
-           'dataset_id': _digest(items), 'source_run': body.get('source_run') or ''}
+           'dataset_id': _digest(items), 'source_run': body.get('source_run') or '', 'input': _input_kind(body, team)}
     if isinstance(body.get('sheet'), dict):
         run['sheet'] = {'read': body['sheet']['read'], 'targets': len(items), 'skipped': body['sheet']['skipped'],
                         'include_pending': body['sheet'].get('include_pending') is True, 'meta_model': '', 'meta_failed': 0,
@@ -421,7 +443,8 @@ def start(body, team, actor, background=True, gold_snapshot=None, should_stop=No
         ACTIVE.add((team, rid))                    # 기록 저장보다 먼저: 갓 시작한 실행을 _settle 이 중단으로 오인하지 않게
     _update(_key('run', rid), team, lambda target: target.update(run), {})
     _update(CATALOG, team, lambda cat: cat['runs'].append({'id': rid, 'target': target, 'created_at': run['created_at'],
-                'n': len(items), 'slots': len(slots), 'dataset_id': run['dataset_id'], 'item_keys': [it['key'] for it in items]}), c)
+                'n': len(items), 'slots': len(slots), 'dataset_id': run['dataset_id'], 'input': run['input'],
+                'item_keys': [it['key'] for it in items]}), c)
     if background:
         threading.Thread(target=_run, args=(rid, team), daemon=True).start()
     else:
