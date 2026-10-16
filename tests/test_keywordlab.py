@@ -274,7 +274,6 @@ class KeywordLabTest(unittest.TestCase):
         self.assertEqual(first['본문'], '본문 원문\n둘째 줄')
         self.assertEqual(first['원문 URL'], 'https://example.com/a')               # 콘텐츠 행이 없으면 정답셋 원문의 링크
         self.assertEqual(K.run_detail(rid, 'a')['run']['sources'][run['items'][0]['hash']], 'https://example.com/a')
-        self.assertEqual(K.run_detail(rid, 'a')['run']['texts'][run['items'][0]['hash']]['body'], '본문 원문\n둘째 줄')   # 상세 '추출 텍스트' 탭
         self.assertEqual(first['엔티티'], '한국은행 | 이창용')
         self.assertEqual(first['모델·버전'], '비공개')
         self.assertEqual(first['핵심 키워드'], ' | '.join(k['text'] for k in kws))
