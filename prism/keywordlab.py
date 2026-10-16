@@ -707,36 +707,6 @@ def _prior_reviews(run, team):
     return found
 
 
-_TEXT_MEMO = {}                      # (팀, 실험, 해시 묶음) → 추출 텍스트 · _SOURCE_MEMO 와 같은 이유로 기억
-
-
-def _source_texts(items, team, rid=None):
-    """해시 → 추출 텍스트(서비스·부제·본문·이미지) · 콘텐츠 검수 화면의 '추출 텍스트' 탭과 같은 값.
-    정답셋 원문에서만 채운다(직접 입력은 없음) · 조회 실패 결과는 기억하지 않는다."""
-    from .store import golden_hash
-    key = (team, rid, tuple(it['hash'] for it in items)) if rid is not None else None
-    if key in _TEXT_MEMO:
-        return dict(_TEXT_MEMO[key])
-    want, out = {it['hash'] for it in items}, {}
-    try:
-        for r in _store().get_golden(team) or []:
-            c = r.get('content') or {}
-            try:
-                h = golden_hash(r)
-            except ValueError:
-                continue
-            if h in want and (c.get('body') or c.get('images')):
-                out[h] = {'service': c.get('displayServiceName') or '', 'subtitle': c.get('subtitle') or '', 'body': c.get('body') or '',
-                          'images': [u for u in c.get('images') or [] if isinstance(u, str)] if isinstance(c.get('images'), list) else []}
-    except Exception:
-        out, key = {}, None
-    if key is not None:
-        if len(_TEXT_MEMO) >= _SOURCE_MEMO_MAX:
-            _TEXT_MEMO.pop(next(iter(_TEXT_MEMO)))
-        _TEXT_MEMO[key] = out
-    return dict(out)
-
-
 def run_detail(rid, team):
     run = _settle(rid, team)
     if not run:
@@ -746,7 +716,6 @@ def run_detail(rid, team):
     out['prior_reviews'] = _prior_reviews(run, team)
     out['current_gold'] = _current_gold(team, {k: g for k, g in _catalog(team)['gold'].items() if k in out['prior_reviews']})
     out['sources'] = _source_urls(out['items'], team, rid)
-    out['texts'] = _source_texts(out['items'], team, rid)
     if not out['revealed']:
         for slot in out['slots']:
             slot['version'] = {'title': '판정 후 공개'}

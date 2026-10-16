@@ -372,7 +372,6 @@ window.PRISM_APP_PARTS.push(() => ({
       a.href=u; a.download='prism_keyword_'+this.kwRunId.slice(0,8)+'.csv'; a.click(); setTimeout(()=>URL.revokeObjectURL(u),60000);
     } catch(e) {this.kwError=e.message;}
   },
-  kwSourceText() {return (this.kwReview && this.kwRunData?.texts?.[this.kwReview.item.hash]) || null;},
   kwSourceUrl() {return (this.kwReview && this.kwRunData?.sources?.[this.kwReview.item.hash]) || '';},
   kwSlotBadge(cell) {return ({'확정':'ds-badge--success','판정됨':'ds-badge--intent','실패':'ds-badge--error'})[this.kwSlotState(cell)] || 'ds-badge--neutral';},
   // 콘텐츠 한 건의 목록 상태: 판정할 조합이 남았으면 미검수/검수 중 · 모두 확정이면 확정
