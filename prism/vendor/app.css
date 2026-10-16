@@ -346,7 +346,9 @@
     box-shadow:var(--ds-shadow-high);font-size:13px;color:var(--ds-ink)}
   /* 원문 페이지 내장 보기: 탭 전환(추출 텍스트 ↔ 원문) · 원문 선택 시 다이얼로그 확장 · 배율은 transform 스케일 */
   .detailview--wide{width:min(1280px,96vw)}
-  .dvc__viewtabs{display:flex;align-items:center;gap:var(--ds-space-2);margin-bottom:var(--ds-space-3)}
+  /* 탭 줄은 상단 고정: 내장 원문이 로드되며 바깥 영역을 스크롤시켜도 헤더 선에 붙지 않는다(sticky 기준선이 패딩 안쪽이라 top 을 -22px · 여백 22px 는 줄이 직접 갖고 배경으로 가림) */
+  .dvc__viewtabs{display:flex;align-items:center;gap:var(--ds-space-2);position:sticky;top:-22px;z-index:2;
+    margin:-22px -24px var(--ds-space-3);padding:22px 24px var(--ds-space-2);background:var(--ds-layer-popup)}
   .dvc__webwrap{display:flex;flex-direction:column;margin-top:var(--ds-space-3)}
   .dvc__webbox{height:min(62vh,720px);border:1px solid var(--ds-divider-section);border-radius:var(--ds-radius-card);background:#fff;overflow:hidden}
   .dvc__web{border:0;background:#fff;transform-origin:0 0}
