@@ -90,7 +90,7 @@ class CleanMetaTest(unittest.TestCase):
         for data in [[], {}, {'body': 'x' * 16001}, {'body': 'x', 'gate': True},
                      {'body': 'x', 'input_price': float('inf')}, {'body': 'x', 'mode': 'unknown'}, {'body': 'x', 'model': None}, {'body': 'x', 'model': 'bad model'}]:
             self.assertFalse(CM.try_one(data)['ok'])
-        with patch.object(CM.DC, '_env', return_value=(CM.DC._mock_post, '', '')):
+        with patch.object(CM, '_env', return_value=(CM.mock_post, '', '')):
             result = CM.try_one({'body': '본문'})
         self.assertTrue(result['mock'])
         self.assertEqual(len(result['runs']), 2)
@@ -101,8 +101,10 @@ class CleanMetaTest(unittest.TestCase):
     def test_route_permission_and_invalid_json(self):
         from prism import serve
         self.assertEqual(serve._POST_ROUTES['/lab-cleanmeta-try'][1], 'super')
+        self.assertFalse(any('/lab-decide-' in route for route in serve._POST_ROUTES))
+        self.assertFalse(any('/lab-decide-' in route for route in serve._GET_ROUTES))
         self.assertFalse(serve._p_lab_cleanmeta_try(None, b'{bad')['ok'])
-        with patch.object(CM.DC, '_env', return_value=(CM.DC._mock_post, '', '')):
+        with patch.object(CM, '_env', return_value=(CM.mock_post, '', '')):
             self.assertTrue(serve._p_lab_cleanmeta_try(None, b'{"body":"sample"}')['ok'])
 
 
@@ -121,7 +123,7 @@ class CleanMetaHTTPTest(unittest.TestCase):
             stack.enter_context(patch.object(serve.Handler, '_bearer_email', return_value='test@example.test'))
             stack.enter_context(patch.object(serve.Handler, '_req_team', return_value='test-team'))
             allowed = stack.enter_context(patch.object(serve, 'is_super_admin_user', return_value=False))
-            model = stack.enter_context(patch.object(CM.DC, '_env', return_value=(CM.DC._mock_post, '', '')))
+            model = stack.enter_context(patch.object(CM, '_env', return_value=(CM.mock_post, '', '')))
             server = ThreadingHTTPServer(('127.0.0.1', 0), serve.Handler)
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
@@ -151,7 +153,7 @@ class CleanMetaExpandedTest(unittest.TestCase):
         self.assertEqual({v[0] for v in CM.PROFILES.values()}, {'VL-%02d' % n for n in range(1, 14)})
         questions = {**CM.route_questions(), **CM.detail_questions(CM.TYPES, CM.segments('제목', 'x' * 16000))}
         self.assertEqual(len(questions), CM.QUESTION_COUNT)
-        self.assertLessEqual(len(questions), CM.DC.MAX_QUESTIONS)
+        self.assertLessEqual(len(questions), CM.MAX_QUESTIONS)
         self.assertTrue(all(len(q['criteria']) <= 26 for q in questions.values()))
         out = CM.judge({'body': 'synthetic'}, 'cascade', fake({'route_' + k: 'A' for k in CM.TYPES}))
         self.assertEqual(len(out['results']), 13)
@@ -178,14 +180,32 @@ class CleanMetaExpandedTest(unittest.TestCase):
 
     def test_native_model_is_sent_without_retries(self):
         seen = []
-        def native(payload, key, retry):
-            seen.append((payload['model'], retry))
+        def native(payload, key):
+            seen.append(payload['model'])
             return CM.mock_post(payload, key)
-        with patch.object(CM.DC, '_env', return_value=(native, 'test', '')), patch.object(CM.DC, '_post', side_effect=native):
+        with patch.object(CM, '_env', return_value=(native, 'test', '')), patch.object(CM, '_post', side_effect=native):
             result = CM.try_one({'body': 'synthetic', 'mode': 'all', 'model': 'solar-decide'})
         self.assertTrue(result['ok'])
-        self.assertEqual(seen, [('solar-decide', 0)])
+        self.assertEqual(seen, ['solar-decide'])
         self.assertEqual(result['runs'][0]['score_source'], 'jev_probability')
+
+    def test_jev_transport_keeps_payload_and_never_retries(self):
+        import io
+        import urllib.error
+        payload = {"model": CM.MODEL, "state": {"body": "원문"}, "questions": {}}
+        with patch.object(CM.urllib.request, 'urlopen', return_value=io.BytesIO(b'{"answers":{}}')) as send:
+            self.assertEqual(CM._post(payload, 'test-key'), {'answers': {}})
+        req = send.call_args[0][0]
+        self.assertEqual(json.loads(req.data), payload)
+        self.assertEqual(req.get_header('Authorization'), 'Bearer test-key')
+        self.assertEqual(send.call_args[1]['timeout'], CM.TIMEOUT)
+        for error in [TimeoutError('SECRET'), urllib.error.URLError('SECRET'),
+                      urllib.error.HTTPError(CM.URL, 422, 'SECRET', {}, io.BytesIO(b'SECRET'))]:
+            with patch.object(CM.urllib.request, 'urlopen', side_effect=error) as send:
+                with self.assertRaises(RuntimeError) as failure:
+                    CM._post(payload, 'test-key')
+                self.assertNotIn('SECRET', str(failure.exception))
+                send.assert_called_once()
 
     def test_absent_context_overrides_unfounded_external_confirmation(self):
         changes = {'route_fraud': 'A', 'fraud_truth': 'A'}
@@ -218,9 +238,9 @@ class CleanMetaExpandedTest(unittest.TestCase):
                     'usage': {'prompt_tokens': 700, 'completion_tokens': 200}})
         client = Client()
         original_retry = client.cfg.retry.max_retries
-        with patch.object(CM.DC, '_SV', serve), patch.object(serve.Handler, 'server_mock', False), \
+        with patch.object(CM, '_SV', serve), patch.object(serve.Handler, 'server_mock', False), \
              patch.object(serve, 'llm_for_model', return_value=(client, 'timely')) as resolve, \
-             patch.object(CM.DC, '_env') as solar:
+             patch.object(CM, '_env') as solar:
             result = CM.try_one({'body': 'synthetic', 'model': client.model})
         resolve.assert_called_once_with(client.model, False)
         solar.assert_not_called()
@@ -236,8 +256,8 @@ class CleanMetaExpandedTest(unittest.TestCase):
 
     def test_missing_text_model_connection_does_not_fallback(self):
         from prism import serve
-        with patch.object(CM.DC, '_SV', serve), patch.object(serve.Handler, 'server_mock', False), \
-             patch.object(serve, 'llm_for_model', return_value=(None, '라우터 키 없음')), patch.object(CM.DC, '_post') as native:
+        with patch.object(CM, '_SV', serve), patch.object(serve.Handler, 'server_mock', False), \
+             patch.object(serve, 'llm_for_model', return_value=(None, '라우터 키 없음')), patch.object(CM, '_post') as native:
             result = CM.try_one({'body': 'synthetic', 'model': 'text-model'})
         self.assertFalse(result['ok'])
         native.assert_not_called()

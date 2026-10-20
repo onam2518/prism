@@ -78,14 +78,13 @@ from . import prismtools as PTL       # 도구 계층: 내부 검수 보조·외
 PTL._SV = sys.modules[__name__]     # 동일 주입
 from . import reviewassist as RA     # 내부 검수 보조(트랙 A) 도구 · /assist
 RA._SV = sys.modules[__name__]      # 동일 주입
-from . import decide as DC           # 솔라 디사이드 판정 시험(실험실 · 운영자 전용) · /lab-decide-*
 from . import cleanmeta as CM        # 클린 메타 실험(운영자 전용)
 from . import reviewtime as RT       # 검수 소요 시간 측정 · /review-time · /review-time-stats
 from . import entrefine as ER        # 핵심 키워드 / 문장 재가공 시험(실험실) · /lab-entrefine-* · /lab-core-config
 ER._SV = sys.modules[__name__]
 from . import keywordlab as KL
 KL._SV = sys.modules[__name__]
-DC._SV = sys.modules[__name__]
+CM._SV = sys.modules[__name__]
 IG._SV = sys.modules[__name__]      # 인입·잡 주입(동일)
 BD._SV = sys.modules[__name__]      # 게시판 주입(동일)
 EVO._SV = sys.modules[__name__]     # 평가 런 도메인 주입(Atelier eval_runs 이식)
@@ -2273,11 +2272,6 @@ def _g_lab_entrefine_votes(h, q):
     return ER.votes(h._req_team())
 
 
-@_get_route("/lab-decide-status", admin=True)        # 솔라 디사이드 골든셋 시험 진척·결과 폴링
-def _g_lab_decide_status(h, q):
-    return DC.status(q.get("id", [""])[0], h._req_team())
-
-
 @_get_route("/metaquery", admin=True)                # 콘텐츠 조회(메타베이스) 설정·연결 상태
 def _g_metaquery(h, q):
     return MQ.mq_status(team=h._req_team())
@@ -3264,13 +3258,6 @@ def _assist_me(h, d) -> str:
     return str((d or {}).get("reviewer") or "")[:64].strip()
 
 
-@_post_route("/lab-decide-run", gate="super")        # 솔라 디사이드 골든셋 시험 시작(백그라운드 잡)
-def _p_lab_decide_run(h, body):
-    data = json.loads(body or b"{}")
-    return DC.start(team=h._req_team(), n=data.get("n") or 100, scope=data.get("scope") or "all",
-                    gate=float(data.get("gate") or DC.GATE), defs=data.get("defs", True) is not False)
-
-
 @_post_route("/lab-keywords", gate="team")
 def _p_lab_keywords(h, body):
     data = json.loads(body or b"{}")
@@ -3310,11 +3297,6 @@ def _p_lab_entrefine_vote(h, body):
         h._send(401, json.dumps({"error": "인증 필요"}, ensure_ascii=False), _JSON)
         return None
     return ER.vote(data, (data.get("reviewer") or "").strip(), team=data.get("_team") or h._req_team())
-
-
-@_post_route("/lab-decide-try", gate="super")        # 솔라 디사이드 한 건 시험(직접 입력)
-def _p_lab_decide_try(h, body):
-    return DC.try_one(json.loads(body or b"{}"))
 
 
 @_post_route("/lab-cleanmeta-try", gate="super")

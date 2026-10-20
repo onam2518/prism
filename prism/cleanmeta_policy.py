@@ -17,7 +17,7 @@ def defaults():
             "groups": [{"id": k, "code": v[0], "name": v[1], "legacy_vl": v[2]} for k, v in GROUPS.items()],
             "external_facts": [{"id": k, "name": v} for k, v in EXTERNAL.items()],
             "policy_count": len(RULES), "atom_count": len(ATOMS) + len(EXTERNAL),
-            "first_question_count": len(GROUPS) + len(MANDATORY), "batch_limit": CM.DC.MAX_QUESTIONS}
+            "first_question_count": len(GROUPS) + len(MANDATORY), "batch_limit": CM.MAX_QUESTIONS}
 
 
 def validate(data):
@@ -117,10 +117,10 @@ def judge(data, mode, post, key=""):
 
     def request(stage, questions):
         items = list(questions.items())
-        for offset in range(0, len(items), CM.DC.MAX_QUESTIONS):
-            batch = dict(items[offset:offset + CM.DC.MAX_QUESTIONS])
+        for offset in range(0, len(items), CM.MAX_QUESTIONS):
+            batch = dict(items[offset:offset + CM.MAX_QUESTIONS])
             t = time.monotonic()
-            call = {"stage": stage, "batch": offset // CM.DC.MAX_QUESTIONS + 1, "questions": len(batch),
+            call = {"stage": stage, "batch": offset // CM.MAX_QUESTIONS + 1, "questions": len(batch),
                     "question_ids": list(batch), "model": None, "input_tokens": None, "output_tokens": None, "status": "failed"}
             calls.append(call)
             try:

@@ -1520,11 +1520,10 @@ button.tbchip:disabled{cursor:default;opacity:.8}
   .selctl .mpick__btn{height:30px}
   .abslot .mpick__btn{height:32px}
 
-  /* 실험실 › 솔라 디사이드(19h-decide): 영역 세로 간격 · 입력 한 줄 배치 · 숫자 입력 폭 */
+  /* 실험실 공통: 영역 세로 간격 · 입력 한 줄 배치 · 숫자 입력 폭 */
   .dc-body{display:flex;flex-direction:column;gap:var(--ds-space-4)}
   .dc-row{display:flex;align-items:flex-end;gap:var(--ds-space-4);flex-wrap:wrap}
   .dc-num{width:8em}
-  .dc-top{align-items:start}
   .evaltabs .cnt{font-family:var(--ds-font-display);font-weight:800;margin-left:5px;opacity:.85}
 
   /* 키워드 작업 칩·단계별 실행: 기존 공통 컨트롤과 토큰 사용 */

@@ -611,7 +611,7 @@ def try_one(body: dict, team=None) -> dict:
 
 
 
-# ── 정답셋 일괄 시험(백그라운드 잡 · decide 와 같은 패턴) ──────────────────────
+# ── 정답셋 일괄 시험(백그라운드 잡) ──────────────────────
 _LOCK = threading.Lock()
 _RUNS: dict = {}
 _SEQ = 0
