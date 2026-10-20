@@ -1612,6 +1612,12 @@ class SupabaseStore:
         self._req("POST", "entity_aliases", body=[{"alias": alias, "entity_id": entity_id}],
                   prefer="resolution=ignore-duplicates,return=minimal")
 
+    def ent_alias_change(self, entity_id: str, before: str, after: str) -> bool:
+        query = "alias=eq." + urllib.parse.quote(before, safe="") + "&entity_id=eq." + urllib.parse.quote(entity_id, safe="")
+        rows = self._req("PATCH" if after else "DELETE", "entity_aliases", query=query,
+                         body={"alias": after} if after else None, prefer="return=representation")
+        return len(rows) == 1
+
     def ent_alias_add_many(self, pairs):
         """[(별칭, entity_id)] 일괄 등록 · 기존 별칭은 무시(ent_alias_add 와 동일 ignore-duplicates)."""
         seen, rows = set(), []

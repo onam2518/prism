@@ -6,8 +6,8 @@ window.PRISM_APP_PARTS = window.PRISM_APP_PARTS || [];
 window.PRISM_APP_PARTS.push(() => ({
       // ── 픽커 인스턴스 상태(id → {q, open, free[]}) · free = "새 엔티티로 추가"로 넣은 사전 밖 값(신규 표시) ──
       hyb: {},
-      hybSt(id) { if (!this.hyb[id]) this.hyb[id] = { q: '', open: false, free: [] }; return this.hyb[id]; },
-      hybInit(ids) { (ids || []).forEach((id) => { this.hyb[id] = { q: '', open: false, free: [] }; }); },
+      hybSt(id) { if (!this.hyb[id]) this.hyb[id] = { q: '', open: false, free: [], composing: false }; return this.hyb[id]; },
+      hybInit(ids) { (ids || []).forEach((id) => { this.hyb[id] = { q: '', open: false, free: [], composing: false }; }); },
       hybFree(id, v) { return this.hybSt(id).free.includes(v); },
       hybDisp(kind, v) { return kind === 'category' ? this.catKo(v) : v; },   // 칩·드롭다운 표시(카테고리만 한글) · 값은 영문 경로 유지
       hybAdd(id, sel, v, free) {
@@ -31,7 +31,13 @@ window.PRISM_APP_PARTS.push(() => ({
       // 검색은 부분 일치라, 예전처럼 무조건 첫 후보를 넣으면 '회사' 를 치고 Enter 했을 때
       // 사전의 '지주회사' 가 대신 들어갔다 — 사용자가 입력하지 않은 값이 추가되는 셈
       // (2026-07-29 문의). 엔티티는 사용자가 친 말이 정답이므로 그것을 우선한다.
-      hybEnter(id, fld, ctx, sel) {
+      hybComposition(id, event, active) {
+        const st = this.hybSt(id); st.composing = active;
+        if (!active) this.hybInput(id, event.target.value);
+      },
+      hybEnter(id, fld, ctx, sel, event) {
+        if (this.hybSt(id).composing || (event && (event.isComposing || event.keyCode === 229))) return;
+        if (event) event.preventDefault();
         const q = (this.hybSt(id).q || '').trim();
         if (!q) return;
         const lc = q.toLowerCase();

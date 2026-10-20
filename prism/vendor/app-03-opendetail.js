@@ -3,7 +3,7 @@
 window.PRISM_APP_PARTS = window.PRISM_APP_PARTS || [];
 window.PRISM_APP_PARTS.push(() => ({
       openDetail(c, manage = false) {
-        this.opsManage = manage; this.histOpen = false;
+        this.opsManage = manage; this.histOpen = false; this.detailPos = null; this.entReviewChanges = [];
         this.finalCtx = null;                    // 최종검수 결정 바는 최종 검수 탭 진입(openFinalDetail)에서만
         this.detailNav = null; this.detail = Object.assign({ entities: [], entities_scored: [], intent: [], category: [], reasons: [], images: [], fb: {} }, c); if (!this.detail.fb) this.detail.fb = {};
         this.entLowOpen = false;                 // 연관 낮음(확신도 0.5 이하) 접기는 콘텐츠별 초기화
@@ -21,6 +21,10 @@ window.PRISM_APP_PARTS.push(() => ({
         this.opsOpen(c);
       },
       // ── 검수 상세 × 엔티티 사전: 뱃지에 타입·속성 표시 · 클릭 = 상세 팝업(수정·보강 가능) ──
+      entReviewChanges: [],
+      entReviewRecord(message) {
+        if (this.detailOpen && this.detail && !this.entReviewChanges.includes(message)) this.entReviewChanges.push(message);
+      },
       entLookup: {},
       async loadEntLookup() {
         this.entLookup = {};
@@ -45,14 +49,21 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       async saveEntFix() {
         if (!(this.detail && this.detail.hash === this.entFixHash) || this.entFixBusy) return;
+        const hash = this.detail.hash;
         const ents = this.entFixList.slice();
         if (ents.join('|') === (this.detail.entities || []).join('|')) { this.entFixOpen = false; return; }
         this.entFixBusy = true;
         try {
           let r = null;
           if (!this.opsDetail) { this._err('검수 기준을 불러온 뒤 다시 저장하세요'); return; }
-          r = await this.opsSave({action:'patch',patch:{entities:ents}});
+          const prior = (this.opsDetail.values || {}).entities || [];
+          const values = ents.map(name => { const old = prior.find(x => x && x.name === name); return {name, type:old ? old.type || null : null}; });
+          r = await this.opsSave({action:'patch',patch:{entities:values}});
           if (!(r && r.ok)) { this._err((r && r.error) || '엔티티 저장 실패'); return; }
+          if (!this.detail || this.detail.hash !== hash) return;
+          const scored = this.detail.entities_scored || [];
+          this.detail.entities_scored = ents.map(name => scored.find(x => x.name === name) || {name, conf:null});
+          this.entReviewRecord('엔티티 목록: ' + (ents.join(', ') || '없음'));
           this.detail.entities = ents;             // 상세·목록 사본 즉시 반영
           [((this.rawData || {}).items), ((this.drillData || {}).items), ((this.finalQueue || {}).items), (this.detailNav ? this.detailNav.list : null)].forEach((list) => {
             const t = (list || []).find((x) => x.hash === this.detail.hash);
@@ -120,7 +131,8 @@ window.PRISM_APP_PARTS.push(() => ({
             method: 'POST', headers: this._authHeaders(),
             body: JSON.stringify({ hash: d.hash, entity: name, label: next, reviewer: this.reviewer }),
           })).json();
-          if (r && r.ok) {
+          if (r && r.ok && this.detail && this.detail.hash === d.hash) {
+            this.entReviewRecord(name + ': ' + (next === 'y' ? '관련 있음' : next === 'n' ? '관련 없음' : '관련성 답변 취소'));
             this.entLabels = Object.assign({}, this.entLabels,
               { [name]: { mine: r.mine, yes: r.counts.yes, no: r.counts.no, n: r.counts.n } });
           } else { this._err((r && r.error) || '라벨을 저장하지 못했습니다'); }
@@ -218,6 +230,7 @@ window.PRISM_APP_PARTS.push(() => ({
         try { const p = JSON.parse(localStorage.getItem('prismPolPal') || 'null'); if (p) { this.polPos = p.pos || null; this.polTab = p.tab || 'intent'; } } catch (e) {}
       },
       polSave() { try { localStorage.setItem('prismPolPal', JSON.stringify({ pos: this.polPos, tab: this.polTab })); } catch (e) {} },
+      polClose() { this.polOpen = false; this.polMatch = null; this.polSave(); },
       polToggle() { this.polOpen = !this.polOpen; if (this.polOpen && !this.dictData) this.loadDict(); this.polSave(); },
       polShow(kind, val) {                              // 값 태그 딥링크: 해당 정책 항목으로 점프·강조
         let v = String(val == null ? '' : val).replace(/\s*\(\d+\)\s*$/, '');
@@ -345,6 +358,21 @@ window.PRISM_APP_PARTS.push(() => ({
         const up = () => { this.polDrag = null; this.polSave(); window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
         window.addEventListener('pointermove', move);
         window.addEventListener('pointerup', up);
+      },
+      detailPos: null,
+      detailStyle() { return this.detailPos ? {position:'fixed',left:this.detailPos.x+'px',top:this.detailPos.y+'px',margin:'0'} : {}; },
+      detailDragStart(e) {
+        if (e.button !== 0 || e.target.closest('button, input, a, select')) return;
+        const box = this.$refs.reviewWindow;
+        if (!box) return;
+        const r = box.getBoundingClientRect(), dx = e.clientX-r.left, dy = e.clientY-r.top;
+        const move = ev => {
+          this.detailPos = {x:Math.max(8,Math.min(ev.clientX-dx,window.innerWidth-r.width-8)),
+                            y:Math.max(8,Math.min(ev.clientY-dy,window.innerHeight-r.height-8))};
+        };
+        const up = () => { window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);window.removeEventListener('pointercancel',up); };
+        e.preventDefault();
+        window.addEventListener('pointermove',move);window.addEventListener('pointerup',up);window.addEventListener('pointercancel',up);
       },
       // 수정 대상 요소(id·라벨·학습 단계) · 원천 = 서버 /dict fixElements(feedback_loop 단일 원천).
       // 사전 미로드 시 lazy 로드 후 빈 목록(dictData 도착 시 Alpine 반응형으로 재렌더).

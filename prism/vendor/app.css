@@ -326,6 +326,7 @@
   .panel-hd>b{margin-right:auto}
   /* 콘텐츠 상세 스플릿뷰(공통 컴포넌트) */
   .detailview{background:var(--ds-layer-popup);border-radius:var(--ds-radius-xl);box-shadow:var(--ds-shadow-high);width:min(940px,94vw);max-height:88vh;display:flex;flex-direction:column;overflow:hidden}
+  .detailview[x-ref="reviewWindow"]{resize:both;min-width:min(560px,94vw);min-height:320px;max-width:96vw}
   .detailview__hd{display:flex;align-items:center;justify-content:space-between;padding:var(--ds-space-4) var(--ds-space-5);border-bottom:1px solid var(--ds-divider-section)}
   .detailview__hd b{font-size:15px;color:var(--ds-ink)}
   .detailview__body{display:grid;grid-template-columns:1.25fr 1fr;min-height:0;overflow:hidden}
@@ -1058,7 +1059,7 @@
 .polfab:hover{border-color:var(--ds-primary);color:var(--ds-primary)}
 .polpal{position:fixed;right:var(--ds-space-5);bottom:76px;z-index:80;width:min(920px,calc(100vw - 24px));max-width:calc(100vw - 24px);
   background:var(--ds-surface-white);border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-card);
-  box-shadow:0 14px 44px rgba(0,0,0,.2);display:flex;flex-direction:column}
+  box-shadow:0 14px 44px rgba(0,0,0,.2);display:flex;flex-direction:column;resize:both;overflow:hidden;min-width:min(360px,calc(100vw - 24px));min-height:240px;max-height:88vh}
 .polpal__hd{display:flex;align-items:center;gap:8px;padding:10px var(--ds-pad-inset);cursor:grab;user-select:none;
   border-bottom:1px solid var(--ds-hairline)}
 .polpal__hd:active{cursor:grabbing}
@@ -1110,7 +1111,7 @@
 .asxchat{position:fixed;right:var(--ds-space-5);bottom:calc(var(--ds-space-5) + var(--ds-fab-size) + var(--ds-space-2));
   z-index:80;width:min(400px,calc(100vw - 24px));max-width:calc(100vw - 24px);
   background:var(--ds-surface-white);border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-card);
-  box-shadow:0 14px 44px rgba(0,0,0,.2);display:flex;flex-direction:column}
+  box-shadow:0 14px 44px rgba(0,0,0,.2);display:flex;flex-direction:column;resize:both;overflow:hidden;min-width:min(360px,calc(100vw - 24px));min-height:240px;max-height:88vh}
 .asxchat__hd{display:flex;align-items:center;gap:8px;padding:10px var(--ds-pad-inset);cursor:grab;user-select:none;
   border-bottom:1px solid var(--ds-hairline)}
 .asxchat__hd:active{cursor:grabbing}

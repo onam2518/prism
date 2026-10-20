@@ -293,7 +293,7 @@ window.PRISM_APP_PARTS.push(() => ({
       // undefined 라 Object.keys() 마운트 크래시로 본문 전체가 안 뜬다(초기 토큰 준비 전 /dict 401 레이스·토큰 만료).
       // ── 엔티티 사전(별도 메뉴): 목록·필터·수동 편집(사람 확정)·위키데이터/나무위키 보강 ──
       entData: null, entQ: '', entType: '', entStatus: '', entMsg: '', entAddName: '',
-      entEdit: null, entEditAliases: [], entEditContents: [], entEditMsg: '', entAliasInput: '',
+      entEdit: null, entEditAliases: [], entEditContents: [], entEditMsg: '', entAliasInput: '', entAliasDraft: {}, entAliasBusy: false,
       _entPollT: null,
       _entProgress(s) { return (s.done || 0) + '/' + (s.total || 0) + ' · 매칭 ' + (s.hit || 0) + ' · 미등재 ' + (s.miss || 0) + ((s.fail || 0) ? ' · 실패 ' + s.fail : ''); },
       async loadEntdict(silent) {
@@ -342,18 +342,38 @@ window.PRISM_APP_PARTS.push(() => ({
         return (t && this.entData && this.entData.meta.attrFields[t]) || [];
       },
       async openEntEdit(e) {
-        this.entEditMsg = ''; this.entAliasInput = '';
+        this.entEditMsg = ''; this.entAliasInput = ''; this.entAliasDraft = {};
         const d = await this.entAction({ action: 'detail', id: e.entity_id });
         if (!d.ok) { this.entMsg = '오류: ' + (d.error || '조회 실패'); return; }
         this.entEdit = JSON.parse(JSON.stringify(d.entity));
         this.entEdit.attrs = this.entEdit.attrs || {};
         this.entEditAliases = d.aliases || []; this.entEditContents = d.contents || [];
       },
+      async changeEntAlias(before, remove = false) {
+        if (!this.entEdit || this.entAliasBusy) return;
+        const eid = this.entEdit.entity_id;
+        const after = remove ? '' : String(this.entAliasDraft[before] == null ? before : this.entAliasDraft[before]).trim();
+        if (!remove && !after) { this.entEditMsg = '새 별칭을 입력하거나 삭제 버튼을 사용하세요'; return; }
+        this.entAliasBusy = true; this.entEditMsg = '별칭 저장 중…';
+        try {
+          const d = await this.entAction({action:'update',id:eid,alias_change:{before,after}});
+          if (!this.entEdit || this.entEdit.entity_id !== eid) return;
+          if (!d.ok) { this.entEditMsg = '오류: ' + (d.error || '별칭 저장 실패'); return; }
+          this.entEditAliases = d.aliases || []; delete this.entAliasDraft[before];
+          this.entEditMsg = remove ? '별칭 삭제 완료' : '별칭 수정 완료';
+          this.entReviewRecord('별칭 ' + before + (remove ? ' 삭제' : ' → ' + after));
+          if (this.detailOpen) this.loadEntLookup();
+        } catch (e) { this.entEditMsg = '별칭 저장 실패 · 연결을 확인하세요'; }
+        finally { this.entAliasBusy = false; }
+      },
       async saveEntEdit() {
-        if (!this.entEdit) return;
+        if (!this.entEdit || this.entAliasBusy) return;
+        const entity = this.entEdit, hash = this.detail && this.detail.hash;
         this.entEditMsg = '저장 중…';
         const d = await this.entAction({ action: 'update', id: this.entEdit.entity_id, type: this.entEdit.type || '', attrs: this.entEdit.attrs || {}, alias: this.entAliasInput.trim() });
+        if (!this.entEdit || this.entEdit.entity_id !== entity.entity_id) return;
         if (!d.ok) { this.entEditMsg = '오류: ' + (d.error || ''); return; }
+        if (this.detail && this.detail.hash === hash) this.entReviewRecord(entity.name + ' 사전 정보 저장');
         this.entEdit = null; this.entMsg = '저장됨 · 수동 확정 필드는 재보강이 덮어쓰지 않습니다'; this.loadEntdict(true);
         if (this.detailOpen) this.loadEntLookup();       // 검수 상세에서 열었을 때 뱃지 정보 갱신
       },

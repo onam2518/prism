@@ -2,6 +2,7 @@
 window.PRISM_APP_PARTS = window.PRISM_APP_PARTS || [];
 window.PRISM_APP_PARTS.push(() => ({
   opsManage: false, opsDetail: null, opsAxes: {}, opsBusy: false, opsList: null, opsState: '', opsOwner: '',
+  gradeDraft:'', gradeReason:'',
   opsHistoryBasis:'', opsTimeType: 'first', opsCase: null, opsDecision: '', opsEvidence: '',
   opsFields: [{key:'summary',label:'리드문'},{key:'entities',label:'엔티티'},{key:'intent',label:'인텐트'},{key:'content_category',label:'카테고리'}],
   opsStateLabel(s) { return ({open:'미조치',working:'조치 중',recheck:'재검수 대기',verify:'반영 확인',closed:'종료',hold:'판단 보류'})[s] || s; },
@@ -14,12 +15,13 @@ window.PRISM_APP_PARTS.push(() => ({
   },
   opsUrl(hash) { return '/ops-review?hash='+encodeURIComponent(hash)+'&reviewer='+encodeURIComponent(this.reviewer||''); },
   async opsOpen(c) {
-    this.opsDetail=null; this.opsCase=null; this.opsAxes={};this.opsHistoryBasis='';
+    this.opsDetail=null; this.opsCase=null; this.opsAxes={};this.opsHistoryBasis='';this.gradeDraft='';this.gradeReason='';
     if (!c || !/^[0-9a-f]{16}$/.test(c.hash||'')) return;
     try {
       const r=await this.opsRequest(this.opsUrl(c.hash));
       if (!this.detail || this.detail.hash!==c.hash) return;
       this.opsDetail=r;
+      const quality=(r.basis.snapshot||{}).quality_meta||{};this.gradeDraft=quality.finalGrade||'';this.gradeReason=(quality.grade_review||{}).reason||'';
       if(this._rt && this._rt.hash===c.hash)this._rt.team=r.team;
       if(this._rt && this._rt.hash===c.hash && this._rt.verdictWall==null && r.review && Object.keys(r.review.axes||{}).length)this._rt.revisit=true;
       if(!this.detail.body && r.basis.body)this.detail.body=r.basis.body;
@@ -49,6 +51,20 @@ window.PRISM_APP_PARTS.push(() => ({
       return r;
     } catch(e) { this._err(e.message); return null; }
     finally { this.opsBusy=false; }
+  },
+  async saveGradeReview() {
+    if (!this.detail || !this.opsDetail || this.opsBusy) return;
+    const hash=this.detail.hash, grade=this.gradeDraft, reason=this.gradeReason.trim();
+    if (!['G','R'].includes(grade) || !reason) {this._err('유통 등급과 판정 사유를 입력하세요');return;}
+    const r=await this.opsSave({action:'patch',patch:{finalGrade:grade},grade_reason:reason});
+    if (!r || !this.detail || this.detail.hash!==hash) return;
+    this.detail.grade=grade;
+    const qm=(r.basis.snapshot||{}).quality_meta||{};this.gradeReason=(qm.grade_review||{}).reason||reason;
+    [((this.rawData||{}).items),((this.drillData||{}).items),((this.finalQueue||{}).items),(this.detailNav?this.detailNav.list:null)].forEach(list=>{
+      const item=(list||[]).find(x=>x.hash===hash);if(item)item.grade=grade;
+    });
+    this.liveToast('유통 등급과 판정 사유 저장 완료');
+    if(this.histOpen)this.loadHistory();
   },
   opsAllAccurate() { this.opsFields.forEach(f=>{this.opsAxes[f.key].status='accurate';}); },
   async opsSaveReview() {

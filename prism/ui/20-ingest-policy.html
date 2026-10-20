@@ -105,9 +105,15 @@
         </div>
         <div>
           <label class="lbl">별칭 (이형 표기 · 다음 적재부터 같은 개체로 흡수)</label>
-          <div class="flex flex-wrap gap-1.5" style="margin-bottom:6px">
-            <template x-for="a in entEditAliases" x-bind:key="'al'+a"><span class="ds-badge ds-badge--neutral" x-text="a"></span></template>
+          <div class="stack-2" style="margin-bottom:6px">
+            <template x-for="a in entEditAliases" x-bind:key="'al'+a"><div class="control-row">
+              <input class="field" style="flex:1;min-width:100px" x-bind:aria-label="'별칭 · ' + a" x-bind:value="entAliasDraft[a] == null ? a : entAliasDraft[a]" x-on:input="entAliasDraft[a]=$event.target.value" x-bind:disabled="entAliasBusy || (entEdit && a===entEdit.name)" maxlength="200">
+              <span class="meta" x-show="entEdit && a===entEdit.name">대표 이름</span>
+              <button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-show="entEdit && a!==entEdit.name" x-bind:disabled="entAliasBusy || entAliasDraft[a] == null || entAliasDraft[a]===a" x-on:click="changeEntAlias(a)">수정</button>
+              <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-show="entEdit && a!==entEdit.name" x-bind:disabled="entAliasBusy" x-on:click="changeEntAlias(a, true)">삭제</button>
+            </div></template>
           </div>
+          <p class="ds-hint">기존 별칭은 행의 수정·삭제 버튼으로 바로 저장합니다. 대표 이름은 유지됩니다.</p>
           <input type="text" class="field" placeholder="별칭 추가 (저장 시 반영)" x-model="entAliasInput">
         </div>
         <div x-show="entEditContents.length">
@@ -170,10 +176,10 @@
   <!-- 콘텐츠 상세 스플릿뷰(공통 컴포넌트): 좌 추출 원문 렌더 · 우 평가 -->
   <!-- 정책 팔레트(플로팅 도움말): 검수 중 사전·정책 기준 참조 · 드래그 이동 · 위치 기억 -->
   <button type="button" class="polfab" x-show="!polOpen" x-cloak x-on:click="polToggle()" data-tip="정책 도움말 · 인텐트/카테고리/품질 사유 기준" data-tip-pos="left" aria-label="정책 도움말 열기">?</button>
-  <div class="polpal" x-show="polOpen" x-cloak x-ref="polpal" x-bind:style="polStyle()">
+  <div class="polpal" x-show="polOpen" x-cloak x-ref="polpal" x-bind:style="polStyle()" role="dialog" aria-label="정책 도움말" x-on:keydown.escape.window="polOpen && _escTop($event, $el) && polClose()">
     <div class="polpal__hd" x-on:pointerdown="polDragStart($event)">
-      <b>정책 도움말</b><span class="meta">드래그로 이동</span>
-      <button type="button" class="ds-iconbtn ds-iconbtn--sm ml-auto" x-on:click="polOpen=false; polMatch=null; polSave()" aria-label="정책 도움말 닫기"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+      <b>정책 도움말</b><span class="meta">제목으로 이동 · 모서리로 크기 조절</span>
+      <button type="button" class="ds-iconbtn ds-iconbtn--sm ml-auto" x-on:click="polClose()" aria-label="정책 도움말 닫기"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
     </div>
     <div class="polpal__bd">
       <div class="polpal__ctx" x-show="polCtx().length && !polMatch && polTab!=='keyword-guide'">
@@ -335,14 +341,15 @@
         </div>
       </div>
     </div>
-    <div class="detailview" x-show="detailOpen" x-bind:class="dvcView()==='web' ? 'detailview--wide' : ''" role="dialog" aria-modal="true" aria-label="콘텐츠 상세">
-      <div class="detailview__hd">
+    <div class="detailview" x-ref="reviewWindow" x-bind:style="detailStyle()" x-on:resize.window="detailPos=null" x-show="detailOpen" x-bind:class="dvcView()==='web' ? 'detailview--wide' : ''" role="dialog" x-bind:aria-modal="!polOpen" aria-label="콘텐츠 상세">
+      <div class="detailview__hd" x-on:pointerdown="detailDragStart($event)" style="cursor:grab;touch-action:none">
         <span style="display:flex;align-items:center;gap:8px">
           <button type="button" class="ds-iconbtn ds-iconbtn--sm" x-show="detailBack" x-on:click="detailOpen=false; drillOpen=true" data-tip="목록으로" data-tip-pos="bottom" aria-label="목록으로 뒤로가기"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-          <b x-text="opsManage ? '콘텐츠 상세 · 조치 관리' : '콘텐츠 상세 · 검수'"></b>
+          <b x-text="opsManage ? '콘텐츠 상세 · 조치 관리' : '콘텐츠 상세 · 검수'"></b><span class="meta">제목으로 이동 · 모서리로 크기 조절</span>
           <span class="text-xs text-muted tnum" x-show="detailNav" x-text="detailNav ? ((detailNav.idx + 1) + ' / ' + detailNav.list.length) : ''"></span>
         </span>
         <span style="display:flex;align-items:center;gap:6px">
+          <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-show="detailPos" x-on:click="detailPos=null">위치 초기화</button>
           <span class="text-xs text-muted" x-show="detailNav" style="cursor:help" data-tip="단축키 · A 정확 · S 수정 · ← → 이전/다음 · Esc 닫기" data-tip-pos="bottom">⌨ 단축키</span>
           <button type="button" class="ds-iconbtn ds-iconbtn--sm" x-show="detailNav" x-bind:disabled="!detailNav || detailNav.idx <= 0" x-on:click="detailGo(-1)" data-tip="이전 항목 (←)" data-tip-pos="bottom" aria-label="이전 항목"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
           <button type="button" class="ds-iconbtn ds-iconbtn--sm" x-show="detailNav" x-bind:disabled="!detailNav || detailNav.idx >= detailNav.list.length - 1" x-on:click="detailGo(1)" data-tip="다음 항목 (→)" data-tip-pos="bottom" aria-label="다음 항목"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 5l7 7-7 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
@@ -463,7 +470,7 @@
                   </template>
                 </div>
                 <div class="hybwrap" x-on:click.outside="hybSt('efent').open=false">
-                  <input type="text" class="field w-full field--compact" style="font-size:12.5px" placeholder="엔티티 검색 · 사전에 없으면 Enter = 새 엔티티로 추가" x-bind:value="hybSt('efent').q" x-on:input="hybInput('efent', $event.target.value)" x-on:keydown.enter.prevent="hybEnter('efent', {kind:'entity', free:true}, detail, entFixList)" x-on:keydown.escape="hybEsc('efent', $event)">
+                  <input type="text" class="field w-full field--compact" style="font-size:12.5px" placeholder="엔티티 검색 · 사전에 없으면 Enter = 새 엔티티로 추가" x-bind:value="hybSt('efent').q" x-on:input="hybInput('efent', $event.target.value)" x-on:compositionstart="hybComposition('efent', $event, true)" x-on:compositionend="hybComposition('efent', $event, false)" x-on:keydown.enter="hybEnter('efent', {kind:'entity', free:true}, detail, entFixList, $event)" x-on:keydown.escape="hybEsc('efent', $event)">
                   <div class="hybdd" x-show="hybSt('efent').open" x-cloak>
                     <template x-for="g in hybDrop('efent', 'entity', detail, entFixList)" x-bind:key="'efg'+g.label">
                       <div>
@@ -504,6 +511,14 @@
           <template x-if="opsDetail && detail && opsDetail.hash === detail.hash && mod !== 'metaq'">
             <!-- 항목별 판정(상시 검수 · opsreview): 기본 판정 영역과 같은 verdictbtn·ds-btn·dve__lbl 규격을 쓴다 -->
             <div class="dve__opswrap">
+            <section class="dve__ops" aria-label="유통 등급 판정">
+              <div class="dve__lbl">유통 등급 판정</div>
+              <p class="dve__hint">제목·본문의 품질을 확인해 유통 여부를 판정하세요. 메타 4종의 정확성 판정과 별도로 저장합니다.</p>
+              <label class="dve__field"><span class="dve__lbl">유통 등급</span><select class="field field--compact" x-model="gradeDraft" aria-label="유통 등급"><option value="">등급 선택</option><option value="G">유통 가능 · G</option><option value="R">유통 불가 · R</option></select></label>
+              <label class="dve__field"><span class="dve__lbl">판정 사유 (필수)</span><textarea class="field" rows="2" maxlength="2000" x-model="gradeReason" placeholder="예: 제목이 본문과 다르거나 본문에 오류가 있어 유통 불가"></textarea></label>
+              <div class="control-row control-row--compact dve__actions"><button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-bind:disabled="opsBusy || !gradeDraft || !gradeReason.trim()" x-on:click="saveGradeReview()">유통 등급 저장</button><button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-on:click="polShow('grade', gradeDraft)">판정 기준</button></div>
+              <p class="dve__hint">프리즘의 판정값과 사유를 저장합니다. 실제 서비스 반영 여부는 별도로 확인해야 합니다.</p>
+            </section>
             <section class="dve__ops">
               <div class="dve__lbl">항목별 판정</div>
               <details class="dve__fold" x-show="opsManage">
@@ -527,8 +542,13 @@
                       <button type="button" class="verdictbtn verdictbtn--hold" x-bind:class="opsAxes[f.key].status==='hold' ? 'is-on' : ''" x-bind:aria-pressed="opsAxes[f.key].status==='hold'" x-on:click="opsAxes[f.key].status='hold'"><span class="verdictbtn__dot"></span>보류</button>
                     </div>
                   </div>
+                  <div x-show="f.key==='entities'" class="ds-hint">
+                    <p>상단에서 수정·저장한 엔티티는 현재 값으로 판정하세요. 수정할 내용이 더 없으면 ‘정확’을 선택하면 됩니다. 관련 있음·없음 답변과 사전 정보는 별도로 저장됩니다.</p>
+                    <template x-for="(change,i) in entReviewChanges" x-bind:key="i"><p x-text="'저장됨 · ' + change"></p></template>
+                    <button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-show="entReviewChanges.length" x-on:click="opsAxes.entities.status='accurate';opsAxes.entities.proposal='';opsAxes.entities.reason=''">현재 엔티티 확인 · 정확</button>
+                  </div>
                   <label class="dve__field" x-show="opsAxes[f.key].status==='hold'" x-cloak><span class="dve__lbl">원문 근거·보류 사유</span><textarea class="field" rows="2" x-model="opsAxes[f.key].reason" placeholder="판단을 보류한 이유와 확인이 필요한 원문 근거"></textarea></label>
-                  <label class="dve__field" x-show="opsAxes[f.key].status==='needs_fix'" x-cloak><span class="dve__lbl">삭제·추가·수정 제안</span><input class="field" x-model="opsAxes[f.key].proposal"></label>
+                  <label class="dve__field" x-show="opsAxes[f.key].status==='needs_fix'" x-cloak><span class="dve__lbl" x-text="f.key==='entities' ? '추가로 필요한 수정' : '삭제·추가·수정 제안'"></span><input class="field" x-model="opsAxes[f.key].proposal" x-bind:placeholder="f.key==='entities' ? '아직 반영하지 않은 수정만 입력하세요' : ''"></label>
                 </div>
               </template>
               <div class="control-row control-row--compact dve__actions">

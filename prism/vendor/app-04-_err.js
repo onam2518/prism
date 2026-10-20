@@ -7,11 +7,11 @@ window.PRISM_APP_PARTS.push(() => ({
       // 첫 핸들러가 이벤트에 스냅숏을 남겨 같은 키 입력의 다른 핸들러도 닫히기 전 상태로 판정한다.
       _escTop(e, el) {
         if (!e._dlgTop) e._dlgTop = this._topDialog() || 1;
-        return !!el && e._dlgTop === el.closest('.ds-dialog-backdrop');
+        return !!el && e._dlgTop === el.closest('.ds-dialog-backdrop, .polpal');
       },
       _topDialog() {                                                 // 보이는 대화상자 중 맨 위(같은 z 면 DOM 뒤쪽)
         let z = -1, top = null;
-        document.querySelectorAll('.ds-dialog-backdrop').forEach((b) => {
+        document.querySelectorAll('.ds-dialog-backdrop, .polpal').forEach((b) => {
           if (!b.getClientRects().length) return;                   // 숨김(display:none) 제외
           const zi = +getComputedStyle(b).zIndex || 0;
           if (zi >= z) { z = zi; top = b; }
