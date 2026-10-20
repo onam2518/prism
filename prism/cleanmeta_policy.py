@@ -7,13 +7,11 @@ from datetime import datetime, timezone
 from . import cleanmeta as CM
 from .cleanmeta_policy_specs import ATOMS, EXTERNAL, GROUPS, MANDATORY, PROMPTS, RULES, VERSION
 
-PARTS = {"title": "제목", "body": "본문", "image": "이미지·썸네일", "video": "영상",
-         "audio": "음성", "link": "외부 링크", "history": "게시 이력"}
 OPTIONS = {"A": "존재", "B": "부재", "C": "판단 불가"}
 
 
 def defaults():
-    return {"ok": True, "policy_set": "common_v1", "version": VERSION, "prompts": dict(PROMPTS),
+    return {"ok": True, "input_scope": "text", "policy_set": "common_v1", "version": VERSION, "prompts": dict(PROMPTS),
             "groups": [{"id": k, "code": v[0], "name": v[1], "legacy_vl": v[2]} for k, v in GROUPS.items()],
             "external_facts": [{"id": k, "name": v} for k, v in EXTERNAL.items()],
             "policy_count": len(RULES), "atom_count": len(ATOMS) + len(EXTERNAL),
@@ -26,9 +24,7 @@ def validate(data):
         raise ValueError("1차·2차 기본 프롬프트를 모두 입력하세요")
     if any(not isinstance(v, str) or not v.strip() or len(v) > 8000 for v in prompts.values()):
         raise ValueError("각 프롬프트는 1~8,000자로 입력하세요")
-    parts = data.get("requested_parts", ["body"] + (["title"] if data.get("title") else []))
-    if not isinstance(parts, list) or len(parts) > len(PARTS) or any(not isinstance(p, str) or p not in PARTS for p in parts) or len(set(parts)) != len(parts):
-        raise ValueError("검사 범위를 확인하세요")
+    parts = ["body"] + (["title"] if data.get("title") else [])
     case = data.get("case_ref", "")
     if not isinstance(case, str) or len(case) > 300:
         raise ValueError("확인 자료의 대상·사건은 300자 이내로 입력하세요")
@@ -48,7 +44,7 @@ def validate(data):
         if not isinstance(source, str) or not source.strip() or len(source) > 1000:
             raise ValueError("검수 확인값마다 출처를 1~1,000자로 입력하세요")
         seen.add(aid)
-    return dict(prompts), facts, list(dict.fromkeys(["body"] + (["title"] if data.get("title") else []) + parts))
+    return dict(prompts), facts, parts
 
 
 def _question(text, prompt, options=OPTIONS):
@@ -110,8 +106,8 @@ def judge(data, mode, post, key=""):
     spans = CM.segments(data.get("title", ""), data["body"])
     state = {"source_segments": spans, "unverified_context": data.get("context", ""),
              "reviewed_facts": facts, "reviewed_case": data.get("case_ref", ""),
-             "requested_parts": parts, "unsupported_parts": [p for p in parts if p not in ("title", "body")],
-             "instructions": "자유 입력은 외부 사실의 검증 근거가 아닙니다. 미검사 부분을 확인한 것으로 가정하지 마세요."}
+             "input_scope": "text", "requested_parts": parts,
+             "instructions": "제목·본문 텍스트만 검사합니다. 자유 입력은 외부 사실의 검증 근거가 아닙니다."}
     answers, errors, calls = {}, {}, []
     started = time.monotonic()
 
@@ -187,8 +183,7 @@ def judge(data, mode, post, key=""):
                          "action_candidate": rule["action"] if status != "not_matched" else "none",
                          "binding": answers.get("binding." + rule["id"]),
                          "context": answers.get("context." + rule["group"])})
-    missing = state["unsupported_parts"]
-    coverage_status = "failed" if not answers else "partial" if errors or missing else "complete"
+    coverage_status = "failed" if not answers else "partial" if errors else "complete"
     core = [p for p in policies if p["layer"] in ("common", "legal")]
     raw_risk = any(_truth(answers.get(a), gate) == "present" for a in MANDATORY)
     common_status = ("review_required" if any(p["status"] == "matched" for p in core) or raw_risk else
@@ -212,8 +207,9 @@ def judge(data, mode, post, key=""):
             "recommendation": recommendation, "common_status": common_status, "policy_set": "common_v1",
             "policy_version": VERSION, "question_version": VERSION, "decision_version": VERSION, "approval_status": "draft",
             "prompts": prompts, "prompt_hash": prompt_hash, "custom_prompts": prompts != PROMPTS,
-            "coverage": {"status": coverage_status, "requested_parts": parts, "assessed_parts": [p for p in parts if p in ("title", "body")],
-                         "missing_parts": missing, "scope": "제공된 텍스트만 검사 · 법률 위반·전체 유통 허용 확정 아님"},
+            "input_scope": "text",
+            "coverage": {"status": coverage_status, "requested_parts": parts, "assessed_parts": parts,
+                         "scope": "제목·본문 텍스트 검사 결과 · 이미지·영상·음성 검증은 별도 체계"},
             "observations": list(observations.values()), "policies": policies, "results": results, "calls": calls, "errors": errors,
             "reviewed_facts": facts, "reviewer_supplied_context": data.get("context", ""), "segments": spans,
             "input_hash": hashlib.sha256(json.dumps(snapshot, sort_keys=True, ensure_ascii=False).encode()).hexdigest(),

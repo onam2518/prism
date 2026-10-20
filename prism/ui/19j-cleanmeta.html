@@ -5,7 +5,7 @@
       <div class="panel-bd dc-body">
         <ul class="ds-bullets">
           <li>전사 공통 초안은 <b>15개 정책군</b>을 확인하고, 회사 공통·법령·연령·서비스 결과를 구분합니다</li>
-          <li><b>1차 선별 → 필요한 상세 확인 → 규칙 적용</b> 순서입니다<ul><li>1차는 21문항이며 100문항을 넘는 단계는 나누어 요청합니다</li><li>미검사 매체는 따로 표시하며 실제 제재에는 연결하지 않습니다</li></ul></li>
+          <li><b>1차 선별 → 필요한 상세 확인 → 규칙 적용</b> 순서입니다<ul><li>1차는 21문항이며 100문항을 넘는 단계는 나누어 요청합니다</li><li>이번 실험은 제목·본문 텍스트만 검사합니다. 이미지·영상·음성은 별도 API의 검증 대상입니다</li></ul></li>
         </ul>
       </div>
     </section>
@@ -42,14 +42,13 @@
       <ul class="ds-bullets"><li>질문 항목·선택지·결과 검증·정책 규칙은 유지됩니다</li><li>수정한 프롬프트는 이번 실행에 적용하며 결과 JSON에 함께 기록합니다</li></ul>
       <p role="status" class="ds-hint" x-show="cmLoadingDefaults">기본 프롬프트를 불러오고 있습니다.</p><div x-show="!cmDefaults && !cmLoadingDefaults"><button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-on:click="cmInit()">기본값 다시 불러오기</button></div>
     </div></template>
-    <div class="stepline"><span class="stepline__no" x-text="cmPolicySet === 'common_v1' ? 'STEP 3' : 'STEP 2'"></span><b>콘텐츠·확인 자료</b><span class="meta">제목·본문과 검사 범위를 입력합니다</span></div>
+    <div class="stepline"><span class="stepline__no" x-text="cmPolicySet === 'common_v1' ? 'STEP 3' : 'STEP 2'"></span><b>콘텐츠·확인 자료</b><span class="meta">검사할 제목·본문 텍스트를 입력합니다</span></div>
     <section class="panel"><div class="panel-bd dc-body"><fieldset class="dc-body min-w-0" style="border:0;padding:0;margin:0" x-bind:disabled="cmBusy"><legend class="sr-only">검사할 콘텐츠</legend>
           <div><label class="ds-label" for="cm-title">제목 (선택)</label><input id="cm-title" class="field" maxlength="500" x-model="cmTitle"></div>
           <div><label class="ds-label" for="cm-body">본문 · 최대 16,000자</label><textarea id="cm-body" class="field" rows="7" maxlength="16000" x-model="cmBody"></textarea><p class="ds-hint">입력한 본문 전체를 검사하며 요약하거나 앞부분만 자르지 않습니다.</p></div>
-          <div><label class="ds-label" for="cm-context">확인 자료 (선택)</label><textarea id="cm-context" class="field" rows="3" maxlength="3000" x-model="cmContext" placeholder="게시 채널·동의·사실 확인·원저작물·권리·게시 이력·첨부물 확인 내용과 출처"></textarea><p class="ds-hint">자료가 없으면 공개 범위·동의 여부·진실·허위·이용 권리를 추정하지 않습니다.</p></div>
+          <div><label class="ds-label" for="cm-context">확인 자료 (선택)</label><textarea id="cm-context" class="field" rows="3" maxlength="3000" x-model="cmContext" placeholder="게시 채널·동의·사실 확인·원저작물·권리·게시 이력 확인 내용과 출처"></textarea><p class="ds-hint">자료가 없으면 공개 범위·동의 여부·진실·허위·이용 권리를 추정하지 않습니다.</p></div>
           <template x-if="cmPolicySet === 'common_v1'">
             <div class="dc-body">
-              <div><label class="ds-label">텍스트 외에 포함된 부분</label><div class="dc-row"><template x-for="part in ['image','video','audio','link','history']" x-bind:key="part"><label><input type="checkbox" x-model="cmParts" x-bind:value="part"> <span x-text="cmPartLabel(part)"></span></label></template></div><p class="ds-hint">체크한 부분은 미검사로 기록합니다. 선택하지 않은 부분까지 검사했다고 가정하지 않습니다.</p></div>
               <details><summary>검수로 확인한 외부 사실</summary><div class="dc-body" >
                 <p class="ds-hint">동의·연령·권리·진위는 위 자유 입력과 구분합니다. 실제 확인한 대상·사건과 출처를 적으세요. 출처를 자동 검증하는 기능은 없습니다.</p>
                 <div><label class="ds-label" for="cm-case">확인 자료의 대상·사건</label><input id="cm-case" class="field" maxlength="300" x-model="cmCaseRef" placeholder="예: 본문의 대상 A와 게시물 X"></div>
@@ -67,7 +66,7 @@
       <div class="control-row"><button type="button" class="ds-btn ds-btn--solid ds-btn--c-primary" x-bind:disabled="cmBusy || cmLoadingDefaults || !cmBody.trim()" x-on:click="cmTry()" x-text="cmBusy ? '검사 중…' : cmMode === 'compare' ? '두 방식 비교 실행' : '검사 실행'"></button><span class="meta" x-text="cmMode === 'compare' ? '같은 콘텐츠로 두 방식 실행' : '콘텐츠 1건 검사'"></span></div>
       <p role="status" class="ds-hint" x-show="cmBusy">선택한 방식으로 검사 중입니다. 완료 후 실제 요청 수와 문항 수를 표시합니다.</p>
       <p role="alert" class="ds-hint ds-hint--error" x-show="cmError" x-text="cmError"></p>
-      <ul class="ds-bullets" x-show="!cmResult && !cmBusy"><li>실행 결과에서 관찰값·정책별 후보·미검사 범위·사용한 프롬프트를 확인할 수 있습니다</li><li>현재 화면의 결과는 JSON으로 내려받을 수 있습니다</li></ul>
+      <ul class="ds-bullets" x-show="!cmResult && !cmBusy"><li>실행 결과에서 관찰값·정책별 후보·텍스트 검사 범위·사용한 프롬프트를 확인할 수 있습니다</li><li>현재 화면의 결과는 JSON으로 내려받을 수 있습니다</li></ul>
     </div></section>
     <template x-if="cmResult">
       <div class="dc-body">
@@ -94,7 +93,7 @@
               </div>
               <template x-if="run.policy_set === 'common_v1'"><div class="dc-body">
                 <div class="control-row"><b class="fn__title" x-text="cmLabel(run.common_status)"></b><span class="ds-badge ds-badge--neutral">실험 초안</span><span class="meta" x-text="run.policy_version"></span></div>
-                <p class="ds-hint" x-text="'검사: ' + run.coverage.assessed_parts.map(p => cmPartLabel(p)).join(' · ') + ' / 미검사: ' + (run.coverage.missing_parts.map(p => cmPartLabel(p)).join(' · ') || '요청 범위 내 없음')"></p>
+                <p class="ds-hint" x-text="'검사: ' + run.coverage.assessed_parts.map(p => cmPartLabel(p)).join(' · ')"></p>
                 <p class="ds-hint" x-text="run.coverage.scope"></p>
                 <template x-for="layer in ['common','legal','age','service']" x-bind:key="layer"><details class="content-section" open><summary><b class="fn__title" x-text="cmLabel(layer)"></b><span class="meta" x-text="' · ' + cmPolicies(run,layer).length + '개 규칙'"></span></summary><div class="overflow-auto"><table class="ds-table ds-table--compact w-full"><thead><tr><th>정책</th><th>실험 결과</th><th>검토 후보</th><th>근거·부족 조건</th></tr></thead><tbody><template x-for="policy in cmPolicies(run,layer)" x-bind:key="policy.id"><tr><td x-text="policy.label"></td><td><span class="ds-badge" x-bind:class="policy.status === 'not_matched' ? 'ds-badge--neutral' : 'ds-badge--warning'" x-text="cmLabel(policy.status)"></span></td><td x-text="cmLabel(policy.action_candidate)"></td><td x-text="policy.reason"></td></tr></template></tbody></table></div></details></template>
                 <details><summary>공통 관찰값과 원문 근거</summary><div class="overflow-auto"><table class="ds-table ds-table--compact w-full"><thead><tr><th>관찰 항목</th><th>값</th><th>근거·출처</th><th>확인 상태</th></tr></thead><tbody><template x-for="atom in run.observations" x-bind:key="atom.id"><tr><td x-text="atom.name"></td><td x-text="cmLabel(atom.value)"></td><td class="ds-code" x-text="atom.evidence ? (atom.evidence.text || atom.evidence.source || '') : '근거 미확인 또는 미요청'"></td><td x-text="atom.reason"></td></tr></template></tbody></table></div></details>
