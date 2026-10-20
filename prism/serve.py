@@ -78,13 +78,12 @@ from . import prismtools as PTL       # 도구 계층: 내부 검수 보조·외
 PTL._SV = sys.modules[__name__]     # 동일 주입
 from . import reviewassist as RA     # 내부 검수 보조(트랙 A) 도구 · /assist
 RA._SV = sys.modules[__name__]      # 동일 주입
-from . import cleanmeta as CM        # 클린 메타 실험(운영자 전용)
+from . import imagecheck as IC       # 이미지 검증 실험(운영자 전용)
 from . import reviewtime as RT       # 검수 소요 시간 측정 · /review-time · /review-time-stats
 from . import entrefine as ER        # 핵심 키워드 / 문장 재가공 시험(실험실) · /lab-entrefine-* · /lab-core-config
 ER._SV = sys.modules[__name__]
 from . import keywordlab as KL
 KL._SV = sys.modules[__name__]
-CM._SV = sys.modules[__name__]
 IG._SV = sys.modules[__name__]      # 인입·잡 주입(동일)
 BD._SV = sys.modules[__name__]      # 게시판 주입(동일)
 EVO._SV = sys.modules[__name__]     # 평가 런 도메인 주입(Atelier eval_runs 이식)
@@ -3299,13 +3298,13 @@ def _p_lab_entrefine_vote(h, body):
     return ER.vote(data, (data.get("reviewer") or "").strip(), team=data.get("_team") or h._req_team())
 
 
-@_post_route("/lab-cleanmeta-try", gate="super")
-def _p_lab_cleanmeta_try(h, body):
+@_post_route("/lab-imagecheck-try", gate="super")
+def _p_lab_imagecheck_try(h, body):
     try:
         data = json.loads(body or b"{}")
     except (TypeError, ValueError):
         return {"ok": False, "error": "JSON 입력을 확인하세요"}
-    return CM.try_one(data)
+    return IC.try_one(data, _vision_candidates(Config.load()), mock=Handler.server_mock)
 
 
 

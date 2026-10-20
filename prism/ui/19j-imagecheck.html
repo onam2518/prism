@@ -1,0 +1,60 @@
+<template x-if="mod === 'lab'">
+  <div x-init="icInit()" x-show="labTab === 'imagecheck'" x-cloak class="w-full dc-body">
+    <section class="panel">
+      <div class="panel-hd"><b>이미지 검증</b><span class="meta">시각 모델의 관찰 결과를 비교하는 실험</span><span class="ds-badge ds-badge--neutral ml-auto">운영자 전용</span></div>
+      <div class="panel-bd dc-body"><ul class="ds-bullets">
+        <li>이미지 한 장을 선택한 모델로 <b>한 번</b> 검사하고, 관찰 항목·점수·근거·응답 시간을 확인합니다</li>
+        <li>클린플랫폼의 사후처리 이벤트와 별개인 실험 결과입니다. 운영 등급이나 차단 여부를 확정하지 않습니다</li>
+      </ul></div>
+    </section>
+    <div class="stepline"><span class="stepline__no">STEP 1</span><b>이미지·모델 선택</b></div>
+    <div class="layout-grid--two">
+      <section class="panel"><div class="panel-hd"><b>검사할 이미지</b><span class="meta">한 장 · 10 MiB 이하</span></div>
+        <div class="panel-bd dc-body">
+          <label class="ds-label" for="ic-file">PNG · JPEG · WebP</label>
+          <input id="ic-file" class="field" type="file" accept="image/png,image/jpeg,image/webp" x-on:change="icFile($event)" x-bind:disabled="icBusy">
+          <p role="status" class="ds-hint" x-show="icReading">이미지를 읽고 있습니다.</p>
+          <template x-if="icImage"><div class="dc-body"><img x-bind:src="icImage" alt="검사할 이미지 미리보기" style="display:block;max-width:100%;max-height:320px;object-fit:contain;margin:auto"><div class="control-row"><span class="meta" style="overflow-wrap:anywhere" x-text="icName"></span><button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm ml-auto" x-on:click="icClear()" x-bind:disabled="icBusy">이미지 제거</button></div></div></template>
+          <p class="ds-hint" x-show="!icImage">실행하면 이미지를 선택한 모델 제공자에게 전송합니다. 프리즘 저장소에는 보관하지 않습니다.</p>
+        </div>
+      </section>
+      <section class="panel"><div class="panel-hd"><b>실행 모델</b></div><div class="panel-bd dc-body">
+        <fieldset class="dc-body min-w-0" style="border:0;padding:0;margin:0" x-bind:disabled="icBusy || icLoading"><legend class="sr-only">이미지 모델 선택</legend>
+          <x-modelpick key="ic" value="icModel" set="icModel=$v;icResult=null" options="icModels" width="280px" tip="연결된 시각 모델만 선택 가능"></x-modelpick>
+        </fieldset>
+        <p role="status" class="ds-hint" x-show="icLoading">모델 연결 정보를 불러오고 있습니다.</p>
+        <div x-show="!icLoading && !icModels.length" class="dc-body"><p class="ds-hint">연결된 이미지 모델이 없습니다. 시스템 설정에서 시각 모델과 라우터 API 키를 연결하세요.</p><button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-on:click="icDefaults=null;icInit()">연결 다시 확인</button></div>
+        <p class="ds-hint ds-hint--error" x-show="icDefaults?.mock">모의 실행 환경입니다. 이미지 판독이나 실제 모델 호출을 수행하지 않습니다.</p>
+        <ul class="ds-bullets"><li>선택한 모델에서 오류가 나면 결과를 중단합니다</li><li>점수는 모델의 자기보고 확신도이며, 보정된 유해 확률이 아닙니다</li></ul>
+      </div></section>
+    </div>
+    <div class="stepline"><span class="stepline__no">STEP 2</span><b>실험 프롬프트</b><span class="meta">관찰 지침을 수정해 확인합니다</span></div>
+    <section class="panel"><div class="panel-bd dc-body">
+      <label class="ds-label" for="ic-prompt">이미지 관찰 지침</label><textarea id="ic-prompt" class="field" rows="6" maxlength="8000" x-model="icPrompt" x-on:input="icResult=null" x-bind:disabled="icBusy || !icDefaults"></textarea>
+      <div class="control-row"><button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-on:click="icResetPrompt()" x-bind:disabled="icBusy || !icDefaults">기본 프롬프트로 되돌리기</button><span class="meta" x-text="icPrompt.length + ' / 8,000자'"></span></div>
+      <p class="ds-hint">성적 노출·행위, 폭력·유혈, 자해 묘사의 관찰 여부와 점수·근거를 같은 형식으로 받습니다. 이 세 항목은 실험용이며 전사 정책 전체를 뜻하지 않습니다.</p>
+    </div></section>
+    <div class="stepline"><span class="stepline__no">STEP 3</span><b>실행·결과 확인</b></div>
+    <section class="panel"><div class="panel-bd dc-body">
+      <div class="control-row"><button type="button" class="ds-btn ds-btn--solid ds-btn--c-primary" x-on:click="icTry()" x-bind:disabled="icBusy || icReading || !icImage || !icModel || !icPrompt.trim()" x-text="icBusy ? '검사 중…' : '이미지 검사 실행'"></button><span class="meta">선택 모델 1회 호출</span></div>
+      <p role="status" class="ds-hint" x-show="icBusy">이미지를 검사하고 있습니다. 모델 응답까지 최대 90초가 걸릴 수 있습니다.</p>
+      <p role="alert" class="ds-hint ds-hint--error" x-show="icError" x-text="icError"></p>
+      <p class="ds-hint" x-show="!icResult && !icBusy">실행 후 관찰 결과와 모델 원문 응답을 확인하고 JSON으로 내려받을 수 있습니다.</p>
+    </div></section>
+    <template x-if="icResult"><section class="panel"><div class="panel-hd"><b>실험 결과</b><button type="button" class="ds-btn ds-btn--s-sm ml-auto" x-on:click="icDownload()">결과 JSON 다운로드</button></div><div class="panel-bd dc-body">
+      <p class="ds-hint ds-hint--error" x-show="icResult.mock">모의 응답입니다. 모델 성능 검증에 사용할 수 없습니다.</p>
+      <p role="alert" class="ds-hint ds-hint--error" x-show="icResult.status !== 'complete'">응답 형식이 맞지 않아 관찰 결과를 표시할 수 없습니다. 원문 응답을 확인하세요. 자동 재호출하지 않았습니다.</p>
+      <div class="ds-stat-grid">
+        <div class="ds-stat"><div class="ds-stat__value tnum" x-text="icResult.requests + '회'"></div><div class="ds-stat__label">실제 모델 요청</div></div>
+        <div class="ds-stat"><div class="ds-stat__value tnum" x-text="(icResult.latency_ms / 1000).toFixed(2) + '초'"></div><div class="ds-stat__label">처리 시간</div></div>
+        <div class="ds-stat"><div class="ds-stat__value tnum" x-text="icResult.observations.length + '개'"></div><div class="ds-stat__label">확인된 응답 항목</div></div>
+      </div>
+      <p class="ds-hint" x-text="'선택: ' + icResult.requested_model + ' · 연결: ' + icResult.provider + ' · 응답 모델: ' + (icResult.response_model || '미제공')"></p>
+      <div class="overflow-auto" x-show="icResult.observations.length"><table class="ds-table ds-table--compact w-full"><thead><tr><th scope="col">관찰 항목</th><th scope="col">관찰값</th><th scope="col">확신도</th><th scope="col">이미지 근거·맥락</th></tr></thead><tbody><template x-for="item in icResult.observations" x-bind:key="item.id"><tr><th scope="row" x-text="item.label"></th><td x-text="icLabel(item.value)"></td><td x-text="item.score == null ? '산정 안 함' : (item.score * 100).toFixed(1) + '%'"></td><td style="min-width:180px;white-space:pre-wrap" x-text="item.evidence"></td></tr></template></tbody></table></div>
+      <p class="ds-hint">관찰되지 않음은 검사한 항목에 한정됩니다. 법 위반·연령 등급·서비스 제재의 확정 결과가 아닙니다.</p>
+      <details><summary>모델 원문 응답</summary><pre class="ds-code" style="white-space:pre-wrap;overflow-wrap:anywhere" x-text="icResult.raw"></pre></details>
+      <details><summary>실행한 프롬프트</summary><pre class="ds-code" style="white-space:pre-wrap" x-text="icResult.prompt"></pre></details>
+      <p class="ds-hint">입력·결과는 현재 화면에만 보관합니다. 다운로드에는 이미지 원본 대신 해시, 사용한 프롬프트, 모델, 점수, 원문 응답이 포함됩니다.</p>
+    </div></section></template>
+  </div>
+</template>
