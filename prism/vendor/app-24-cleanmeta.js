@@ -3,7 +3,7 @@ window.PRISM_APP_PARTS = window.PRISM_APP_PARTS || [];
 window.PRISM_APP_PARTS.push(() => ({
   cmTitle: '', cmBody: '', cmContext: '', cmModel: 'solar-decide', cmMode: 'cascade', cmGate: 0.9, cmPrice: '',
   cmPolicySet: 'common_v1', cmDefaults: null, cmScreenPrompt: '', cmDetailPrompt: '',
-  cmParts: [], cmCaseRef: '', cmFacts: [], cmLoadingDefaults: false,
+  cmCaseRef: '', cmFacts: [], cmLoadingDefaults: false,
   cmBusy: false, cmError: '', cmResult: null,
   async cmInit() {
     if (this.cmDefaults || this.cmLoadingDefaults) return;
@@ -29,7 +29,7 @@ window.PRISM_APP_PARTS.push(() => ({
     if (option) this.cmFacts.push({atom_id: option.id, value: 'unknown', source: ''});
   },
   cmPolicies(run, layer) { return (run.policies || []).filter(p => p.layer === layer); },
-  cmPartLabel(part) { return ({title: '제목', body: '본문', image: '이미지·썸네일', video: '영상', audio: '음성', link: '외부 링크', history: '게시 이력'})[part] || part; },
+  cmPartLabel(part) { return ({title: '제목', body: '본문'})[part] || part; },
   get cmModels() {
     const groups = (this.textGroups || []).filter(g => g.on || (this.cfg && this.cfg.forcedMock));
     return [...new Set(['solar-decide', ...groups.flatMap(g => g.items.map(item => item.model)), this.cmModel])].filter(Boolean);
@@ -53,7 +53,7 @@ window.PRISM_APP_PARTS.push(() => ({
       if (this.cmPolicySet === 'common_v1' && !this.cmDefaults) await this.cmInit();
       if (this.cmPolicySet === 'common_v1' && !this.cmDefaults) throw new Error(this.cmError || '기본값을 불러온 뒤 실행하세요');
       const common = this.cmPolicySet === 'common_v1' ? {
-        prompts: {screen: this.cmScreenPrompt, detail: this.cmDetailPrompt}, requested_parts: ['body', ...this.cmParts],
+        prompts: {screen: this.cmScreenPrompt, detail: this.cmDetailPrompt},
         case_ref: this.cmCaseRef, reviewed_facts: this.cmFacts.map(f => ({...f, subject_ref: this.cmCaseRef}))
       } : {};
       const response = await this._afetch('/lab-cleanmeta-try', {

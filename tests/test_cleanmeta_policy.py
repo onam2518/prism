@@ -91,11 +91,24 @@ class CommonPolicyTest(unittest.TestCase):
         self.assertEqual(r['common_status'], 'no_common_issue_found')
         self.assertEqual({p['layer'] for p in r['policies'] if p['status'] == 'matched'}, {'age', 'service'})
 
-    def test_missing_media_never_becomes_full_pass(self):
-        r = P.judge({'body': '정상 본문', 'requested_parts': ['body', 'video', 'image']}, 'cascade', fake())
-        self.assertEqual(r['coverage']['missing_parts'], ['video', 'image'])
-        self.assertEqual(r['common_status'], 'insufficient_evidence')
-        self.assertEqual(r['status'], 'partial')
+    def test_text_scope_has_no_missing_media_hold(self):
+        seen = []
+        r = P.judge({'title': '제목', 'body': '정상 본문'}, 'cascade', fake(seen=seen))
+        self.assertEqual(r['input_scope'], 'text')
+        self.assertEqual(r['coverage']['assessed_parts'], ['body', 'title'])
+        self.assertNotIn('missing_parts', r['coverage'])
+        self.assertNotIn('unsupported_parts', seen[0]['state'])
+        self.assertEqual(r['common_status'], 'no_common_issue_found')
+        self.assertEqual(r['status'], 'complete')
+
+    def test_nontext_scope_is_rejected_before_any_model_call(self):
+        with patch.object(C, '_engine') as engine:
+            for policy in ('common_v1', 'vl13'):
+                for part in ('image', 'video', 'audio', 'link', 'history'):
+                    r = C.try_one({'body': '본문', 'policy_set': policy, 'requested_parts': ['body', part]})
+                    self.assertFalse(r['ok'])
+                    self.assertIn('텍스트만', r['error'])
+            engine.assert_not_called()
 
     def test_missing_answer_and_total_failure(self):
         r = P.judge({'body': '본문'}, 'cascade', fake(missing=['route.child']))
