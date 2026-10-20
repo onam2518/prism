@@ -18,6 +18,7 @@ serve.py  ─ HTTP 계층(라우트 테이블 GET/POST · 최장 접두 우선) 
    │   crewops(검수 인력 운영·캐파·스케줄) evalops(런 비교·평가) weekops(주간기록) deployops(배포 게이트)
    │   reviewassist(검수 보조 에이전트 · 트랙 A 도구)
    │   metaquery(콘텐츠 조회 · 메타베이스 경유 데브 발행분 조회→검수 지정 · 2026-09-02)
+   ├─ cleanmeta.py / cleanmeta_policy.py / cleanmeta_policy_specs.py   클린 메타 실험·공통 관찰·정책 초안
    ├─ pipeline.py + prompts.py/meta_prompts.py/agents.py   LLM 추출 파이프라인
    ├─ topic.py / entdict.py / dictionaries.py / mediaext.py / imagext.py
    │  modelmeta.py(모델 표시 정보 · 이름/제공자/비용 등급 · 선택 드롭다운 원천)

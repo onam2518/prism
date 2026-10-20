@@ -1,0 +1,98 @@
+<?xml version='1.0' encoding='utf-8'?>
+<mxfile host="app.diagrams.net">
+  <diagram name="프리즘 실험실 처리 구조도" id="cleanmeta-architecture">
+    <mxGraphModel dx="1400" dy="1120" grid="1" page="1" pageWidth="1400" pageHeight="1120">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="프리즘 실험실 처리 구조도" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=none;strokeColor=none;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=34;fontStyle=1;">
+          <mxGeometry as="geometry" x="40" y="28" width="1320" height="54" />
+        </mxCell>
+        <mxCell id="subtitle" value="선택형 질문은 한 요청에 묶어서 전송 · 일괄 1회 / 선별 1~2회 / 두 방식 비교 2~3회" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=none;strokeColor=none;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=19;fontStyle=0;">
+          <mxGeometry as="geometry" x="40" y="86" width="1320" height="38" />
+        </mxCell>
+        <mxCell id="input" value="프리즘 실험실 &gt; 클린 메타&#10;모델 선택 · 솔라 디사이드 / 연결된 텍스트 모델" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#eaf1fb;strokeColor=#bdc9d8;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=22;fontStyle=0;">
+          <mxGeometry as="geometry" x="310" y="145" width="780" height="90" />
+        </mxCell>
+        <mxCell id="all" value="일괄 방식 · 요청 1회&#10;유형 선별 13 + 상세 62 + 근거 선택 13&#10;총 88문항" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#eef5ff;strokeColor=#bdc9d8;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=22;fontStyle=0;">
+          <mxGeometry as="geometry" x="70" y="295" width="520" height="115" />
+        </mxCell>
+        <mxCell id="route" value="선별 방식 · 첫 요청&#10;VL-01~13 전체 유형&#10;관련성 13문항" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#eef5ff;strokeColor=#bdc9d8;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=22;fontStyle=0;">
+          <mxGeometry as="geometry" x="810" y="295" width="520" height="115" />
+        </mxCell>
+        <mxCell id="edge1" edge="1" parent="1" source="input" target="all" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=block;strokeColor=#61758f;strokeWidth=2;">
+          <mxGeometry as="geometry" relative="1">
+            <Array as="points">
+              <mxPoint x="700" y="265" />
+              <mxPoint x="330" y="265" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge2" edge="1" parent="1" source="input" target="route" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=block;strokeColor=#61758f;strokeWidth=2;">
+          <mxGeometry as="geometry" relative="1">
+            <Array as="points">
+              <mxPoint x="700" y="265" />
+              <mxPoint x="1070" y="265" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="gate" value="유형별 상세 검사 필요 여부&#10;관련 있음 / 판단 불가 / 기준 미달" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#f3f6fa;strokeColor=#bdc9d8;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=21;fontStyle=0;">
+          <mxGeometry as="geometry" x="810" y="460" width="520" height="85" />
+        </mxCell>
+        <mxCell id="edge3" edge="1" parent="1" source="route" target="gate" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=block;strokeColor=#61758f;strokeWidth=2;">
+          <mxGeometry as="geometry" relative="1">
+            <Array as="points" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="detail" value="필요 유형 존재 → 두 번째 요청&#10;해당 유형의 상세 + 근거 선택 질문&#10;유형당 5~8문항 · 전체 선택 시 75문항" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#eef5ff;strokeColor=#bdc9d8;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=21;fontStyle=0;">
+          <mxGeometry as="geometry" x="810" y="605" width="520" height="105" />
+        </mxCell>
+        <mxCell id="edge4" edge="1" parent="1" source="gate" target="detail" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=block;strokeColor=#61758f;strokeWidth=2;">
+          <mxGeometry as="geometry" relative="1">
+            <Array as="points" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="skip" value="추가 검사 대상 없음" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=none;strokeColor=none;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=19;fontStyle=0;">
+          <mxGeometry as="geometry" x="360" y="470" width="320" height="64" />
+        </mxCell>
+        <mxCell id="code" value="코드 검증 · 결과 집계 · 추가 호출 없음&#10;13종의 정상 후보 / 검수 필요 / 보류" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#e9f4ee;strokeColor=#bdc9d8;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=22;fontStyle=0;">
+          <mxGeometry as="geometry" x="310" y="790" width="780" height="90" />
+        </mxCell>
+        <mxCell id="edge5" edge="1" parent="1" source="all" target="code" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=block;strokeColor=#61758f;strokeWidth=2;">
+          <mxGeometry as="geometry" relative="1">
+            <Array as="points">
+              <mxPoint x="330" y="745" />
+              <mxPoint x="600" y="745" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge6" edge="1" parent="1" source="detail" target="code" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=block;strokeColor=#61758f;strokeWidth=2;">
+          <mxGeometry as="geometry" relative="1">
+            <Array as="points">
+              <mxPoint x="1070" y="745" />
+              <mxPoint x="800" y="745" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge7" edge="1" parent="1" source="gate" target="code" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=block;strokeColor=#61758f;strokeWidth=2;">
+          <mxGeometry as="geometry" relative="1">
+            <Array as="points">
+              <mxPoint x="700" y="502" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="out" value="결과 화면 + JSON 다운로드&#10;모델 / 요청·문항 수 / 토큰 / 시간 / 근거 후보" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#f3f6fa;strokeColor=#bdc9d8;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=22;fontStyle=0;">
+          <mxGeometry as="geometry" x="310" y="930" width="780" height="95" />
+        </mxCell>
+        <mxCell id="edge8" edge="1" parent="1" source="code" target="out" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=block;strokeColor=#61758f;strokeWidth=2;">
+          <mxGeometry as="geometry" relative="1">
+            <Array as="points" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="note" value="솔라 디사이드: JEV 확률 / 일반 텍스트 모델: 자기보고 판단 점수 · 실제 정확도와 별도 검증" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=none;strokeColor=none;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=20;fontStyle=0;">
+          <mxGeometry as="geometry" x="40" y="1050" width="1320" height="40" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

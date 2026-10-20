@@ -1,0 +1,114 @@
+<?xml version='1.0' encoding='utf-8'?>
+<mxfile host="app.diagrams.net">
+  <diagram name="클린 메타 개념도 · VL-01~13" id="cleanmeta-concept">
+    <mxGraphModel dx="1400" dy="1190" grid="1" page="1" pageWidth="1400" pageHeight="1190">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="클린 메타 개념도 · VL-01~13" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=none;strokeColor=none;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=34;fontStyle=1;">
+          <mxGeometry as="geometry" x="40" y="28" width="1320" height="54" />
+        </mxCell>
+        <mxCell id="subtitle" value="전체 13종 독립 검사 · 복수 유형 허용 · 확인 자료가 필요한 항목은 자료 부재 시 판단 불가" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=none;strokeColor=none;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=19;fontStyle=0;">
+          <mxGeometry as="geometry" x="40" y="86" width="1320" height="38" />
+        </mxCell>
+        <mxCell id="input" value="제목·본문 전체 + 운영자가 입력한 확인 자료&#10;원문과 외부 확인 자료의 출처 구분" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#eaf1fb;strokeColor=#bdc9d8;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=22;fontStyle=0;">
+          <mxGeometry as="geometry" x="310" y="145" width="780" height="90" />
+        </mxCell>
+        <mxCell id="types" value="" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#f3f6fa;strokeColor=#bdc9d8;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=22;fontStyle=0;">
+          <mxGeometry as="geometry" x="40" y="285" width="1320" height="470" />
+        </mxCell>
+        <mxCell id="defamation" value="VL-01&#10;명예훼손" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#eef5ff;strokeColor=#bdc9d8;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=20;fontStyle=0;">
+          <mxGeometry as="geometry" x="60" y="305" width="290" height="88" />
+        </mxCell>
+        <mxCell id="insult" value="VL-02&#10;모욕" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#eef5ff;strokeColor=#bdc9d8;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=20;fontStyle=0;">
+          <mxGeometry as="geometry" x="390" y="305" width="290" height="88" />
+        </mxCell>
+        <mxCell id="obscenity" value="VL-03&#10;음란물 유포" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#eef5ff;strokeColor=#bdc9d8;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=20;fontStyle=0;">
+          <mxGeometry as="geometry" x="720" y="305" width="290" height="88" />
+        </mxCell>
+        <mxCell id="sexual_violence" value="VL-04&#10;성폭력 촬영물·유포" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#eef5ff;strokeColor=#bdc9d8;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=20;fontStyle=0;">
+          <mxGeometry as="geometry" x="1050" y="305" width="290" height="88" />
+        </mxCell>
+        <mxCell id="privacy_violation" value="VL-05&#10;개인정보 침해" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#eef5ff;strokeColor=#bdc9d8;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=20;fontStyle=0;">
+          <mxGeometry as="geometry" x="60" y="415" width="290" height="88" />
+        </mxCell>
+        <mxCell id="stalking" value="VL-06&#10;스토킹·괴롭힘" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#eef5ff;strokeColor=#bdc9d8;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=20;fontStyle=0;">
+          <mxGeometry as="geometry" x="390" y="415" width="290" height="88" />
+        </mxCell>
+        <mxCell id="hate_speech" value="VL-07&#10;차별·혐오 조장" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#eef5ff;strokeColor=#bdc9d8;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=20;fontStyle=0;">
+          <mxGeometry as="geometry" x="720" y="415" width="290" height="88" />
+        </mxCell>
+        <mxCell id="copyright" value="VL-08&#10;저작권 침해" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#eef5ff;strokeColor=#bdc9d8;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=20;fontStyle=0;">
+          <mxGeometry as="geometry" x="1050" y="415" width="290" height="88" />
+        </mxCell>
+        <mxCell id="fraud" value="VL-09&#10;사기·허위 정보" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#eef5ff;strokeColor=#bdc9d8;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=20;fontStyle=0;">
+          <mxGeometry as="geometry" x="60" y="525" width="290" height="88" />
+        </mxCell>
+        <mxCell id="election_interference" value="VL-10&#10;선거 관련 위반" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#eef5ff;strokeColor=#bdc9d8;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=20;fontStyle=0;">
+          <mxGeometry as="geometry" x="390" y="525" width="290" height="88" />
+        </mxCell>
+        <mxCell id="ad_fraud" value="VL-11&#10;기만적 광고" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#eef5ff;strokeColor=#bdc9d8;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=20;fontStyle=0;">
+          <mxGeometry as="geometry" x="720" y="525" width="290" height="88" />
+        </mxCell>
+        <mxCell id="gambling" value="VL-12&#10;사행성 조장" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#eef5ff;strokeColor=#bdc9d8;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=20;fontStyle=0;">
+          <mxGeometry as="geometry" x="1050" y="525" width="290" height="88" />
+        </mxCell>
+        <mxCell id="drug_weapon" value="VL-13&#10;마약류·무기 제조 정보" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#eef5ff;strokeColor=#bdc9d8;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=20;fontStyle=0;">
+          <mxGeometry as="geometry" x="555" y="635" width="290" height="88" />
+        </mxCell>
+        <mxCell id="edge1" edge="1" parent="1" source="input" target="types" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=block;strokeColor=#61758f;strokeWidth=2;">
+          <mxGeometry as="geometry" relative="1">
+            <Array as="points" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="code" value="코드 검증 · 추가 모델 호출 없음&#10;응답 형식·확률 또는 판단 점수·누락·충돌 확인" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#e9f4ee;strokeColor=#bdc9d8;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=22;fontStyle=0;">
+          <mxGeometry as="geometry" x="310" y="815" width="780" height="90" />
+        </mxCell>
+        <mxCell id="edge2" edge="1" parent="1" source="types" target="code" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=block;strokeColor=#61758f;strokeWidth=2;">
+          <mxGeometry as="geometry" relative="1">
+            <Array as="points" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="pass" value="정상 후보&#10;제공된 자료에서 실험 기준 충족" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#e9f4ee;strokeColor=#bdc9d8;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=21;fontStyle=0;">
+          <mxGeometry as="geometry" x="80" y="965" width="360" height="95" />
+        </mxCell>
+        <mxCell id="review" value="검수 필요&#10;관련성·정보 부족·확신 부족·충돌" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#fff3db;strokeColor=#bdc9d8;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=21;fontStyle=0;">
+          <mxGeometry as="geometry" x="520" y="965" width="360" height="95" />
+        </mxCell>
+        <mxCell id="hold" value="보류&#10;요청 실패·응답 누락·형식 오류" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#fbeceb;strokeColor=#bdc9d8;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=21;fontStyle=0;">
+          <mxGeometry as="geometry" x="960" y="965" width="360" height="95" />
+        </mxCell>
+        <mxCell id="edge3" edge="1" parent="1" source="code" target="pass" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=block;strokeColor=#61758f;strokeWidth=2;">
+          <mxGeometry as="geometry" relative="1">
+            <Array as="points">
+              <mxPoint x="700" y="935" />
+              <mxPoint x="260" y="935" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge4" edge="1" parent="1" source="code" target="review" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=block;strokeColor=#61758f;strokeWidth=2;">
+          <mxGeometry as="geometry" relative="1">
+            <Array as="points">
+              <mxPoint x="700" y="935" />
+              <mxPoint x="700" y="935" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge5" edge="1" parent="1" source="code" target="hold" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=block;strokeColor=#61758f;strokeWidth=2;">
+          <mxGeometry as="geometry" relative="1">
+            <Array as="points">
+              <mxPoint x="700" y="935" />
+              <mxPoint x="1140" y="935" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="note" value="운영자 확인용 실험 결과 · 실제 제재·기존 판정·운영 저장소 변경 없음" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=none;strokeColor=none;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=22;fontStyle=1;">
+          <mxGeometry as="geometry" x="40" y="1090" width="1320" height="38" />
+        </mxCell>
+        <mxCell id="scope" value="텍스트·확인 자료의 검토 신호 평가 · 이미지·영상·링크·작성 이력의 직접 조회는 후속 범위" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=none;strokeColor=none;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=19;fontStyle=0;">
+          <mxGeometry as="geometry" x="40" y="1135" width="1320" height="32" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
