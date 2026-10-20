@@ -5,13 +5,22 @@ import hashlib
 import json
 import re
 import math
+import os
+import urllib.error
+import urllib.request
 import threading
 import time
 from datetime import datetime, timezone
 
-from . import decide as DC
+from . import config as C
 
 from .cleanmeta_specs import TYPES, DETAILS as _DETAILS, PROFILES, QUESTION_COUNT, SOURCE
+
+_SV = None  # serve 주입
+URL = os.environ.get("PRISM_DECIDE_URL", "https://api.upstage.ai/v1/systemone")
+MODEL = "solar-decide"
+TIMEOUT = 60
+MAX_QUESTIONS = 100
 
 VERSION = "cleanmeta-2026-10-20-v2"
 MAX_BODY = 16000
@@ -226,7 +235,7 @@ def mock_post(payload, key):
 
 
 def selected_model(data):
-    model = data.get("model", DC.MODEL)
+    model = data.get("model", MODEL)
     if not isinstance(model, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}", model):
         raise ValueError("실행할 모델을 선택하세요")
     return model
@@ -252,14 +261,35 @@ def _chat_post(llm):
     return post
 
 
+def _post(body, key):
+    """JEV 요청 한 번. 재시도는 호출 수와 비용을 바꾸므로 자동 실행하지 않는다."""
+    req = urllib.request.Request(URL, data=json.dumps(body, ensure_ascii=False).encode(), method="POST",
+                                 headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as response:
+            return json.load(response)
+    except urllib.error.HTTPError as exc:
+        exc.close()
+        raise RuntimeError("JEV HTTP 오류: " + str(exc.code)) from None
+    except (TimeoutError, urllib.error.URLError):
+        raise RuntimeError("JEV 연결 실패 또는 응답 시간 초과") from None
+
+
+def _env():
+    if getattr(getattr(_SV, "Handler", None), "server_mock", False):
+        return mock_post, "", ""
+    key = os.environ.get("UPSTAGE_API_KEY") or C.Config.load().api_key or ""
+    return _post, key, ("" if key else "Upstage 키가 없습니다 · 시스템 설정에서 Solar 키를 등록하세요")
+
+
 def _engine(model):
-    if model == DC.MODEL:
-        post, key, err = DC._env()
+    if model == MODEL:
+        post, key, err = _env()
         if err:
             raise ValueError(err)
-        mock = post is DC._mock_post
-        return (mock_post if mock else lambda payload, api_key: DC._post(payload, api_key, retry=0)), key, mock, "jev", "solar"
-    sv = DC._SV
+        mock = post is mock_post
+        return post, key, mock, "jev", "solar"
+    sv = _SV
     if sv is None:
         raise ValueError("모델 연결을 초기화하지 못했습니다")
     if sv.Handler.server_mock:
