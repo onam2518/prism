@@ -79,6 +79,7 @@ PTL._SV = sys.modules[__name__]     # 동일 주입
 from . import reviewassist as RA     # 내부 검수 보조(트랙 A) 도구 · /assist
 RA._SV = sys.modules[__name__]      # 동일 주입
 from . import decide as DC           # 솔라 디사이드 판정 시험(실험실 · 운영자 전용) · /lab-decide-*
+from . import cleanmeta as CM        # 클린 메타 실험(운영자 전용)
 from . import reviewtime as RT       # 검수 소요 시간 측정 · /review-time · /review-time-stats
 from . import entrefine as ER        # 핵심 키워드 / 문장 재가공 시험(실험실) · /lab-entrefine-* · /lab-core-config
 ER._SV = sys.modules[__name__]
@@ -3314,6 +3315,15 @@ def _p_lab_entrefine_vote(h, body):
 @_post_route("/lab-decide-try", gate="super")        # 솔라 디사이드 한 건 시험(직접 입력)
 def _p_lab_decide_try(h, body):
     return DC.try_one(json.loads(body or b"{}"))
+
+
+@_post_route("/lab-cleanmeta-try", gate="super")
+def _p_lab_cleanmeta_try(h, body):
+    try:
+        data = json.loads(body or b"{}")
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "JSON 입력을 확인하세요"}
+    return CM.try_one(data)
 
 
 

@@ -1,0 +1,91 @@
+<?xml version='1.0' encoding='utf-8'?>
+<mxfile host="app.diagrams.net">
+  <diagram name="클린 메타 · 전사 공통 판단 단위" id="cleanmeta-policy-concept">
+    <mxGraphModel dx="1400" dy="1060" grid="1" page="1" pageWidth="1400" pageHeight="1060">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="클린 메타 · 전사 공통 판단 단위" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=none;strokeColor=none;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=34;fontStyle=1;">
+          <mxGeometry as="geometry" x="40" y="28" width="1320" height="54" />
+        </mxCell>
+        <mxCell id="subtitle" value="설계 제안 · 관찰 사실과 정책 결과의 분리 · 서비스 간 동일 근거 재사용" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=none;strokeColor=none;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=19;fontStyle=0;">
+          <mxGeometry as="geometry" x="40" y="86" width="1320" height="38" />
+        </mxCell>
+        <mxCell id="input" value="콘텐츠의 각 부분 + 출처가 확인된 보조 자료&#10;제목·본문·이미지·음성·영상·링크·게시 이력" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#eaf1fb;strokeColor=#bdc9d8;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=22;fontStyle=0;">
+          <mxGeometry as="geometry" x="300" y="150" width="800" height="80" />
+        </mxCell>
+        <mxCell id="atom" value="공통 관찰값&#10;무엇이 있는가 + 어느 부분인가 + 확인 범위&#10;존재 / 부재 / 판단 불가 · 근거 위치·버전" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#eef5ff;strokeColor=#bdc9d8;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=22;fontStyle=0;">
+          <mxGeometry as="geometry" x="300" y="300" width="800" height="120" />
+        </mxCell>
+        <mxCell id="edge1" edge="1" parent="1" source="input" target="atom" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=block;strokeColor=#61758f;strokeWidth=2;">
+          <mxGeometry as="geometry" relative="1">
+            <Array as="points" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="common" value="전사 공통 정책&#10;법령 검토·공통 안전·권리 보호&#10;동일 관찰값 + 공통 규칙" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#e9f4ee;strokeColor=#bdc9d8;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=22;fontStyle=0;">
+          <mxGeometry as="geometry" x="50" y="510" width="410" height="140" />
+        </mxCell>
+        <mxCell id="age" value="연령·노출 조건&#10;성인 주제·잔혹성 등&#10;금지 여부와 별도 판단" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#fff3db;strokeColor=#bdc9d8;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=22;fontStyle=0;">
+          <mxGeometry as="geometry" x="495" y="510" width="410" height="140" />
+        </mxCell>
+        <mxCell id="service" value="서비스·품질·광고 정책&#10;추천 적합성·광고 게재 등&#10;별도 정책과 결과" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#f3f6fa;strokeColor=#bdc9d8;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=22;fontStyle=0;">
+          <mxGeometry as="geometry" x="940" y="510" width="410" height="140" />
+        </mxCell>
+        <mxCell id="edge2" edge="1" parent="1" source="atom" target="common" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=block;strokeColor=#61758f;strokeWidth=2;">
+          <mxGeometry as="geometry" relative="1">
+            <Array as="points">
+              <mxPoint x="700" y="460" />
+              <mxPoint x="255" y="460" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge3" edge="1" parent="1" source="atom" target="age" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=block;strokeColor=#61758f;strokeWidth=2;">
+          <mxGeometry as="geometry" relative="1">
+            <Array as="points">
+              <mxPoint x="700" y="460" />
+              <mxPoint x="700" y="460" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge4" edge="1" parent="1" source="atom" target="service" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=block;strokeColor=#61758f;strokeWidth=2;">
+          <mxGeometry as="geometry" relative="1">
+            <Array as="points">
+              <mxPoint x="700" y="460" />
+              <mxPoint x="1145" y="460" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="out" value="공통 결과와 서비스별 결과의 연결&#10;공통 정책 결과 / 별도 연령·서비스 결과 / 검사 범위&#10;법 위반 확정·전체 유통 허용과 구분" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=#eaf1fb;strokeColor=#bdc9d8;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=23;fontStyle=0;">
+          <mxGeometry as="geometry" x="300" y="750" width="800" height="125" />
+        </mxCell>
+        <mxCell id="edge5" edge="1" parent="1" source="common" target="out" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=block;strokeColor=#61758f;strokeWidth=2;">
+          <mxGeometry as="geometry" relative="1">
+            <Array as="points">
+              <mxPoint x="255" y="700" />
+              <mxPoint x="700" y="700" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge6" edge="1" parent="1" source="age" target="out" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=block;strokeColor=#61758f;strokeWidth=2;">
+          <mxGeometry as="geometry" relative="1">
+            <Array as="points">
+              <mxPoint x="700" y="700" />
+              <mxPoint x="700" y="700" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge7" edge="1" parent="1" source="service" target="out" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=block;strokeColor=#61758f;strokeWidth=2;">
+          <mxGeometry as="geometry" relative="1">
+            <Array as="points">
+              <mxPoint x="1145" y="700" />
+              <mxPoint x="700" y="700" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="note" value="기존 VL-01~13 대응 유지 + 아동 안전·자해·폭력·위험행위·사이버 악용·스팸 등의 보완&#10;경쟁 서비스 홍보 금지·단순 정치 언급·광고 부적합을 전사 공통 금지로 전용하지 않는 구조" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fillColor=none;strokeColor=none;fontColor=#172b4d;fontFamily=Apple SD Gothic Neo;fontSize=19;fontStyle=0;">
+          <mxGeometry as="geometry" x="40" y="940" width="1320" height="60" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

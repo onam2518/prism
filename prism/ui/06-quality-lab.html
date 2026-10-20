@@ -10,6 +10,7 @@
         <div class="evaltabs">
           <button type="button" x-bind:class="labTab==='entref'?'sel':''" x-on:click="labTab='entref'; kwInit()">핵심 키워드 / 문장</button>
           <button type="button" x-bind:class="labTab==='decide'?'sel':''" x-on:click="labTab='decide'">솔라 디사이드</button>
+          <button type="button" x-bind:class="labTab==='cleanmeta'?'sel':''" x-on:click="labTab='cleanmeta'">클린 메타</button>
         </div>
         <div x-show="labTab==='entref'" style="margin-top:var(--ds-space-4)"><div class="evaltabs evaltabs--sub" role="tablist" aria-label="키워드·문장 작업" x-on:keydown="kwTabKey($event)">
           <template x-for="t in kwTabs" x-bind:key="t[0]"><button type="button" role="tab" x-bind:id="'kw-tab-'+t[0]" x-bind:aria-controls="'kw-panel-'+t[0]" x-bind:aria-selected="kwTab===t[0]" x-bind:tabindex="kwTab===t[0]?0:-1" x-bind:class="kwTab===t[0]?'sel':''" x-on:click="kwChangeTab(t[0])" x-text="t[1]"></button></template>
