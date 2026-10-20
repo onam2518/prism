@@ -10,7 +10,7 @@
 
 | 최종 수정 | 자료 |
 | --- | --- |
-| 2026-10-20 | [프리즘 구현 데모 — 클린메타 탭](https://onam2518.github.io/prism/demo.html) |
+| 2026-10-20 | [프리즘 구현 데모 · 이미지 검증 탭](https://onam2518.github.io/prism/demo.html) |
 | 2026-10-07 | [정답셋 확충 산정](https://claude.ai/artifact/Lw6p3qjzWou4CESTU6jKeh) |
 | 2026-10-06 | [솔라 디사이드 판정 구조](https://claude.ai/artifact/VkJFrecVUH3iHoMRXR5HDy) |
 | 2026-09-08 | [토픽 말로 만들기 2안](https://claude.ai/code/artifact/d457970d-4f2e-4202-b4e6-bf6773022ddb) |

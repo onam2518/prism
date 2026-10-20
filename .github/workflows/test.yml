@@ -27,6 +27,6 @@ jobs:
       - name: Topic client approval protocol
         if: matrix.python-version == '3.12'
         run: node tests/test_topic_client.js
-      - name: Clean meta client runtime
+      - name: Image validation client runtime
         if: matrix.python-version == '3.12'
-        run: node tests/test_cleanmeta_runtime.cjs
+        run: node tests/test_imagecheck_runtime.cjs
