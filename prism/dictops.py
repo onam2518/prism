@@ -178,6 +178,28 @@ def entdict_action(data: dict, team=None, mock: bool = False) -> dict:
         e = st.ent_get(eid)
         if not e:
             return {"ok": False, "error": "개체 없음"}
+        if "alias_change" in data:
+            change = data["alias_change"]
+            if not isinstance(change, dict) or any(not isinstance(change.get(k), str) for k in ("before", "after")):
+                return {"ok": False, "error": "수정할 별칭을 확인하세요"}
+            before, after = change["before"], ED.normalize_name(change["after"])
+            if not before or len(before) > 500 or len(after) > 200:
+                return {"ok": False, "error": "별칭은 200자 이하로 입력하세요"}
+            if ED.normalize_name(before) == ED.normalize_name(e["name"]):
+                return {"ok": False, "error": "대표 이름은 별칭에서 수정·삭제할 수 없습니다"}
+            if before not in st.ent_aliases(eid):
+                return {"ok": False, "error": "별칭이 변경되었습니다. 다시 열어 확인하세요"}
+            if after == before:
+                return {"ok": True, "aliases": st.ent_aliases(eid)}
+            if after and ED._eid_by_alias(st, after):
+                return {"ok": False, "error": "이미 등록된 별칭입니다. 다른 이름으로 수정하거나 중복 별칭을 삭제하세요"}
+            try:
+                changed = st.ent_alias_change(eid, before, after)
+            except Exception:
+                return {"ok": False, "error": "별칭 저장에 실패했습니다. 다시 열어 현재 값을 확인하세요"}
+            if not changed:
+                return {"ok": False, "error": "별칭이 변경되었습니다. 다시 열어 확인하세요"}
+            return {"ok": True, "aliases": st.ent_aliases(eid)}
         am = dict(e.get("attr_meta") or {})
         fields = {"updated_at": time.time()}
         if "type" in data:

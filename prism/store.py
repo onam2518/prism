@@ -2498,6 +2498,17 @@ class Store:
         c.execute("INSERT OR IGNORE INTO entity_aliases(alias,entity_id) VALUES(?,?)", (alias, entity_id))
         c.commit()
 
+    def ent_alias_change(self, entity_id: str, before: str, after: str) -> bool:
+        """기존 별칭 한 건만 수정·삭제. 개체 조건과 유일 제약으로 재바인딩 방지."""
+        c = self._conn()
+        with c:
+            if after:
+                cur = c.execute("UPDATE entity_aliases SET alias=? WHERE alias=? AND entity_id=?",
+                                (after, before, entity_id))
+            else:
+                cur = c.execute("DELETE FROM entity_aliases WHERE alias=? AND entity_id=?", (before, entity_id))
+        return cur.rowcount == 1
+
     def ent_alias_add_many(self, pairs):
         """[(별칭, entity_id)] 일괄 등록 · 기존 별칭은 무시(INSERT OR IGNORE · 재바인딩 없음)."""
         vals = [(a, e) for a, e in (pairs or []) if a and e]

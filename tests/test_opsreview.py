@@ -102,6 +102,33 @@ class OperationsTests(unittest.TestCase):
         self.assertFalse(stale['ok'])
         self.assertFalse(O.action(self.st,dict(action='patch',hash=self.ch,revision=old['revision'],basis_token=old['basis']['token'],patch={'summary':'오래된 수정'}),who='me')['ok'])
         self.assertEqual(O.read_row(self.st,self.ch)['item_meta']['summary'],'리드문')
+    def test_entity_correction_then_accurate_needs_no_repeat_proposal(self):
+        result=self.request('patch',patch={'entities':[{'name':'넷플릭스','type':None}]})
+        self.assertTrue(result['ok'],result)
+        self.assertEqual(result['values']['entities'],[{'name':'넷플릭스','type':None}])
+        reviewed=self.request('review',axes=self.axes())
+        self.assertTrue(reviewed['ok'],reviewed)
+        self.assertEqual(reviewed['review']['axes']['entities']['proposal'],'')
+        self.assertFalse(reviewed['cases'])
+
+    def test_grade_review_requires_reason_and_preserves_metadata(self):
+        before=O.read_row(self.st,self.ch)['item_meta']
+        for reason in ['', '   ', None, [], '가'*2001]:
+            self.assertFalse(self.request('patch',patch={'finalGrade':'R'},grade_reason=reason)['ok'])
+        self.assertEqual(O.read_row(self.st,self.ch)['quality_meta']['finalGrade'],'G')
+        result=self.request('patch',patch={'finalGrade':'R'},grade_reason='제목과 본문 불일치')
+        self.assertTrue(result['ok'],result)
+        row=O.read_row(self.st,self.ch)
+        self.assertEqual(row['quality_meta']['finalGrade'],'R')
+        self.assertEqual(row['quality_meta']['grade_review']['reason'],'제목과 본문 불일치')
+        self.assertEqual(row['quality_meta']['grade_review']['by'],'me')
+        self.assertEqual(row['item_meta'],before)
+        self.assertIsNone(self.st.get_report('final_verdicts'))
+        self.assertEqual(result['history'][-1]['data']['grade_reason'],'제목과 본문 불일치')
+        self.assertTrue(self.request('patch',patch={'finalGrade':'G'},grade_reason='원문 재확인 완료')['ok'])
+        self.assertEqual(O.read_row(self.st,self.ch)['quality_meta']['finalGrade'],'G')
+        self.assertEqual(self.st._conn().execute('SELECT COUNT(*) FROM patch_log').fetchone()[0],2)
+
     def test_atomic_patch_and_final_and_audit(self):
         result=self.request('correct_final',patch={'summary':'수정된 리드문'})
         self.assertTrue(result['ok'],result)

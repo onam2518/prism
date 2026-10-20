@@ -265,7 +265,15 @@ def action(st, data, team=None, who='', privileged=False, final=False):
             for key,value in raw.items():
                 if key=='finalGrade':
                     if value not in ('G','R'): raise ValueError('품질 등급을 별도로 확인하세요')
+                    reason = data.get('grade_reason', '')
+                    if not isinstance(reason, str) or len(reason) > 2000:
+                        raise ValueError('유통 등급 판정 사유는 2,000자 이내로 입력하세요')
+                    reason = reason.strip()
+                    if cmd == 'patch' and not reason:
+                        raise ValueError('유통 등급 판정 사유를 입력하세요')
                     qm[key]=value
+                    if reason:
+                        qm['grade_review']={'reason':reason,'by':who,'ts':now}
                 elif not validate_value(key,value): raise ValueError(LABELS[key]+'의 유효한 수정값을 입력하세요')
                 else: im[key]=value
             if im:
