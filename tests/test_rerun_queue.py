@@ -119,5 +119,26 @@ class TestBatchDoesNotDoubleRegister(RerunQueueBase):
         self.assertEqual((j["total"], j["done"]), (3, 3))
 
 
+class TestRerunProgressIdentity(RerunQueueBase):
+    def test_request_id_tracks_single_and_batch(self):
+        serve = self._serve()
+        h = self._put(serve)
+        self._fake_pipeline(serve)
+        single = "rerun:00000000-0000-4000-8000-000000000001"
+        batch = "rerun:00000000-0000-4000-8000-000000000002"
+        serve.rerun_content(h, "m1", job_id=single)
+        serve.rerun_all("m1", hashes=[h], job_id=batch)
+        jobs = {j["id"]: j for j in self._jobs(serve)}
+        for key in (single, batch):
+            self.assertEqual(jobs[key]["done"], 1)
+            self.assertFalse(jobs[key]["running"])
+
+    def test_routes_reject_invalid_job_id_before_execution(self):
+        from prism import serve
+        for route in (serve._p_rerun, serve._p_rerun_all):
+            for value in ([], "other-job", "rerun:" + "x" * 100):
+                self.assertIn("error", route(None, json.dumps({"job_id": value})))
+
+
 if __name__ == "__main__":
     unittest.main()

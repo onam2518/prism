@@ -3024,6 +3024,9 @@ def _p_rerun_all(h, body):
     # hashes 지정 = 콘텐츠 관리 표에서 다중 선택한 건만 실행(scope 는 서버가 selected 로 승격).
     # force: 퀘스트 진행 중 확인 모달을 거친 강행 — 개별 재실행(/rerun)과 같은 규약.
     data = json.loads(body or b"{}")
+    job_id = data.get("job_id")
+    if job_id is not None and (not isinstance(job_id, str) or not re.fullmatch(r"rerun:[0-9a-f-]{36}", job_id)):
+        return {"error": "실행 작업 식별자가 올바르지 않습니다"}
     scope = (data.get("scope") or "all").strip()
     scope = scope if scope in ("all", "pending") else "all"
     raw = data.get("hashes")
@@ -3033,15 +3036,20 @@ def _p_rerun_all(h, body):
     # 전체 재실행(all)은 이미 실행된 건 전량 재과금이라 200 가드 유지.
     return rerun_all((data.get("model") or "").strip(), h._req_team(), scope=scope,
                      limit=(RN.PENDING_MAX if scope == "pending" else 200),
-                     hashes=hashes, force_quest=bool(data.get("force")))
+                     hashes=hashes, force_quest=bool(data.get("force")),
+                     **({"job_id": job_id} if job_id else {}))
 
 
 @_post_route("/rerun", gate="admin")                 # 같은 콘텐츠를 다른 모델로 재실행
 def _p_rerun(h, body):
     # force: 퀘스트 진행 중에도 이 한 건만 의도적 재실행(클라이언트 확인 모달 경유 · 관리자 판단)
     data = json.loads(body or b"{}")
+    job_id = data.get("job_id")
+    if job_id is not None and (not isinstance(job_id, str) or not re.fullmatch(r"rerun:[0-9a-f-]{36}", job_id)):
+        return {"error": "실행 작업 식별자가 올바르지 않습니다"}
     return rerun_content(data.get("hash"), (data.get("model") or "").strip(), h._req_team(),
-                         force_quest=bool(data.get("force")))
+                         force_quest=bool(data.get("force")),
+                         **({"job_id": job_id} if job_id else {}))
 
 
 @_post_route("/ingest-run", gate="admin")            # 콘텐츠 인입은 관리자 통제(수동·자동 공통)

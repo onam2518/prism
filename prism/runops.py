@@ -328,7 +328,7 @@ BATCH_ADD_MAX = 2000            # 엑셀 추가(STEP 1) 1회 상한 — 누적 �
 
 
 def rerun_all(model: str, team=None, limit: int = 200, scope: str = "all",
-              hashes=None, force_quest: bool = False) -> dict:
+              hashes=None, force_quest: bool = False, job_id: str = "") -> dict:
     """모아진 콘텐츠를 지정 모델로 일괄 실행(수동 · 관리자). 건당 비용 발생.
     scope: pending=미실행(STEP 1 추가 대기)만 · all=전체 재실행 ·
            selected=hashes 로 지정한 건만(콘텐츠 관리 표에서 다중 선택).
@@ -386,7 +386,7 @@ def rerun_all(model: str, team=None, limit: int = 200, scope: str = "all",
         batch_seq = _SV._batch_seq_cached(team)
     except Exception:
         batch_seq = None                             # 조회 실패 시 건별 폴백(종전 동작)
-    jid = "rerun:" + time.strftime("%H%M%S")         # 실행 큐 등록(진행률·ETA)
+    jid = job_id or "rerun:" + time.strftime("%H%M%S")         # 실행 큐 등록(진행률·ETA)
     _SV._job_begin(jid, model or "기본 모델",
                    "선택 실행" if scope == "selected" else "일괄 실행", len(targets))
     _SV._INGEST_STATE[jid]["hashes"] = list(targets)     # 작업 클릭 -> 결과 콘텐츠 보기
@@ -437,7 +437,7 @@ def rerun_all(model: str, team=None, limit: int = 200, scope: str = "all",
 
 
 def rerun_content(content_hash: str, model: str, team=None, row=None, force_quest: bool = False,
-                  register_job: bool = True, batch_seq=None) -> dict:
+                  register_job: bool = True, batch_seq=None, job_id: str = "") -> dict:
     """같은 콘텐츠를 지정 모델로 재실행(초안 재생성 · 관리자). 기존 초안은 덮어쓰되
     이전 초안을 patch_log 에 남겨(rerun:구모델) 이력·비교 근거를 보존한다.
     row: 일괄 실행(rerun_all)이 미리 로드한 행 주입 — 건마다 전체 테이블 재조회 방지.
@@ -478,7 +478,7 @@ def rerun_content(content_hash: str, model: str, team=None, row=None, force_ques
     # 차단된 시도로 큐가 지저분해지지 않게 한다.
     jid = ""
     if register_job:
-        jid = "rerun1:" + time.strftime("%H%M%S") + ":" + ch[:6]
+        jid = job_id or "rerun1:" + time.strftime("%H%M%S") + ":" + ch[:6]
         _SV._job_begin(jid, (ref.get("title") or "콘텐츠")[:40], "개별 재실행", 1)
         _SV._INGEST_STATE[jid]["hashes"] = [ch]      # 작업 클릭 -> 이 콘텐츠 보기
     result = run_pipeline(fields, mock=_SV.Handler.server_mock, team=team, model=model,
