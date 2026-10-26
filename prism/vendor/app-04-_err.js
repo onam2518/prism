@@ -20,7 +20,7 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       // 모달이 열려 있으면 Tab·Shift+Tab 이 맨 위 대화상자 안에서만 돈다(뒤 화면으로 새지 않게 · init 에서 전역 1회 등록)
       _trapTab(e) {
-        if (e.key !== 'Tab') return;
+        if (e.key !== 'Tab' || this.finalHistory) return;
         const top = this._topDialog();
         if (!top) return;
         const f = [...top.querySelectorAll('a[href],input:not([type=hidden]),textarea,select,button,[tabindex]:not([tabindex="-1"])')]

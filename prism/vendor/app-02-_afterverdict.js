@@ -218,12 +218,12 @@ window.PRISM_APP_PARTS.push(() => ({
         });
         // 검수 상세 단축키: A=정확 · S=수정 · ←→=이전/다음 · Esc=닫기 (입력 중에는 무시)
         window.addEventListener('keydown', (e) => {
-          if (!this.detailOpen) return;
+          if (!this.detailOpen || this.finalHistory) return;
           const t = e.target;
           if (t && /INPUT|TEXTAREA|SELECT/.test(t.tagName)) return;
           if (e.metaKey || e.ctrlKey || e.altKey) return;
-          if (e.code === 'KeyA') { e.preventDefault(); if (this.finalMode) this.finalDecide(this.finalCtx, 'good'); else this.reviewGood(); }
-          else if (e.code === 'KeyS') { e.preventDefault(); if (this.finalMode) this.finalDecide(this.finalCtx, 'bad'); else if(this.opsDetail){this._err('해당 메타의 수정 필요와 원문 근거를 입력하세요');} else { this.openEditVerdict(); this.pendingBad = true; } }
+          if (e.code === 'KeyA') { e.preventDefault(); if (this.finalMode && !this.finalFieldMode) this.finalDecide(this.finalCtx, 'good'); else if(this.finalFieldMode && !this.opsDetail)this._err('검수 항목을 불러오는 중입니다'); else this.reviewGood(); }
+          else if (e.code === 'KeyS') { e.preventDefault(); if (this.finalMode && !this.finalFieldMode) this.finalDecide(this.finalCtx, 'bad'); else if(this.opsDetail){this._err('해당 메타의 수정 필요와 원문 근거를 입력하세요');} else { this.openEditVerdict(); this.pendingBad = true; } }
           else if (e.code === 'ArrowRight') { e.preventDefault(); this.detailGo(1); }
           else if (e.code === 'ArrowLeft') { e.preventDefault(); this.detailGo(-1); }
           else if (e.code === 'Escape') { if (this._escTop(e, document.querySelector('.detailview[aria-label="콘텐츠 상세"]'))) this.detailOpen = false; }   // 위에 겹친 모달(정답 확정 등)이 있으면 그것만 닫힘

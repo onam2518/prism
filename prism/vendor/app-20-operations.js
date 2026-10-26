@@ -1,6 +1,22 @@
 /* 상시 검수 원장 · 실제 메뉴 안에서 판정/조치/시간/주차를 연결한다. */
 window.PRISM_APP_PARTS = window.PRISM_APP_PARTS || [];
 window.PRISM_APP_PARTS.push(() => ({
+  finalHistory: null, finalHistoryBusy: false, finalHistoryError: '',
+  get finalFieldMode() { return this.finalMode && this.finalCtx.final_reason !== '인텐트 재확정' && !this.finalCtx.hash.startsWith('goldf:'); },
+  get opsCurrentReview() { return this.opsDetail && (this.finalFieldMode ? this.opsDetail.final_review : this.opsDetail.review); },
+  async openFinalHistory(row) {
+    this.finalHistory={row,review_history:[],basic_verdicts:(row.fb||{}).verdicts||[]};
+    const history=this.finalHistory;
+    this.finalHistoryError=''; this.finalHistoryBusy=true;
+    this.$refs.finalHistoryDialog.showModal();
+    try {
+      if (/^[0-9a-f]{16}$/.test(row.hash)) {
+        const r=await this.opsRequest(this.opsUrl(row.hash));
+        if(this.finalHistory===history)Object.assign(history,r);
+      }
+    } catch(e) {if(this.finalHistory===history)this.finalHistoryError=e.message;}
+    finally {if(this.finalHistory===history)this.finalHistoryBusy=false;}
+  },
   opsManage: false, opsDetail: null, opsAxes: {}, opsBusy: false, opsList: null, opsState: '', opsOwner: '',
   opsHistoryBasis:'', opsTimeType: 'first', opsCase: null, opsDecision: '', opsEvidence: '',
   opsFields: [{key:'summary',label:'리드문'},{key:'entities',label:'엔티티'},{key:'intent',label:'인텐트'},{key:'content_category',label:'카테고리'}],
@@ -23,7 +39,7 @@ window.PRISM_APP_PARTS.push(() => ({
       if(this._rt && this._rt.hash===c.hash)this._rt.team=r.team;
       if(this._rt && this._rt.hash===c.hash && this._rt.verdictWall==null && r.review && Object.keys(r.review.axes||{}).length)this._rt.revisit=true;
       if(!this.detail.body && r.basis.body)this.detail.body=r.basis.body;
-      this.opsFields.forEach(f=>{const a=Object.assign({status:'',reason:'',proposal:''},((r.review||{}).axes||{})[f.key]||{}); if(a.status==='needs_fix' && !a.proposal)a.proposal=a.reason; this.opsAxes[f.key]=a;});
+      this.opsFields.forEach(f=>{const a=Object.assign({status:'',reason:'',proposal:''},(((this.finalFieldMode ? r.final_review : r.review)||{}).axes||{})[f.key]||{}); if(a.status==='needs_fix' && !a.proposal)a.proposal=a.reason; this.opsAxes[f.key]=a;});
       const pending=r.cases.filter(x=>x.state!=='closed');
       this.opsCase=pending.length ? JSON.parse(JSON.stringify(pending[pending.length-1])) : null;
       if (this.opsCase) { this.opsCase.service_required=true; this.opsCase.receipt_evidence=''; }
@@ -35,16 +51,22 @@ window.PRISM_APP_PARTS.push(() => ({
     this.opsBusy=true;
     try {
       const r=await this.opsRequest('/ops-review',Object.assign({hash:current.hash,revision:current.revision,basis_token:current.basis.token},data));
-      if(data.action==='review') {
-        const statuses=Object.values((r.review||{}).axes||data.axes||{}).map(a=>a.status);
+      if(['review','final_review'].includes(data.action)) {
+        const statuses=Object.values(((data.action==='final_review' ? r.final_review : r.review)||{}).axes||data.axes||{}).map(a=>a.status);
         this._rtMark({hash:r.hash},'verdict',statuses.includes('hold')?'hold':statuses.includes('needs_fix')?'bad':'good');
         if(statuses.includes('needs_fix'))this._rtMark({hash:r.hash},'note');
       }
       if (this.detail && this.detail.hash===r.hash) {
         this.opsDetail=r;
-        if(r.basis.token!==current.basis.token)this.opsFields.forEach(f=>{this.opsAxes[f.key]={status:'',reason:'',proposal:''};});
+        if(r.basis.token!==current.basis.token || data.action==='final_undo')this.opsFields.forEach(f=>{this.opsAxes[f.key]={status:'',reason:'',proposal:''};});
       }
-      this.liveToast('저장 완료 · 판정과 후속 조치는 별도 확인');
+      this.liveToast(data.action.startsWith('final_') ? '최종 판정 저장 완료' : '저장 완료 · 판정과 후속 조치는 별도 확인');
+      (r.missions_completed||[]).forEach(m=>this.celebratePoints(m.bonus,'미션 달성 · '+m.label));
+      if(data.action.startsWith('final_')) {
+        const status=((r.stages||{}).final||{}).status;
+        if(this.finalCtx && this.finalCtx.hash===r.hash)Object.assign(this.finalCtx,{final:['good','bad'].includes(status)?status:'',final_by:this.reviewer});
+        await this.loadFinalQueue();
+      }
       await this.opsLoad();
       return r;
     } catch(e) { this._err(e.message); return null; }
@@ -52,7 +74,7 @@ window.PRISM_APP_PARTS.push(() => ({
   },
   opsAllAccurate() { this.opsFields.forEach(f=>{this.opsAxes[f.key].status='accurate';}); },
   async opsSaveReview() {
-    const r=await this.opsSave({action:'review',axes:this.opsAxes});
+    const r=await this.opsSave({action:this.finalFieldMode?'final_review':'review',axes:this.opsAxes});
     if (!r) return;
     await this.loadRaw();
     if (this.detail && r.hash===this.detail.hash) {

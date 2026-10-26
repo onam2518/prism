@@ -1689,7 +1689,7 @@ def _g_ops_review(h, q):
     ch = q.get("hash", [""])[0]
     try:
         if ch:
-            out = O.detail(get_store(), ch, h._req_team(), who, privileged)
+            out = O.detail(get_store(), ch, h._req_team(), who, privileged, is_final_reviewer(uid, h._req_team()))
             if ch in RV.rewrite_items(h._req_team()):          # 출처 비표시(최종 검수 재작성분)
                 out["basis"] = dict(out["basis"], model="")
             return out
@@ -3106,6 +3106,8 @@ def _p_ops_review(h, body):
                       privileged, is_final_reviewer(uid, h._req_team()))
     if result.get("ok"):
         _agg_bump()
+        if data.get("action") == "final_review" and ((result.get("stages") or {}).get("final") or {}).get("status") in ("good", "bad"):
+            result["missions_completed"] = _check_missions(data.get("reviewer") or uid or "", h._req_team())
     return result
 
 

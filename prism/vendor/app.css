@@ -1586,3 +1586,6 @@ button.tbchip:disabled{cursor:default;opacity:.8}
   @media (max-width:900px){.kwd-split{grid-template-columns:minmax(0,1fr)}.kwd-side{padding-left:0;border-left:0}}
 
 .kwl-note{white-space:pre-wrap;overflow-wrap:anywhere}
+
+  dialog.badgemodal:not([open]){display:none}
+  dialog.badgemodal{margin:auto;border:none;color:var(--ds-ink)}
