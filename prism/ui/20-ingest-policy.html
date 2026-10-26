@@ -658,7 +658,7 @@
             <template x-if="finalMode && !finalFieldMode">
               <div>
                 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                  <span class="ds-badge" x-show="finalCtx.final" x-bind:class="finalCtx.final==='good' ? 'ds-badge--success' : 'ds-badge--error'" x-text="finalCtx.final==='good' ? '편입 확정' : '제외 확정'"></span>
+                  <span class="ds-badge" x-show="finalCtx.final" x-bind:class="finalCtx.final==='good' ? 'ds-badge--success' : 'ds-badge--error'" x-text="finalCtx.final_reason==='인텐트 재확정' ? '재확정 완료' : (finalCtx.final==='good' ? '편입 확정' : '제외 확정')"></span>
                   <span class="text-xs text-muted tnum" x-show="finalCtx.final" x-text="(finalCtx.final_by || '') + (finalCtx.final_ts ? (' · ' + fmtTs(finalCtx.final_ts)) : '')"></span>
                   <span class="text-xs text-muted" x-show="!finalCtx.final" x-text="'결정 전 · 사유: ' + (finalCtx.final_reason || '')"></span>
                 </div>

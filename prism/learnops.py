@@ -404,11 +404,11 @@ def reviewer_fixed_meta(st, team=None) -> dict:
     return out
 
 
-def _current_review_votes(st, ch, team, fb, final):
+def _current_review_votes(st, ch, team, fb, final, snapshot=None):
     """편입과 대기 집계가 같은 콘텐츠 기준의 판정만 사용한다."""
     from .opsreview import basis, read_row
-    managed = st.get_report("ops_review_" + ch, team)
-    current_token = basis(read_row(st, ch, team))["token"] if managed else None
+    managed = snapshot[0] if snapshot is not None else st.get_report("ops_review_" + ch, team)
+    current_token = basis(snapshot[1] if snapshot is not None else read_row(st, ch, team))["token"] if managed else None
     # 항목별 초기 검수로 전환하지 않은 건은 최종검수 후에도 기존 기초 표를 유지한다.
     if managed and (managed.get("reviews") or any(h.get("action") not in ("final_review", "final_undo") for h in managed.get("history", []))):
         latest = {v["by"]:v for v in managed.get("reviews", []) if v["basis"]["token"] == current_token}

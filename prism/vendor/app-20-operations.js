@@ -67,9 +67,9 @@ window.PRISM_APP_PARTS.push(() => ({
       if(data.action.startsWith('final_')) {
         const status=((r.stages||{}).final||{}).status;
         if(this.finalCtx && this.finalCtx.hash===r.hash)Object.assign(this.finalCtx,{final:['good','bad'].includes(status)?status:'',final_by:this.reviewer});
-        await this.loadFinalQueue();
+        await this.loadFinalQueue(true);
       }
-      await this.opsLoad();
+      if(!data.action.startsWith('final_'))await this.opsLoad();
       return r;
     } catch(e) { this._err(e.message); return null; }
     finally { this.opsBusy=false; }
@@ -90,8 +90,9 @@ window.PRISM_APP_PARTS.push(() => ({
   },
   opsAllAccurate() { this.opsFields.forEach(f=>{this.opsAxes[f.key].status='accurate';}); },
   async opsSaveReview() {
-    const r=await this.opsSave({action:this.finalFieldMode?'final_review':'review',axes:this.opsAxes});
-    if (!r) return;
+    const final=this.finalFieldMode;
+    const r=await this.opsSave({action:final?'final_review':'review',axes:this.opsAxes});
+    if (!r || final) return;
     await this.loadRaw();
     if (this.detail && r.hash===this.detail.hash) {
       const item=((this.rawData||{}).items||[]).find(x=>x.hash===r.hash);
@@ -143,7 +144,7 @@ window.PRISM_APP_PARTS.push(() => ({
       const r=await this.opsRequest('/ops-review',{action:'correct_final',hash:form.hash,revision:snapshot.revision,basis_token:snapshot.basis.token,patch:patch});
       if (this.detail && this.detail.hash===form.hash) {this.opsDetail=r;Object.assign(this.detail,{summary:form.summary,entities:form.entities,intent:form.intent,category:form.cats,grade:form.grade});}
       this.liveToast('수정값·편입 결정·작업 이력 저장 완료 · 정답셋 반영은 별도 확인');
-      await this.loadFinalQueue(); if(this.histOpen)this.loadHistory();return true;
+      await this.loadFinalQueue(true); if(this.histOpen)this.loadHistory();return true;
     } catch(e) {this._err(e.message);return false;}
   },
   opsPlanRows: [], opsPlanHash: '', opsPlanPick:[], opsPlanBusy:false, opsPlanDefaultOwner:'', opsPlanDefaultTopic:'', opsWeek: '', opsPlanTarget: 100, opsPlanReason: '',
@@ -176,10 +177,17 @@ window.PRISM_APP_PARTS.push(() => ({
   },
   opsPlanUse(week) { const p=((this.opsList||{}).plans||{})['ops_week_'+week];if(!p)return;this.opsWeek=week;const v=p.versions[p.versions.length-1];this.opsPlanRows=JSON.parse(JSON.stringify(v.entries));this.opsPlanTarget=v.target;this.opsPlanReason=v.adjustment_reason; },
   finalOffset:0, finalReason:'', finalOrder:'oldest',
-  async loadFinalQueue() {
+  _finalLoadSeq:0, _finalLoadPending:null,
+  async loadFinalQueue(force=false) {
+    const url='/final-queue?offset='+this.finalOffset+'&limit=50&reason='+encodeURIComponent(this.finalReason)+'&order='+this.finalOrder+'&reviewer='+encodeURIComponent(this.reviewer||'');
+    if(!force && this._finalLoadPending && this._finalLoadPending.url===url)return this._finalLoadPending.promise;
+    const seq=++this._finalLoadSeq;
     this.finalBusy=true;
-    try {this.finalQueue=await this.opsRequest('/final-queue?offset='+this.finalOffset+'&limit=50&reason='+encodeURIComponent(this.finalReason)+'&order='+this.finalOrder+'&reviewer='+encodeURIComponent(this.reviewer||''));}
-    catch(e){this._err(e.message);}finally{this.finalBusy=false;}
+    const promise=this.opsRequest(url).then(r=>{if(seq===this._finalLoadSeq)this.finalQueue=r;})
+      .catch(e=>{if(seq===this._finalLoadSeq)this._err(e.message);})
+      .finally(()=>{if(seq===this._finalLoadSeq){this.finalBusy=false;this._finalLoadPending=null;}});
+    this._finalLoadPending={url,promise};
+    return promise;
   },
   opsDnm:null, opsDnmMsg:'', opsDnmWiki:{},
   async opsDnmLoad() {try{this.opsDnm=await this.opsRequest('/dnm');const c=(this.opsDnm.wiki||{}).config||{};this.opsDnmWiki=Object.assign({},c,{policy_pages:(c.policy_pages||[]).join(', ')});}catch(e){this.opsDnmMsg=e.message;}},

@@ -225,41 +225,58 @@
       </div>
 
 
-<dialog class="badgemodal" x-ref="finalHistoryDialog" aria-labelledby="final-history-title" x-on:close="finalHistory=null" x-on:click="if($event.target===$el)$el.close()">
-  <header class="badgemodal__hd">
-    <h2 id="final-history-title" class="badgemodal__ttl">판정 내역</h2>
-    <button type="button" class="copybtn ml-auto" x-on:click="$refs.finalHistoryDialog.close()" autofocus>닫기</button>
+<dialog class="badgemodal final-history" x-ref="finalHistoryDialog" aria-labelledby="final-history-title" x-on:close="finalHistory=null" x-on:click="if($event.target===$el)$el.close()">
+  <header class="final-history__header">
+    <h2 id="final-history-title" class="ds-dialog__title">판정 내역</h2>
+    <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-on:click="$refs.finalHistoryDialog.close()" autofocus>닫기</button>
   </header>
-  <p x-text="finalHistory ? finalHistory.row.title : ''"></p>
-  <p class="text-muted" x-text="finalHistory ? '최종검수 대상 사유: '+finalHistory.row.final_reason : ''"></p>
-  <p x-show="finalHistoryBusy" role="status">판정 내역을 불러오는 중입니다.</p>
-  <p x-show="finalHistoryError" role="alert" x-text="finalHistoryError"></p>
-  <section class="overflow-auto">
-    <h3>기초 검수 판정</h3>
-    <table class="ds-table">
-      <thead><tr><th>검수자</th><th>판정</th><th>수정 요소·사유</th></tr></thead>
-      <tbody><template x-for="(v,i) in ((finalHistory||{}).basic_verdicts||[])" x-bind:key="i"><tr>
-        <td x-text="v.reviewer||v.reviewer_id||'미기록'"></td>
-        <td x-text="v.verdict==='good'?'정확':v.verdict==='bad'?'수정 필요':'보류'"></td>
-        <td x-text="[v.element,v.note].filter(Boolean).join(' · ')||'기록된 사유 없음'"></td>
-      </tr></template></tbody>
-    </table>
-    <p x-show="!finalHistoryBusy && !((finalHistory||{}).basic_verdicts||[]).length">기록된 기초 판정이 없습니다.</p>
-    <h3>항목별 판정 이력</h3>
-    <template x-for="(h,i) in ((finalHistory||{}).review_history||[])" x-bind:key="i">
-      <section>
-        <p x-text="h.by+' · '+fmtTs(h.ts)+' · '+(h.action.startsWith('final_')?'최종검수':'초기 검수')"></p>
-        <p x-show="h.action.endsWith('undo')">판정 철회</p>
-        <table class="ds-table" x-show="!h.action.endsWith('undo')">
-          <thead><tr><th>항목</th><th>판정</th><th>수정 제안·보류 사유</th></tr></thead>
-          <tbody><template x-for="f in opsFields" x-bind:key="f.key"><tr>
-            <th x-text="f.label"></th>
-            <td x-text="({accurate:'정확',needs_fix:'수정 필요',hold:'보류'})[(((h.data||{}).axes||{})[f.key]||{}).status]||'미기록'"></td>
-            <td x-text="(((h.data||{}).axes||{})[f.key]||{}).proposal||(((h.data||{}).axes||{})[f.key]||{}).reason||'—'"></td>
+  <section class="ds-dialog__body final-history__body" x-bind:aria-busy="finalHistoryBusy">
+    <section class="content-section">
+      <p class="final-history__article" x-text="finalHistory ? finalHistory.row.title : ''"></p>
+      <dl class="dve__kv"><dt>대상 사유</dt><dd x-text="finalHistory ? finalHistory.row.final_reason : ''"></dd></dl>
+    </section>
+    <p class="content-section__description" x-show="finalHistoryBusy" role="status">판정 내역을 불러오는 중입니다.</p>
+    <section class="content-section" x-show="finalHistoryError" role="alert">
+      <p class="content-section__description" x-text="finalHistoryError"></p>
+      <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="openFinalHistory(finalHistory.row)">다시 불러오기</button>
+    </section>
+    <section class="content-section" x-show="!finalHistoryBusy && !finalHistoryError">
+      <header class="content-section__head"><h3 class="content-section__title">기초 검수 판정</h3></header>
+      <section class="overflow-auto" x-show="((finalHistory||{}).basic_verdicts||[]).length">
+        <table class="ds-table final-history__table">
+          <thead><tr><th scope="col">검수자</th><th scope="col">판정</th><th scope="col">수정 요소·사유</th></tr></thead>
+          <tbody><template x-for="(v,i) in ((finalHistory||{}).basic_verdicts||[])" x-bind:key="i"><tr>
+            <th scope="row" x-text="v.reviewer||v.reviewer_id||'미기록'"></th>
+            <td><span class="ds-statusdot" x-bind:class="v.verdict==='good'?'ds-statusdot--ok':v.verdict==='bad'?'ds-statusdot--error':'ds-statusdot--warn'"><span class="ds-statusdot__dot" aria-hidden="true"></span><span x-text="v.verdict==='good'?'정확':v.verdict==='bad'?'수정 필요':'보류'"></span></span></td>
+            <td class="final-history__reason" x-bind:class="!v.note && !v.element ? 'text-muted' : ''" x-text="[(v.element||'').split(',').filter(Boolean).map(k=>elemLabel(k)||k).join(' · '),v.note].filter(Boolean).join(' · ')||'기록된 사유 없음'"></td>
           </tr></template></tbody>
         </table>
       </section>
-    </template>
-    <p x-show="!finalHistoryBusy && !((finalHistory||{}).review_history||[]).length">기록된 항목별 이력이 없습니다.</p>
+      <p class="content-section__description" x-show="!((finalHistory||{}).basic_verdicts||[]).length">기록된 기초 판정이 없습니다.</p>
+    </section>
+    <section class="content-section" x-show="!finalHistoryBusy && !finalHistoryError">
+      <header class="content-section__head"><h3 class="content-section__title">항목별 판정 이력</h3></header>
+      <template x-for="(h,i) in ((finalHistory||{}).review_history||[])" x-bind:key="i">
+        <section class="content-section final-history__entry">
+          <header class="final-history__reviewer">
+            <strong x-text="h.by"></strong>
+            <span class="ds-badge ds-badge--neutral" x-text="h.action.startsWith('final_')?'최종검수':'초기 검수'"></span>
+            <time class="text-muted tnum" x-text="fmtTs(h.ts)"></time>
+          </header>
+          <p class="content-section__description" x-show="h.action.endsWith('undo')">판정 철회</p>
+          <section class="overflow-auto" x-show="!h.action.endsWith('undo')">
+            <table class="ds-table final-history__table">
+              <thead><tr><th scope="col">항목</th><th scope="col">판정</th><th scope="col">수정 제안·보류 사유</th></tr></thead>
+              <tbody><template x-for="f in opsFields" x-bind:key="f.key"><tr>
+                <th scope="row" x-text="f.label"></th>
+                <td><span class="ds-statusdot" x-bind:class="({'accurate':'ds-statusdot--ok','needs_fix':'ds-statusdot--error','hold':'ds-statusdot--warn'})[(((h.data||{}).axes||{})[f.key]||{}).status]||''"><span class="ds-statusdot__dot" aria-hidden="true"></span><span x-text="({accurate:'정확',needs_fix:'수정 필요',hold:'보류'})[(((h.data||{}).axes||{})[f.key]||{}).status]||'미기록'"></span></span></td>
+                <td class="final-history__reason" x-text="(((h.data||{}).axes||{})[f.key]||{}).proposal||(((h.data||{}).axes||{})[f.key]||{}).reason||'·'"></td>
+              </tr></template></tbody>
+            </table>
+          </section>
+        </section>
+      </template>
+      <p class="content-section__description" x-show="!((finalHistory||{}).review_history||[]).length">기록된 항목별 이력이 없습니다. 위 기초 검수 판정에서 검수자별 결과를 확인하세요.</p>
+    </section>
   </section>
 </dialog>

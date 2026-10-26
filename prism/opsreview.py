@@ -40,6 +40,32 @@ def read_row(st, ch, team=None):
             'model': (payload.get('trace') or {}).get('model'), 'version': (payload.get('trace') or {}).get('version')}
 
 
+def review_snapshots(st, hashes, team=None):
+    """목록 판정에 필요한 기록·원문을 묶어 조회한다. 단건 조회와 같은 기준값을 유지한다."""
+    hashes = list(dict.fromkeys(hashes))
+    if not all(HASH.fullmatch(ch) for ch in hashes):
+        raise ValueError('실제 검수 콘텐츠를 선택하세요')
+    if not getattr(st, 'REMOTE', False):
+        records = {ch: st.get_report('ops_review_' + ch, team) for ch in hashes}
+        return {ch: (record, read_row(st, ch, team) if record else None) for ch, record in records.items()}
+    out = {ch: (None, None) for ch in hashes}
+    fields = ('service', 'title', 'subtitle', 'body', 'source_fields', 'item_meta', 'quality_meta', 'model', 'version')
+    for offset in range(0, len(hashes), 100):
+        batch = hashes[offset:offset+100]
+        records = st._get('reports', 'select=kind,payload&team_key=eq.' + urllib.parse.quote(team or '')
+                          + '&kind=in.(' + ','.join('ops_review_' + ch for ch in batch) + ')')
+        managed = {r['kind'][len('ops_review_'):]: r['payload'] for r in records if r.get('payload')}
+        if not managed:
+            continue
+        rows = st._get('contents', 'select=hash,' + ','.join(fields) + '&hash=in.(' + ','.join(managed) + ')'
+                       + ('&team_id=eq.' + urllib.parse.quote(team) if team else ''))
+        by_hash = {r['hash']: {k: r.get(k) for k in fields} for r in rows}
+        if set(managed) - set(by_hash):
+            raise ValueError('콘텐츠를 찾을 수 없습니다')
+        out.update({ch: (record, by_hash[ch]) for ch, record in managed.items()})
+    return out
+
+
 def basis(row):
     im, source = row.get('item_meta') or {}, row.get('source_fields') or {}
     out = {'item_unique_key': source.get('item_unique_key') or im.get('item_unique_key'),

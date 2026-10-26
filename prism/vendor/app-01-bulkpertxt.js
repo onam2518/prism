@@ -124,12 +124,24 @@ window.PRISM_APP_PARTS.push(() => ({
       finalQueue: null, finalBusy: false,
       get finalReviewers() { return (this.arenaData && this.arenaData.final_reviewers) || []; },
       get isFinalReviewer() { return !!(this.arenaData && this.arenaData.my_id && this.finalReviewers.includes(this.arenaData.my_id)); },
-      async loadFinalQueue() {
-        this.finalBusy = true;
-        try { const r = await (await this._afetch('/final-queue', { headers: this._authHeaders() })).json(); if (r && r.ok) this.finalQueue = r; } catch (e) {}
-        this.finalBusy = false;
+      finalItemDone(r, verdict) {
+        ++this._finalLoadSeq; this._finalLoadPending=null; this.finalBusy=false;
+        Object.assign(r, {final:verdict, final_by:this.reviewer||'', final_ts:Date.now()/1000});
+        const queue=this.finalQueue;
+        if (!queue) return;
+        const before=queue.items||[];
+        queue.items=before.filter(x=>x.hash!==r.hash);
+        if(queue.items.length===before.length)return;
+        const gold=r.hash.startsWith('goldf:');
+        if(gold)queue.gold_n=Math.max(0,(queue.gold_n||0)-1);
+        else {
+          queue.n=Math.max(0,(queue.n||0)-1);
+          queue.displayed_n=Math.max(0,(queue.displayed_n||0)-1);
+        }
       },
       async finalDecide(r, v) {                    // 편입(good)/제외(bad)/철회('') · 기존 /final-verdict 재사용
+        if(r._finalSaving)return false;
+        r._finalSaving=true;
         try {
           if (r.final_reason === '인텐트 재확정') {   // 정답셋 인텐트 재확정: 상세(교정 반영분)의 의도를 그대로 정답으로 · 성공 시 큐에서 제거
             if (v !== 'good') return;
@@ -137,17 +149,14 @@ window.PRISM_APP_PARTS.push(() => ({
             const res = await (await this._afetch('/final-verdict', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: r.hash, verdict: 'intent_confirm', intent: cur, reviewer: this.reviewer }) })).json();
             if (!(res && res.ok)) { this._err((res && res.error) || '재확정 저장 실패'); return false; }
             this.liveToast('인텐트 재확정 저장 · 이 정답은 다시 인텐트 측정에 들어갑니다');
-            this.finalQueue.items = ((this.finalQueue || {}).items || []).filter((x) => x.hash !== r.hash);
-            if (this.finalQueue) this.finalQueue.n = this.finalQueue.items.length;
-            if (this.finalCtx && this.finalCtx.hash === r.hash) { this.detailOpen = false; this.finalCtx = null; }
+            this.finalItemDone(r, 'good');
             return true;
           }
           const res = await (await this._afetch('/final-verdict', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: r.hash, verdict: v, reviewer: this.reviewer }) })).json();
           if (res && res.ok && res.gold) {         // 골드 캘리브레이션 문항: 정오 알림 후 목록에서 제거(원장 무오염)
             this.liveToast(res.gold.correct ? '골드 문항 정답 · 판정 정확도에 반영됐어요' : ('골드 문항 오답 · 정답은 ' + (res.gold.expected === 'good' ? '편입' : '제외') + '이었어요'));
-            this.finalQueue.items = ((this.finalQueue || {}).items || []).filter((x) => x.hash !== r.hash);
+            this.finalItemDone(r, v);
             (res.missions_completed || []).forEach((m) => this.celebratePoints(m.bonus, '미션 달성 · ' + m.label));
-            if (this.finalCtx && this.finalCtx.hash === r.hash) { this.detailOpen = false; this.finalCtx = null; }
             return true;
           }
           if (res && res.ok) {
@@ -159,6 +168,7 @@ window.PRISM_APP_PARTS.push(() => ({
             return true;
           } else this._err((res && res.error) || '저장 실패');
         } catch (e) { this._err('저장 실패'); }
+        finally {r._finalSaving=false;}
         return false;
       },
       // 최종검수 컨텍스트: 최종 검수 탭에서 상세로 들어오면 '검수 판정' 자리가 '최종검수 결정'으로 바뀐다
