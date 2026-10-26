@@ -31,14 +31,14 @@ window.PRISM_APP_PARTS.push(() => ({
         const d = ((f || {}).details || []).join('\n');
         return d ? (k + '\n' + d) : k;
       },
-      // 실패 콘텐츠 개별 재실행: STEP 2 사용 모델로 이 건만 재생성 · 무실패 성공이면 서버가 recent 에서 제거
+      // 실패 콘텐츠 개별 재실행: 실패 목록에서 선택한 모델로 이 건만 재생성 · 무실패 성공이면 서버가 recent 에서 제거
       async rerunFail(f) {
-        await this.rerunOne({ hash: f.hash, title: f.title });
+        await this.rerunOne({ hash: f.hash, title: f.title }, false, this.failRunModel);
         this.loadFails();
       },
       // ── 실패 목록 필터 + 다중 선택 재실행 ('추가된 콘텐츠' 표와 같은 규약) ──
       // 실패가 한 종류로 몰릴 때(예: 잔액 부족 402 전건) 원인별로 갈라 보고 한 번에 다시 돌린다.
-      failKind: '', failModel: '',
+      failKind: '', failModel: '', failRunModel: '',
       get failAll() { return ((this.failData || {}).recent) || []; },
       get failKindOpts() {
         const s = new Set();
@@ -73,16 +73,18 @@ window.PRISM_APP_PARTS.push(() => ({
       // 필터를 바꾸면 선택을 비운다 — 안 보이는 건이 딸려 실행되는 사고 방지(콘텐츠 표와 동일)
       pickFailKind(v) { this.failKind = v; this.clearFailPick(); },
       pickFailModel(v) { this.failModel = v; this.clearFailPick(); },
-      async rerunFailPicked(force) {
-        const hs = this.failPicked;
+      async rerunFailPicked(force, selection) {
+        const request = selection || { hashes: this.failPicked, model: this.failRunModel };
+        const hs = request.hashes;
+        const model = request.model;
         if (!hs.length || this.failBusy) return;
-        const mname = '기본 실행 모델';                 // 모델 비움('') = 서버 기본 실행 모델
-        if (!force && !(await this.dsConfirm('실패한 ' + hs.length + '건을 ' + mname + ' 로 다시 실행합니다(건당 비용 발생) · 진행할까요?', { ok: '재실행' }))) return;
+        const mname = this.mpCurLabel(this.availableModels, model, {first:{label:'기본 설정 모델',value:''}});
+        if (!force && !(await this.dsConfirm('실패한 ' + hs.length + '건을 ' + mname + '로 다시 실행합니다(건당 비용 발생) · 진행할까요?', { ok: '재실행' }))) return;
         this.failBusy = true;
         let retryConfirm = false;
         try {
           const before = this.failAll.length;
-          const r = await (await this._afetch('/rerun-all', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ model: '', hashes: hs, force: !!force }) })).json();
+          const r = await (await this._afetch('/rerun-all', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ model: model, hashes: hs, force: !!force }) })).json();
           if (r && !r.error) {
             this.clearFailPick(); this.loadDash(); this.fetchIngestStatus();
             await this.loadFails();
@@ -99,7 +101,7 @@ window.PRISM_APP_PARTS.push(() => ({
         this.failBusy = false;
         if (retryConfirm) {
           const ok = await this.dsConfirm('퀘스트(검수 목표) 진행 중입니다. 초안을 새로 만들면 기존 검수 의견과 어긋날 수 있습니다. 선택한 ' + hs.length + '건을 재실행할까요?', { title: '퀘스트 중 재실행', ok: '재실행', danger: true });
-          if (ok) await this.rerunFailPicked(true);
+          if (ok) await this.rerunFailPicked(true, request);
         }
       },
       // 학습 지시 원본 관리(개별 끄기 · 관리자): 끈 지시는 다음 학습 반영부터 제외

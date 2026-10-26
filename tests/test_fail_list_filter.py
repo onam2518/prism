@@ -52,7 +52,7 @@ class TestBulkRerun(FailListSrc):
 
     def test_posts_hashes_to_rerun_all(self):
         src = self._src()
-        self.assertIn("async rerunFailPicked(force)", src)
+        self.assertIn("async rerunFailPicked(force, selection)", src)
         self.assertIn("hashes: hs", src)
 
     def test_refreshes_fail_list_after_run(self):
@@ -63,7 +63,7 @@ class TestBulkRerun(FailListSrc):
 
     def test_quest_retry_path(self):
         src = self._src()
-        self.assertIn("rerunFailPicked(true)", src)
+        self.assertIn("rerunFailPicked(true, request)", src)
         self.assertIn("/퀘스트/.test", src)
 
     def test_single_rerun_button_kept(self):
