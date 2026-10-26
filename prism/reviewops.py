@@ -187,6 +187,10 @@ def final_review_queue(team=None, reviewer: str = "", offset=0, limit=200, reaso
     except Exception:
         golden = set()
     rewrite = rewrite_items(team)
+    from .opsreview import review_snapshots
+    candidates = [_row_key(r.get("content_ref") or {}) for r in rows]
+    candidates = [ch for ch in candidates if ch not in golden and (fmap.get(ch) or ch in finals or ch in rewrite)]
+    snapshots = review_snapshots(st, candidates, team)
     out = []
     for r in reversed(rows):                       # 최근순
         ref = r.get("content_ref") or {}
@@ -194,9 +198,9 @@ def final_review_queue(team=None, reviewer: str = "", offset=0, limit=200, reaso
         fb = fmap.get(ch) or {}
         if ch in golden or (not fb and ch not in finals and ch not in rewrite):
             continue                               # 대상 아님을 먼저 거른다(행마다 ops_review 원격 조회 N+1 방지)
-        fb, current_final = LO._current_review_votes(st, ch, team, fb, finals.get(ch))
+        fb, current_final = LO._current_review_votes(st, ch, team, fb, finals.get(ch), snapshot=snapshots[ch])
         if ch in rewrite:     # 다시 생성한 수정 필요 건 · 기초 합의와 무관하게 최종 결정 대상
-            d = _SV._detail_row(r)
+            d = {"hash": ch, "_source": r}
             d["version"] = int((r.get("trace") or {}).get("version") or 0) or None
             d["model"] = ""                        # 출처 비표시(원장에만 기록)
             d["final_reason"] = REWRITE_REASON
@@ -229,7 +233,7 @@ def final_review_queue(team=None, reviewer: str = "", offset=0, limit=200, reaso
             reason = "의견 갈림"
         else:                                      # 수정필요 일방 합의·기초 표 부족 → 기초 큐 몫
             continue
-        d = _SV._detail_row(r)
+        d = {"hash": ch, "_source": r}
         d["version"] = int((r.get("trace") or {}).get("version") or 0) or None   # 초안 프롬프트 버전(재실행 여부 식별)
         d["final_reason"] = reason
         fv = (finals.get(ch) or {}) if current_final else {}
@@ -238,7 +242,6 @@ def final_review_queue(team=None, reviewer: str = "", offset=0, limit=200, reaso
         d["final_ts"] = fv.get("ts", 0)
         out.append(d)
     out += _intent_reconfirm_items(rows, st, team, cap=max(1, len(rows)))   # 공통 68 전환 뒤 재확정 대기 정답(2차 검수 몫)
-    out = _SV._attach_fb(out, team, reviewer, fmap=fmap)
     if filter_reason:
         out = [r for r in out if r.get("final_reason") == filter_reason]
     def waiting_since(row):
@@ -249,6 +252,9 @@ def final_review_queue(team=None, reviewer: str = "", offset=0, limit=200, reaso
     total = len(out)
     offset, limit = max(0, int(offset)), max(1, min(200, int(limit)))
     out = out[offset:offset+limit]
+    out = [dict(_SV._detail_row(item['_source']), **{k: v for k, v in item.items() if k != '_source'})
+           if '_source' in item else item for item in out]
+    out = _SV._attach_fb(out, team, reviewer, fmap=fmap)
     real_n = len(out)
     if reviewer and out and bool(getattr(Config.load(), "final_gold_check", True)):
         out = _inject_gold_final(out, reviewer, team)   # 골드 캘리브레이션(블라인드 · 응답은 gold_checks 로)
@@ -272,7 +278,7 @@ def _intent_reconfirm_items(rows: list, st, team=None, cap: int = 200) -> list:
         exp = need.get(ch)
         if exp is None:
             continue
-        d = _SV._detail_row(r)
+        d = {"hash": ch, "_source": r}
         d["final_reason"] = "인텐트 재확정"
         d["golden_intent"] = list(exp.get("intent") or [])
         d["intent_retired"] = list(exp.get("intent_retired") or [])
