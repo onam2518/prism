@@ -1478,6 +1478,9 @@ button.tbchip:disabled{cursor:default;opacity:.8}
   .mpick__cur{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .mpick__caret{width:14px;height:14px;flex:none;color:var(--ds-muted)}
   .mpick__refresh{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;margin-left:4px;padding:0;border:1px solid var(--ds-border);border-radius:var(--ds-radius-md);background:var(--ds-surface);color:var(--ds-muted);cursor:pointer;flex:none}
+  .failure-rerun-controls .mpick{align-items:center;max-width:100%;min-width:0}
+  .failure-rerun-controls .mpick__btn{max-width:100%}
+  .failure-rerun-controls .mpick__refresh{height:var(--control-row-h);width:var(--control-row-h)}
   .mpick__refresh:hover{color:var(--ds-ink);border-color:var(--ds-ink-soft,var(--ds-border))}
   .mpick__refresh:disabled{opacity:.5;cursor:default}
   .mpick__refresh svg{width:15px;height:15px}

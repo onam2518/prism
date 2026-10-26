@@ -43,9 +43,9 @@
         <section class="panel" data-fn x-init="loadFails()"><div class="panel-hd"><b>메타 생성 실패 콘텐츠</b><span class="meta">최근 30일 · 모델 실행이 실패한 콘텐츠 목록 · 재실행이 성공하면 자동으로 사라집니다</span>
           <span class="ds-badge ds-badge--error tnum ml-auto" x-show="((failData&&failData.recent)||[]).length" x-text="((failData&&failData.recent)||[]).length + '건'"></span>
         </div>
-          <div class="panel-bd">
+          <div class="panel-bd fn-stack">
             <!-- 원인별로 갈라 보고 한 번에 다시 돌린다 · 실패가 한 종류로 몰릴 때(예: 잔액 부족 402 전건) 유용 -->
-            <div class="filterbar" x-show="failAll.length" x-cloak>
+            <section class="control-row" x-show="failAll.length" x-cloak aria-label="실패 콘텐츠 필터">
               <select class="field" style="width:auto" x-model="failKind" x-on:change="pickFailKind($event.target.value)">
                 <option value="">실패 종류 전체</option>
                 <template x-for="k in failKindOpts" x-bind:key="'fko'+k"><option x-bind:value="k" x-text="failKindKr(k)" x-bind:selected="String(k) === String(failKind)"></option></template>
@@ -59,10 +59,10 @@
               <span class="ds-badge ds-badge--error" style="cursor:help" x-show="failBillingN" x-cloak data-tip="API 크레딧이 소진돼 실패한 건입니다 · 충전하기 전에는 재실행해도 같은 오류로 다시 등재됩니다" data-tip-pos="top" x-text="'크레딧 부족 ' + failBillingN + '건 · 충전 필요'"></span>
               <!-- 402 의 다른 갈래: 크레딧은 남아 있는데 프로젝트 지출 한도에 걸린 경우 · 조치가 다르다 -->
               <span class="ds-badge ds-badge--error" style="cursor:help" x-show="failQuotaN" x-cloak data-tip="크레딧이 아니라 이 키가 속한 프로젝트의 지출 한도에 걸린 건입니다 · 라우터 콘솔에서 한도를 올려야 재실행이 통과합니다" data-tip-pos="top" x-text="'지출 한도 초과 ' + failQuotaN + '건 · 한도 상향 필요'"></span>
-            </div>
-            <section class="control-row control-row--compact" x-show="failAll.length" aria-label="실패 콘텐츠 재실행" style="margin-bottom:var(--ds-space-4)">
-              <span class="ds-label">재실행 모델</span>
-              <x-modelpick key="fail-run" value="failRunModel" set="failRunModel=$v" options="availableModels" first-label="기본 설정 모델" first-value="" tip="단건·선택 재실행에 사용할 모델 · 기본 설정 모델을 고르면 현재 실행 설정을 따릅니다"></x-modelpick>
+            </section>
+            <section class="control-row failure-rerun-controls" x-show="failAll.length" aria-label="실패 콘텐츠 재실행">
+              <strong class="ds-label">재실행 모델</strong>
+              <x-modelpick key="fail-run" width="0" value="failRunModel" set="failRunModel=$v" options="availableModels" first-label="기본 설정 모델" first-value="" tip="단건·선택 재실행에 사용할 모델 · 기본 설정 모델을 고르면 현재 실행 설정을 따릅니다"></x-modelpick>
               <button type="button" class="ds-btn ds-btn--s-sm ds-btn--outline" x-bind:disabled="!failPicked.length || failBusy" x-on:click="rerunFailPicked()" x-text="failBusy ? '재실행 중…' : ('선택 재실행' + (failPicked.length ? (' ' + failPicked.length + '건') : ''))" data-tip="체크한 콘텐츠를 선택한 재실행 모델로 다시 실행합니다 · 성공하면 목록에서 사라집니다 · 건당 비용 발생" data-tip-pos="top"></button>
               <button type="button" class="copybtn" x-show="failPicked.length" x-cloak x-on:click="clearFailPick()">선택 해제</button>
             </section>
