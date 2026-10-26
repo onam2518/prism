@@ -54,14 +54,18 @@
                 <option value="">모델 전체</option>
                 <template x-for="m in failModelOpts" x-bind:key="'fmo'+m"><option x-bind:value="m" x-text="m"></option></template>
               </select>
-              <button type="button" class="ds-btn ds-btn--s-sm ds-btn--outline" style="padding:0 12px;font-size:12px" x-bind:disabled="!failPicked.length || failBusy" x-on:click="rerunFailPicked()" x-text="failBusy ? '재실행 중…' : ('선택 재실행' + (failPicked.length ? (' ' + failPicked.length + '건') : ''))" data-tip="체크한 콘텐츠를 STEP 2의 사용 모델로 다시 실행합니다 · 성공하면 목록에서 사라집니다 · 건당 비용 발생" data-tip-pos="top"></button>
-              <button type="button" class="copybtn" x-show="failPicked.length" x-cloak x-on:click="clearFailPick()">선택 해제</button>
               <span class="text-xs text-muted tnum" x-text="failRows.length + ' / ' + failAll.length + '건'"></span>
               <!-- 잔액 부족은 재실행으로 못 푼다 · '눌러도 안 사라진다'는 오해를 먼저 끊는다 -->
               <span class="ds-badge ds-badge--error" style="cursor:help" x-show="failBillingN" x-cloak data-tip="API 크레딧이 소진돼 실패한 건입니다 · 충전하기 전에는 재실행해도 같은 오류로 다시 등재됩니다" data-tip-pos="top" x-text="'크레딧 부족 ' + failBillingN + '건 · 충전 필요'"></span>
               <!-- 402 의 다른 갈래: 크레딧은 남아 있는데 프로젝트 지출 한도에 걸린 경우 · 조치가 다르다 -->
               <span class="ds-badge ds-badge--error" style="cursor:help" x-show="failQuotaN" x-cloak data-tip="크레딧이 아니라 이 키가 속한 프로젝트의 지출 한도에 걸린 건입니다 · 라우터 콘솔에서 한도를 올려야 재실행이 통과합니다" data-tip-pos="top" x-text="'지출 한도 초과 ' + failQuotaN + '건 · 한도 상향 필요'"></span>
             </div>
+            <section class="control-row control-row--compact" x-show="failAll.length" aria-label="실패 콘텐츠 재실행" style="margin-bottom:var(--ds-space-4)">
+              <span class="ds-label">재실행 모델</span>
+              <x-modelpick key="fail-run" value="failRunModel" set="failRunModel=$v" options="availableModels" first-label="기본 설정 모델" first-value="" tip="단건·선택 재실행에 사용할 모델 · 기본 설정 모델을 고르면 현재 실행 설정을 따릅니다"></x-modelpick>
+              <button type="button" class="ds-btn ds-btn--s-sm ds-btn--outline" x-bind:disabled="!failPicked.length || failBusy" x-on:click="rerunFailPicked()" x-text="failBusy ? '재실행 중…' : ('선택 재실행' + (failPicked.length ? (' ' + failPicked.length + '건') : ''))" data-tip="체크한 콘텐츠를 선택한 재실행 모델로 다시 실행합니다 · 성공하면 목록에서 사라집니다 · 건당 비용 발생" data-tip-pos="top"></button>
+              <button type="button" class="copybtn" x-show="failPicked.length" x-cloak x-on:click="clearFailPick()">선택 해제</button>
+            </section>
             <div class="overflow-auto" style="max-height:280px" x-show="failRows.length"><table class="ds-table"><thead><tr><th style="width:34px"><input type="checkbox" x-bind:checked="failAllOn" x-on:change="toggleFailPickAll()" data-tip="보이는 행 전체 선택" data-tip-pos="right" aria-label="보이는 행 전체 선택"></th><th>콘텐츠</th><th style="width:100px">서비스</th><th style="width:160px">모델</th><th style="width:150px">실패 종류</th><th style="width:130px">콜</th><th style="width:60px">일자</th><th style="width:96px"></th></tr></thead><tbody>
               <template x-for="f in failRows" x-bind:key="'fr'+f.hash">
                 <tr>
@@ -73,7 +77,7 @@
                   <td><template x-for="k in (f.kinds||[])" x-bind:key="'frk'+f.hash+k"><span class="ds-badge ds-badge--reason" style="cursor:help;margin:1px" x-bind:data-tip="failTip(f, k)" data-tip-pos="top" x-text="failKindKr(k)"></span></template></td>
                   <td><template x-for="c in (f.calls||[])" x-bind:key="'frc'+f.hash+c"><span class="ds-badge ds-badge--neutral" style="margin:1px" x-text="c"></span></template><span class="text-muted" x-show="!(f.calls||[]).length">·</span></td>
                   <td class="tnum text-muted" x-text="(f.day||'').slice(5).replace('-','/')"></td>
-                  <td><button type="button" class="ds-btn ds-btn--outline" style="height:26px;padding:0 10px;font-size:11px" x-bind:disabled="!!rerunBusy[f.hash]" x-on:click="rerunFail(f)" x-text="rerunBusy[f.hash] ? '재실행 중…' : '재실행'" data-tip="STEP 2의 사용 모델로 이 콘텐츠만 초안 재생성 · 건당 비용 발생" data-tip-pos="left"></button></td>
+                  <td><button type="button" class="ds-btn ds-btn--outline" style="height:26px;padding:0 10px;font-size:11px" x-bind:disabled="!!rerunBusy[f.hash]" x-on:click="rerunFail(f)" x-text="rerunBusy[f.hash] ? '재실행 중…' : '재실행'" data-tip="선택한 재실행 모델로 이 콘텐츠만 초안 재생성 · 건당 비용 발생" data-tip-pos="left"></button></td>
                 </tr>
               </template>
             </tbody></table></div>
@@ -112,7 +116,7 @@
                 <td><span class="ds-badge" x-bind:class="c.purpose === 'eval' ? 'ds-badge--warning' : 'ds-badge--neutral'" x-text="c.purpose === 'eval' ? '평가용' : '검수용'"></span></td>
                 <td><div class="flex items-center gap-1.5">
                   <button type="button" class="ds-btn ds-btn--outline" style="height:26px;padding:0 10px;font-size:11px" x-on:click="togglePurpose(c)" x-text="c.purpose === 'eval' ? '검수용 전환' : '평가용 전환'"></button>
-                  <button type="button" class="ds-btn ds-btn--outline" style="height:26px;padding:0 10px;font-size:11px" x-bind:disabled="!!rerunBusy[c.hash]" x-on:click="rerunOne(c)" x-text="rerunBusy[c.hash] ? '재실행 중…' : '재실행'" data-tip="STEP 2의 사용 모델로 이 콘텐츠만 초안 재생성 · 이전 초안은 이력 보존 · 건당 비용 발생" data-tip-pos="left"></button>
+                  <button type="button" class="ds-btn ds-btn--outline" style="height:26px;padding:0 10px;font-size:11px" x-bind:disabled="!!rerunBusy[c.hash]" x-on:click="rerunOne(c)" x-text="rerunBusy[c.hash] ? '재실행 중…' : '재실행'" data-tip="기본 설정 모델로 이 콘텐츠만 초안 재생성 · 이전 초안은 이력 보존 · 건당 비용 발생" data-tip-pos="left"></button>
                   <button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger" style="height:26px;padding:0 10px;font-size:11px" x-on:click="removeContent(c)" x-text="delArm === c.hash ? '삭제 확인' : '삭제'" data-tip="검수 목록·결과 비교(초안)·피드백까지 함께 삭제됩니다" data-tip-pos="left"></button>
                 </div></td>
               </tr>
