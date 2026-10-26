@@ -5,10 +5,10 @@ const vm = require('node:vm');
 function app() {
   const window={};
   for(const name of ['app-05-costdata.js','app-08-copytext.js'])
-    vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../prism/vendor',name),'utf8'),{window});
+    vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../prism/vendor',name),'utf8'),{window,crypto:require("node:crypto")});
   const a={};for(const part of window.PRISM_APP_PARTS)Object.defineProperties(a,Object.getOwnPropertyDescriptors(part()));
   a._authHeaders=()=>({});a._err=e=>{throw Error(e);};
-  a.liveToast=a.loadDash=a.fetchIngestStatus=()=>{};a.loadFails=async()=>{};
+  a.liveToast=a.loadDash=a.fetchIngestStatus=a.pollIngestStatus=()=>{};a.loadFails=async()=>{};
   a.mpCurLabel=(_,m)=>m||'기본 설정 모델';a.availableModels=[];
   a.dsConfirm=async()=>true;
   a.requests=[];
@@ -41,5 +41,15 @@ function app() {
   await a.rerunFail({hash:'one'});
   assert.equal(a.requests[1].model,'router/single');
   assert.equal(a.requests[1].force,true);
+  a=app();a.failSel={one:true,two:true};
+  let release;
+  a._afetch=async(url,options)=>{a.requests.push(JSON.parse(options.body));await new Promise(resolve=>{release=resolve;});return {json:async()=>({done:2})};};
+  const pending=a.rerunFailPicked();await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(a.failBusy,true);
+  assert.equal(a.failRunTotal,2);
+  assert.equal(a.requests[0].job_id,a.failJobId);
+  a.ingestJobs=[{id:'unrelated',done:99,total:99},{id:a.failJobId,done:1,total:2,running:true}];
+  assert.equal(a.failJob.done,1,'이번 요청의 진척도만 표시');
+  release();await pending;assert.equal(a.failBusy,false);
   console.log('failure rerun model client: OK');
 })().catch(e=>{console.error(e);process.exitCode=1;});
