@@ -109,7 +109,7 @@ def commit(st, ch, team, expected_row, old, new, patch=None, feedback=None, extr
         c.rollback(); raise
 
 
-def detail(st, ch, team=None, who='', privileged=False):
+def detail(st, ch, team=None, who='', privileged=False, final=False):
     row = read_row(st, ch, team); b = basis(row)
     record = st.get_report('ops_review_' + ch, team) or {'revision': 0, 'reviews': [], 'cases': [], 'sessions': [], 'history': []}
     latest = next((r for r in reversed(record['reviews']) if r['by'] == who and r['basis']['token'] == b['token']), None)
@@ -117,6 +117,10 @@ def detail(st, ch, team=None, who='', privileged=False):
               'cases': record['cases'], 'sessions': [s for s in record['sessions'] if privileged or s['by'] == who],
               'history': record['history'] if privileged else [x for x in record['history'] if x['by'] == who],
               'values': {k: (row.get('item_meta') or {}).get(k, '' if k == 'summary' else []) for k in FIELDS}}
+    result['final_review'] = next((r for r in reversed(record.get('final_reviews', [])) if r['by'] == who and r['basis']['token'] == b['token']), None)
+    if privileged or final:
+        result['review_history'] = [x for x in record['history'] if x['action'] in ('review', 'undo', 'final_review', 'final_undo')]
+        result['basic_verdicts'] = ((st.feedback_map(team=team) or {}).get(ch) or {}).get('verdicts', [])
     result['stages'] = record.get('stages') or {}
     result['bases'] = record.get('bases') or {}
     result['golden'] = ch in st.golden_hashes(team)
@@ -158,12 +162,16 @@ def action(st, data, team=None, who='', privileged=False, final=False):
         now = time.time()
         new.setdefault('bases', {})[b['token']] = b
         basis_ref = {k: v for k, v in b.items() if k not in ('snapshot', 'body')}
-        if cmd in ('review', 'undo'):
+        if cmd in ('review', 'undo', 'final_review', 'final_undo'):
+            is_final = cmd.startswith('final_')
+            if is_final and not (privileged or final): raise ValueError('최종검수자만 결정할 수 있습니다')
+            review_key = 'final_reviews' if is_final else 'reviews'
+            new.setdefault(review_key, [])
             asg = (st.assignees(team=team, hashes=[ch]) or {}).get(ch) or {}
-            if asg.get('reviewers') and who not in asg['reviewers']:
+            if not is_final and asg.get('reviewers') and who not in asg['reviewers']:
                 raise ValueError('다른 검수자에게 배정된 콘텐츠입니다')
             axes = data.get('axes') or {}
-            if cmd == 'review':
+            if cmd in ('review', 'final_review'):
                 if set(axes) != set(FIELDS): raise ValueError('메타 4종의 판정을 모두 선택하세요')
                 for key, axis in axes.items():
                     if not isinstance(axis, dict) or axis.get('status') not in STATUSES:
@@ -177,7 +185,7 @@ def action(st, data, team=None, who='', privileged=False, final=False):
                         for k, a in axes.items()}
                 states = [a['status'] for a in axes.values()]
                 verdict = 'hold' if 'hold' in states else ('bad' if 'needs_fix' in states else 'good')
-                new['reviews'].append({'by': who, 'ts': now, 'basis': basis_ref, 'axes': axes})
+                new[review_key].append({'by': who, 'ts': now, 'basis': basis_ref, 'axes': axes})
                 if verdict != 'good':
                     case = next((c for c in new['cases'] if c['basis_token'] == b['token'] and c['state'] != 'closed'), None)
                     if case is None:
@@ -190,8 +198,19 @@ def action(st, data, team=None, who='', privileged=False, final=False):
                             'note': '\n'.join(LABELS[k]+': '+(a['reason'] or a['proposal']) for k,a in axes.items() if a['reason'] or a['proposal']),
                             'element': ','.join('category' if k=='content_category' else k for k,a in axes.items() if a['status']=='needs_fix')}
             else:
-                new['reviews'].append({'by': who, 'ts': now, 'basis': basis_ref, 'axes': {}, 'withdrawn': True})
+                new[review_key].append({'by': who, 'ts': now, 'basis': basis_ref, 'axes': {}, 'withdrawn': True})
                 feedback = {'reviewer': who, 'verdict': ''}
+            if is_final:
+                finals = st.get_report('final_verdicts', team)
+                updated = copy.deepcopy(finals or {'items': {}})
+                verdict = feedback['verdict']
+                if verdict in ('good', 'bad'):
+                    updated.setdefault('items', {})[ch] = {'verdict': verdict, 'by': who, 'ts': now, 'basis_token': b['token']}
+                else:
+                    updated.setdefault('items', {}).pop(ch, None)
+                extra = {'kind': 'final_verdicts', 'expected': finals, 'payload': updated}
+                new.setdefault('stages', {})['final'] = {'status': verdict or 'withdrawn', 'by': who, 'ts': now}
+                feedback = None
         elif cmd == 'import_legacy':
             feedback_rows=(st.feedback_map(team=team) or {}).get(ch) or {}
             bad=[v for v in feedback_rows.get('verdicts',[]) if v.get('verdict')=='bad' and (privileged or (v.get('reviewer_id') or v.get('reviewer'))==who)]
@@ -301,11 +320,11 @@ def action(st, data, team=None, who='', privileged=False, final=False):
         else:
             raise ValueError('지원하지 않는 검수 작업입니다')
         new['revision'] += 1
-        history_data = dict(data, axes=axes) if cmd == 'review' else data
+        history_data = dict(data, axes=axes) if cmd in ('review', 'final_review') else data
         new['history'].append({'action':cmd,'by':who,'ts':now,'basis':basis_ref,'data':copy.deepcopy(history_data)})
         if not commit(st,ch,team,row,old,new,patch,feedback,extra):
             raise ValueError('저장 중 원문·정책·다른 담당자의 기록이 바뀌었습니다. 다시 확인하세요')
-        return detail(st,ch,team,who,privileged)
+        return detail(st,ch,team,who,privileged,final)
     except (ValueError,TypeError,KeyError) as exc:
         return {'ok':False,'error':str(exc)}
 

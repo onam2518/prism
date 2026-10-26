@@ -409,7 +409,8 @@ def _current_review_votes(st, ch, team, fb, final):
     from .opsreview import basis, read_row
     managed = st.get_report("ops_review_" + ch, team)
     current_token = basis(read_row(st, ch, team))["token"] if managed else None
-    if managed:
+    # 항목별 초기 검수로 전환하지 않은 건은 최종검수 후에도 기존 기초 표를 유지한다.
+    if managed and (managed.get("reviews") or any(h.get("action") not in ("final_review", "final_undo") for h in managed.get("history", []))):
         latest = {v["by"]:v for v in managed.get("reviews", []) if v["basis"]["token"] == current_token}
         current_votes = []
         for v in latest.values():

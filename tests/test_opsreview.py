@@ -294,3 +294,63 @@ class OperationsTests(unittest.TestCase):
             self.assertEqual(len(L._scope_golden(self.st.get_golden(),'eval',self.st)),1)
             for kind in ('sft','dpo','rationale','knowhow'):
                 self.assertEqual(L.learn_export(kind)[1],'',kind)
+
+    def test_final_review_preserves_basic_votes_and_uses_same_validation(self):
+        self.assertTrue(self.request('review',axes=self.axes('needs_fix'))['ok'])
+        before=self.st.feedback_map()
+        self.assertFalse(self.request('final_review',axes={})['ok'])
+        result=self.request('final_review',axes=self.axes())
+        self.assertTrue(result['ok'],result)
+        self.assertEqual(self.st.feedback_map(),before)
+        self.assertEqual(result['review']['axes']['summary']['status'],'needs_fix')
+        self.assertEqual(result['final_review']['axes']['summary']['status'],'accurate')
+        final=self.st.get_report('final_verdicts')['items'][self.ch]
+        self.assertEqual(final['verdict'],'good')
+        self.assertEqual(final['basis_token'],result['basis']['token'])
+        self.assertTrue(self.request('final_review',axes=self.axes('needs_fix'))['ok'])
+        self.assertEqual(self.st.get_report('final_verdicts')['items'][self.ch]['verdict'],'bad')
+        self.assertEqual(self.st.feedback_map(),before)
+
+    def test_hold_and_withdraw_remove_previous_final_without_changing_basic(self):
+        self.request('review',axes=self.axes('needs_fix'))
+        before=self.st.feedback_map()
+        for action,axes in [('final_review',self.axes('hold')),('final_undo',{})]:
+            self.request('final_review',axes=self.axes())
+            result=self.request(action,axes=axes)
+            self.assertTrue(result['ok'],result)
+            self.assertNotIn(self.ch,self.st.get_report('final_verdicts')['items'])
+            self.assertEqual(self.st.feedback_map(),before)
+
+    def test_final_permissions_history_and_stale_revision(self):
+        self.request('review',axes=self.axes('needs_fix'))
+        d=O.detail(self.st,self.ch,who='final-user')
+        self.assertNotIn('review_history',d)
+        data=dict(action='final_review',hash=self.ch,revision=d['revision'],basis_token=d['basis']['token'],axes=self.axes())
+        self.assertFalse(O.action(self.st,data,who='final-user')['ok'])
+        result=O.action(self.st,data,who='final-user',final=True)
+        self.assertTrue(result['ok'],result)
+        self.assertEqual(len(result['review_history']),2)
+        self.assertEqual(result['review_history'][0]['by'],'me')
+        self.assertFalse(O.action(self.st,data,who='final-user',final=True)['ok'])
+
+    def test_failed_final_transaction_does_not_leave_partial_decision(self):
+        self.st._conn().execute("CREATE TRIGGER final_fail BEFORE INSERT ON reports WHEN NEW.kind='final_verdicts' BEGIN SELECT RAISE(ABORT,'test final failure'); END")
+        with self.assertRaises(Exception): self.request('final_review',axes=self.axes())
+        self.assertIsNone(self.st.get_report('ops_review_'+self.ch))
+        self.assertIsNone(self.st.get_report('final_verdicts'))
+
+    def test_final_review_keeps_legacy_votes_in_queue_and_promotion_input(self):
+        from prism.learnops import _current_review_votes
+        self.st.save_feedback(self.ch,'뉴스','운영 검수','good','review','',1,reviewer='A')
+        self.st.save_feedback(self.ch,'뉴스','운영 검수','bad','review','수치 확인',1,reviewer='B')
+        self.st.set_assignees(self.ch,['A','B'])
+        before=self.st.feedback_map()[self.ch]
+        self.assertTrue(self.request('final_review',axes=self.axes())['ok'])
+        final=self.st.get_report('final_verdicts')['items'][self.ch]
+        votes,verdict=_current_review_votes(self.st,self.ch,None,before,final)
+        self.assertEqual(votes,before)
+        self.assertEqual(verdict,'good')
+        self.assertTrue(self.request('final_review',axes=self.axes('hold'))['ok'])
+        votes,verdict=_current_review_votes(self.st,self.ch,None,before,None)
+        self.assertEqual(votes,before)
+        self.assertIsNone(verdict)
