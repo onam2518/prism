@@ -64,6 +64,25 @@ async function run() {
   app.loadEvalRuns = () => {};
   app.evalTabKey({ key: 'Home', preventDefault() {}, currentTarget: { querySelector(id) { return { focus() { focus = id; } }; } } });
   assert.equal(app.evalTab, 'run'); assert.equal(focus, '#eval-tab-run');
+  app.evalDetail = { models: [{ model: 'A', evaluation: { metrics: { summary_semantic_cosine: { value: .8, n: 5 } } } }] };
+  assert.match(app.evalAssessmentValue(app.evalCols[0], 'summary_semantic_cosine'), /0.8000.*5건/);
+  assert.equal(app.evalAssessmentValue(app.evalCols[0], 'judge_support_rate'), '미측정');
+  app.evalGrounding = { reports: { A: { metrics: { judge_support_rate: { value: .9, n: 3 } } } } };
+  assert.match(app.evalAssessmentValue(app.evalCols[0], 'judge_support_rate'), /0.9000.*3건/);
+  const seq = app._evalDetailSeq, lookup = app.loadEvalGrounding({kind:'eval',id:1}, seq);
+  app._evalDetailSeq++;
+  pending[4].reply({ok:true,status:'done',judge_model:'stale',reports:{}}); await lookup;
+  assert.equal(app.evalGrounding.reports.A.metrics.judge_support_rate.value, .9, 'late grounding response must not replace current result');
+  app._afetch = async (url, options) => {
+    assert.equal(options.method, 'POST');
+    assert.match(url, /eval-grounding-cancel/);
+    assert.equal(JSON.parse(options.body).id, 7);
+    return { json: async () => ({ok:true}) };
+  };
+  app.evalSelected = {kind:'eval',id:7}; app.loadEvalGrounding = async () => {};
+  await app.runEvalGrounding(true); assert.equal(app.evalGroundingBusy, false);
+  app.pctTxt = v => (Math.round(v * 1000) / 10) + '%';
+  assert.equal(app.ciOf(1, 1), '20.7%~100%', 'perfect one-sample accuracy must not have a zero-width interval');
   console.log('Evaluation client: all kinds, races, errors, filtering, live state, keyboard tabs passed');
 }
 run().catch(e => { console.error(e); process.exitCode = 1; });

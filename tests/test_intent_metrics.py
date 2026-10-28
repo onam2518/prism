@@ -261,6 +261,10 @@ class TestEvalRunCompareSharesGuard(unittest.TestCase):
              "intent_n": n, "intent_exact": 0, "intent_top1": 0, "intent_skipped": 0,
              "intent_jac_sum": 0.0, "per_intent": per_intent}
         m["intent_jac_sum"] = per_intent.pop("_jac", 0.0)
+        from prism import evaluation as E
+        m["evaluation"] = E.report([{"hash": str(i), "source": {"body": "원문"},
+            "expected": {"finalGrade": "G"}, "got": {"result": {"finalGrade": "G"}}}
+            for i in range(n)], "result")
         st.eval_run_update(rid, status="done", cursor=n, metrics=m, finished=time.time())
         return rid
 

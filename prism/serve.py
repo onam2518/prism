@@ -87,6 +87,8 @@ KL._SV = sys.modules[__name__]
 IG._SV = sys.modules[__name__]      # 인입·잡 주입(동일)
 BD._SV = sys.modules[__name__]      # 게시판 주입(동일)
 EVO._SV = sys.modules[__name__]     # 평가 런 도메인 주입(Atelier eval_runs 이식)
+from . import evalreview as EVR
+EVR._SV = sys.modules[__name__]
 DEP._SV = sys.modules[__name__]     # 프롬프트 배포 도메인 주입(Atelier deployments 이식)
 CRW._SV = sys.modules[__name__]     # 검수 인력 운영(HR) 주입(동일)
 ELB._SV = sys.modules[__name__]     # 엔티티 라벨 원장 주입(동일)
@@ -2125,6 +2127,11 @@ def _g_eval_run(h, q):
     return eval_run_report(_qint(q, "id", 0, 0, 2 ** 31), h._req_team())
 
 
+@_get_route("/eval-grounding")
+def _g_eval_grounding(h, q):
+    return EVR.get({k: v[0] for k, v in q.items() if v}, h._req_team())
+
+
 @_get_route("/activity-daily")                       # 검수 활동 추이(일별 · 최근 N일 · 팀 스코프 · 롤업 병합)
 def _g_activity_daily(h, q):
     return activity_daily_data(h._req_team(), days=_qint(q, "days", 30, 1, 365))
@@ -2710,6 +2717,16 @@ def _p_autopilot_stop(h, body):
 def _p_eval_rubric_start(h, body):
     data = json.loads(body or b"{}")
     return rubric_start(int(data.get("id") or 0), h._req_team())
+
+
+@_post_route("/eval-grounding-start", gate="admin")
+def _p_eval_grounding_start(h, body):
+    return EVR.start(json.loads(body or b"{}"), h._req_team())
+
+
+@_post_route("/eval-grounding-cancel", gate="admin")
+def _p_eval_grounding_cancel(h, body):
+    return EVR.cancel(json.loads(body or b"{}"), h._req_team())
 
 
 @_post_route("/eval-rubric-cancel", gate="admin")    # 루브릭 채점 중단(채점된 건 유지)

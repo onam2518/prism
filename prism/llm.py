@@ -364,6 +364,8 @@ class LLMClient:
             # max_tokens 미지원 모델(gpt-5 계열 등): 명시하면 라우터가 max_tokens 를 주입하지 않는다.
             # 추론형 모델은 추론 토큰도 이 상한에 포함되므로 넉넉히 잡는다(출력 잘림 = JSON 파싱 실패).
             body["max_completion_tokens"] = 8192
+        if getattr(self, "max_output_tokens", None):
+            body["max_completion_tokens" if "max_completion" in self._adapt else "max_tokens"] = self.max_output_tokens
         if self.cache_key_on():
             # Upstage 공식 캐싱 파라미터. 같은 프리픽스면 같은 값이 나가야 캐시가 붙는다.
             body["prompt_cache_key"] = self._cache_key(system, tag, json_on)

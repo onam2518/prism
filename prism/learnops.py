@@ -614,7 +614,8 @@ def cheapest_passing_model(models: list, gate: float) -> str:
     """'합격하는 가장 싼 모델' 추천: 등급 일치율이 게이트 이상인 모델 중 비용 최저.
     비용 미계측(None)은 제외 · 동률이면 일치율 높은 쪽. 없으면 빈 문자열."""
     ok = [m for m in (models or [])
-          if (m.get("grade_accuracy") or 0) >= gate and m.get("cost_usd") is not None]
+          if (m.get("grade_accuracy") or 0) >= gate and m.get("cost_usd") is not None
+          and ("evaluation" not in m or m.get("passed"))]
     if not ok:
         return ""
     ok.sort(key=lambda m: (m["cost_usd"], -(m.get("grade_accuracy") or 0)))
@@ -638,12 +639,14 @@ def _eval_values(out):
               for k in MC.FIELDS}
     values.update({k: v for k, v in (out.get("quality_meta") or {}).items()
                    if k in ("finalGrade", "reasons")})
+    if isinstance(im, dict):
+        values.update({k: im[k] for k in ("meta_status", "hold_fields") if k in im})
     return values
 
 
 def _compare_item(row: dict, outs_by_model: dict) -> dict:
     """건 1개의 정답 vs 모델별 산출(등급·사유·정오) · 화면의 건별 비교표 행."""
-    from .store import content_hash
+    from .store import golden_hash
     c = row.get("content") or {}
     exp = row.get("expected") or {}
     want_g = exp.get("finalGrade") or ""
@@ -658,7 +661,8 @@ def _compare_item(row: dict, outs_by_model: dict) -> dict:
         got[model] = {**_eval_values(out), "grade": g, "reasons": sorted(qm.get("reasons") or []),
                       "ok": (g == want_g) if want_g else None, "empty": False}
     grades = {v["grade"] for v in got.values()}
-    return {"hash": content_hash(c), "title": (c.get("title") or "")[:60],
+    from .evaluation import source
+    return {"hash": golden_hash(row), "title": (c.get("title") or "")[:60], "source": source(row),
             "expected": {**exp, "grade": want_g, "reasons": want_r}, "got": got,
             "all_ok": all(v["ok"] for v in got.values()),
             "split": len(grades) > 1}               # 모델끼리 등급이 갈린 건
@@ -721,7 +725,7 @@ def _compare_run_model(item, rows, cfg, progress=None):
     keep = ("grade_accuracy", "reason_jaccard", "reason_exact_match", "empty_rate", "harm_miss_rate",
             "cost_usd", "tokens", "latency_p50_ms", "latency_p95_ms",
             "intent_n", "intent_hit", "intent_f1", "cat_n", "cat_f1", "cat_hf1", "ent_n", "ent_f1", "ent_f1_partial",
-            "summary_n", "summary_sim", "summary_sim_method")
+            "summary_n", "summary_sim", "summary_sim_method", "grade_n", "intent_unconfirmed", "evaluation")
     return {"model": model, "route": route, "real": (not llm.mock), "n": len(rows),
             **{k: m.get(k) for k in keep}, **ME.overall(m, gate, meta_gate), "issues": ME.diagnose(m)}, outs
 
@@ -750,6 +754,11 @@ def _compare_finish(prep: dict, done: list, team) -> dict:
            "split_n": sum(1 for it in items if it["split"]),
            "miss_n": sum(1 for it in items if not it["all_ok"]),
            "prompt_snapshot_version": prep.get("snap_version")}   # 비교 시작 시점 프롬프트 버전(진행 중 반영 식별)
+    from .evaluation import paired
+    res["paired_comparisons"] = [{"a": a["model"], "b": b["model"],
+                                  **paired(a.get("evaluation"), b.get("evaluation"))}
+                                 for i, a in enumerate(out) for b in out[i + 1:]]
+    res["recommendation_status"] = "eligible" if any(m.get("passed") for m in out) else "not_ready"
     try:
         st = _SV.get_store()
         # ponytail: 색인만 자르고 잘린 회차 본문은 reports 에 남는다 · 정리가 필요하면 store 에 delete_report 를 추가
@@ -1044,7 +1053,7 @@ _GUARD_KEYS = ("grade_accuracy", "evaluated", "harm_miss_rate", "harm_expected_n
 
 def _guard_view(m: dict) -> dict:
     """원복 가드가 읽는 지표만 추린 사본(학습 리포트 보존용 · 사후 재판정 근거)."""
-    return {k: m.get(k) for k in _GUARD_KEYS if k in (m or {})}
+    return {k: m.get(k) for k in (*_GUARD_KEYS, "evaluation") if k in (m or {})}
 
 
 def _regress_grade_drop() -> float:
@@ -1077,6 +1086,13 @@ def _batch_regressions(pre: dict, post: dict, min_bucket_n: int = MIN_GUARD_N,
     (운영자가 기억할 임계를 늘리지 않는다). intent_exact 는 다중 라벨 전부일치라
     한 값만 어긋나도 0/1 로 튀는 고분산 지표이므로 리포트만 하고 가드로는 쓰지 않는다."""
     out = []
+    if pre.get("evaluation") or post.get("evaluation"):
+        from .evaluation import paired, readiness
+        pair = paired(pre.get("evaluation"), post.get("evaluation"))
+        if not pair["comparable"]:
+            out.append("평가 비교 불가: " + pair["reason"])
+        if readiness(post.get("evaluation")):
+            out.append("메타 유효 정답 또는 의미 평가 부족: " + ", ".join(readiness(post.get("evaluation"))))
     try:
         d = round((post.get("grade_accuracy") or 0.0) - (pre.get("grade_accuracy") or 0.0), 4)
     except (TypeError, ValueError):
@@ -1124,7 +1140,14 @@ def _batch_regressions(pre: dict, post: dict, min_bucket_n: int = MIN_GUARD_N,
             cf = float((post_i.get(v) or {}).get("f1", bf))
             if cf < bf - 0.10 and (bf - cf) * int(pv["n"]) >= MIN_FLIP - 1e-9:
                 out.append(f"인텐트 {v} F1 {bf:.0%}→{cf:.0%} 회귀")
-    for k in ("cat_hf1", "ent_f1", "summary_sim"):                       # ⑥ 메타 나머지 축
+    if pre.get("evaluation") and post.get("evaluation") and pair["comparable"]:
+        for metric, label in (("summary_semantic_cosine", "리드문 맥락 유사도"),
+                              ("entity_f1", "엔티티 F1"), ("intent_f1", "인텐트 F1"),
+                              ("category_hier_f1", "카테고리 계층 F1")):
+            change = pair["metrics"].get(metric) or {}
+            if change.get("n", 0) >= min_intent_n and change.get("delta") is not None and change["delta"] < -INTENT_JACCARD_DROP:
+                out.append(f"{label} {change['delta']:+.1%} 악화(n={change['n']})")
+    for k in (() if pre.get("evaluation") or post.get("evaluation") else ("cat_hf1", "ent_f1", "summary_sim")):
         nk = ME._FIELD_N[k]
         if int(pre.get(nk) or 0) < min_intent_n or int(post.get(nk) or 0) < min_intent_n:
             continue

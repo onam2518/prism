@@ -24,6 +24,7 @@ daily-log/
 
 # 파이썬
 __pycache__/
+.local/solar-eval-*/
 *.pyc
 .DS_Store
 

@@ -106,6 +106,10 @@ def intent_tally(acc: dict, exp: dict, out) -> None:
     if (exp or {}).get("intent_review") == "needed":      # 공통 68 전환 뒤 아직 재확정 안 된 정답 · 라벨 노후를 모델 점수로 읽지 않는다
         acc["intent_unconfirmed"] = acc.get("intent_unconfirmed", 0) + 1
         return
+    from .eval_contract import field_status
+    if field_status(exp or {}, "intent") != "scored":
+        acc["intent_skipped"] = acc.get("intent_skipped", 0) + 1
+        return
     want = intent_expected(exp)
     if not want and (exp.get("meta_status") or {}).get("intent") != "no_value":
         acc["intent_skipped"] = acc.get("intent_skipped", 0) + 1
@@ -238,9 +242,12 @@ def score(rows: list, outs: list) -> dict:
         s["grade_ok"] += int(grade_ok)
     by_reason = {k: {"n": v["n"], "grade_acc": round(v["grade_ok"] / v["n"], 3)}
                  for k, v in sorted(per_reason.items())}
+    from . import evaluation as EV
+    evaluation = EV.report(EV.items(rows, outs), "result", embed=ME.EMBED_FN or EV.semantic_embed)
     return {
+        "evaluation": evaluation,
         **intent_report(iacc),                   # 순수 추가: 기존 키 의미·이름·값 불변
-        **ME.meta_report(iacc),
+        **ME.meta_report(iacc, read_only=True),
         "n": n,
         "grade_n": grade_n,
         "grade_accuracy": round(grade_hit / grade_n, 4) if grade_n else None,

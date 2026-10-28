@@ -9,7 +9,8 @@ from .schema import Content
 from .meta_prompts import CALLS
 
 ENGINE_FILES = ('agents.py', 'schema.py', 'dictionaries.py', 'meta_contract.py',
-                'harness.py', 'execution.py', 'dnm.py', 'meta_prompts.py', 'prompts.py', 'routing.py', 'llm.py', 'metaeval.py', 'abtest.py', 'verify.py')
+                'harness.py', 'execution.py', 'dnm.py', 'meta_prompts.py', 'prompts.py', 'routing.py', 'llm.py', 'metaeval.py', 'abtest.py', 'verify.py',
+                'evaluation.py', 'eval_contract.py', 'context_eval.py', 'accuracy_eval.py')
 CONFIG_KEYS = ('chat_url', 'model', 'reasoning_effort', 'timeout', 'retry', 'rate',
                'prices', 'prompt_cache', 'max_tokens', 'temperature')
 
