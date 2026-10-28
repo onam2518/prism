@@ -353,9 +353,11 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       evalTab: 'run', evalHistoryFilter: 'all', evalHistoryError: '',
       evalDetail: null, evalSelected: null, evalDetailBusy: false, evalDetailError: '',
+      evalGrounding: null, evalGroundingError: '', evalGroundingBusy: false, _evalGroundingT: null,
+      evalJudgeModel: 'solar-pro4-260806',
       _evalDetailSeq: 0, _evalDetailT: null, evalItemFilter: 'all', evalItemSearch: '', evalItemLimit: 50,
       setEvalTab(tab) {
-        this.evalTab = tab; clearTimeout(this._evalDetailT);
+        this.evalTab = tab; clearTimeout(this._evalDetailT); clearTimeout(this._evalGroundingT);
         if (tab === 'results') { this.loadEvalRuns(); this.loadLearnTrend(); if (this.evalSelected) this.openEvalHistory(this.evalSelected, true); }
       },
       evalTabKey(event) {
@@ -369,9 +371,11 @@ window.PRISM_APP_PARTS.push(() => ({
       async openEvalHistory(row, refresh = false) {
         if (!row) return;
         clearTimeout(this._evalDetailT);
+        clearTimeout(this._evalGroundingT);
         const seq = ++this._evalDetailSeq;
         if (!refresh) {
           this.evalTab = 'results'; this.evalSelected = { ...row }; this.evalDetail = null;
+          this.evalGrounding = null; this.evalGroundingError = '';
           this.evalItemFilter = 'all'; this.evalItemSearch = ''; this.evalItemLimit = 50; this.cmpLoopModel = '';
         }
         this.evalDetailBusy = true; this.evalDetailError = '';
@@ -383,6 +387,7 @@ window.PRISM_APP_PARTS.push(() => ({
           if (seq !== this._evalDetailSeq) return;
           if (!r || !r.ok) throw new Error((r && r.error) || '평가 상세를 불러오지 못했습니다');
           this.evalDetail = r;
+          if ((r.items || []).some(i => i.source)) this.loadEvalGrounding(row, seq);
           if (!refresh && this.$nextTick) this.$nextTick(() => { if (seq === this._evalDetailSeq && this.evalTab === 'results') this.$refs.evalDetailTitle.focus(); });
           if (r.kind === 'eval' && (r.status === 'running' || r.rubric_status === 'running')) {
             this._evalDetailT = setTimeout(() => { if (this.evalTab === 'results') this.openEvalHistory(row, true); }, 3000);
@@ -391,12 +396,88 @@ window.PRISM_APP_PARTS.push(() => ({
         finally { if (seq === this._evalDetailSeq) this.evalDetailBusy = false; }
       },
       get evalCols() { return (this.evalDetail && this.evalDetail.models) || []; },
+      evalSelector(row = this.evalSelected) {
+        if (!row) return {};
+        return row.kind === 'compare' ? { kind: row.kind, key: row.key } :
+          { kind: row.kind, id: row.kind === 'pilot' ? row.pilot_id : row.id, round: row.round || 0 };
+      },
+      async loadEvalGrounding(row = this.evalSelected, seq = this._evalDetailSeq) {
+        clearTimeout(this._evalGroundingT);
+        try {
+          const r = await (await this._afetch('/eval-grounding?' + new URLSearchParams(this.evalSelector(row)), { headers: this._authHeaders() })).json();
+          if (seq !== this._evalDetailSeq) return;
+          if (!r.ok) throw new Error(r.error || '진단 조회 실패');
+          this.evalGrounding = r; this.evalGroundingError = ''; if (r.judge_model) this.evalJudgeModel = r.judge_model;
+          if (r.status === 'running' && !r.stalled) this._evalGroundingT = setTimeout(() => {
+            if (seq === this._evalDetailSeq && this.evalTab === 'results') this.loadEvalGrounding(row, seq);
+          }, 3000);
+        } catch (e) { if (seq === this._evalDetailSeq) this.evalGroundingError = e.message; }
+      },
+      async runEvalGrounding(cancel = false) {
+        if (this.evalGroundingBusy || !this.evalSelected) return;
+        const row = { ...this.evalSelected }, seq = this._evalDetailSeq;
+        this.evalGroundingBusy = true;
+        try {
+          const r = await (await this._afetch(cancel ? '/eval-grounding-cancel' : '/eval-grounding-start', {
+            method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ ...this.evalSelector(row), model: this.evalJudgeModel })
+          })).json();
+          if (!r.ok) throw new Error(r.error || '진단 실행 실패');
+          if (seq === this._evalDetailSeq) await this.loadEvalGrounding(row, seq);
+        } catch (e) { if (seq === this._evalDetailSeq) this.evalGroundingError = e.message; }
+        finally { this.evalGroundingBusy = false; }
+      },
+      evalAssessment(m) { return ((this.evalGrounding || {}).reports || {})[m.model] || m.evaluation || {}; },
+      evalAssessmentFields: [['summary_semantic_cosine','맥락 유사도(코사인)'], ['summary_lexical_f1','문자 겹침 F1'],
+        ['judge_support_rate','AI 원문 지지율'], ['judge_contradiction_rate','AI 원문 모순율'],
+        ['judge_unverifiable_rate','AI 근거 없음 비율'], ['reference_claim_coverage','AI 정답 정보 보존율'], ['reference_excluded_claims','정답 미지지 주장 수(문서 평균)'],
+        ['summary_no_value_exact','리드문 값 없음 일치율'],
+        ['entity_precision','엔티티 정밀도'], ['entity_recall','엔티티 재현율'], ['entity_f1','엔티티 F1'], ['entity_type_recall','엔티티 유형 재현율'],
+        ['intent_precision','인텐트 정밀도'], ['intent_recall','인텐트 재현율'], ['intent_f1','인텐트 F1'],
+        ['intent_exact','인텐트 전체 일치율'], ['category_precision','카테고리 정밀도'],
+        ['category_recall','카테고리 재현율'], ['category_f1','카테고리 F1'],
+        ['category_hier_f1','카테고리 계층 F1'], ['category_exact','카테고리 전체 일치율'], ['output_state_valid','저장된 메타 상태 정상률']],
+      evalAssessmentValue(m, key) {
+        const metric = (this.evalAssessment(m).metrics || {})[key];
+        return !metric || metric.value == null ? '미측정' : Number(metric.value).toFixed(4) + ' · ' + metric.n + '건';
+      },
+      evalEligibility(m) {
+        const e = this.evalAssessment(m).eligibility || {};
+        return [['summary','리드문'],['entities','엔티티'],['intent','인텐트'],['content_category','카테고리']]
+          .map(([k,v]) => v + ' 유효 ' + ((e[k]||{}).scored||0) + '건 / 재확정 ' + ((e[k]||{}).pending||0) + '건').join(' · ');
+      },
+      evalGroundingStatus() {
+        const r = this.evalGrounding || {};
+        return r.stalled ? '중단됨 · 같은 모델로 재개 가능' :
+          ({ not_started: '미실행', running: '진단 중', done: '진단 완료', partial: '일부 판정 실패 · 재개 가능',
+             cancelled: '중단됨 · 재개 가능', failed: '실패 · 재개 가능' }[r.status] || '미실행');
+      },
+      get evalPairedComparisons() {
+        return (this.evalGrounding || {}).paired_comparisons || (this.evalDetail || {}).paired_comparisons || [];
+      },
+      evalPairMetrics(pair) {
+        return Object.entries(pair.metrics || {}).filter(([k]) => this.evalAssessmentFields.some(f => f[0] === k))
+          .map(([key,v]) => ({ key, label: (this.evalAssessmentFields.find(f => f[0] === key)||[key,key])[1], ...v }));
+      },
+      evalPairText(value) {
+        if (!value || value.delta == null) return '미측정';
+        return '차이 ' + Number(value.delta).toFixed(4) + (value.ci95 ? ' · 95% 구간 [' + value.ci95.map(x => Number(x).toFixed(4)).join(', ') + ']' : ' · 구간 산출 표본 부족') +
+          ' · ' + value.n + '쌍 / 결측 ' + value.missing_pairs + '쌍';
+      },
+      evalEvidenceFor(id, model) {
+        return Object.values((this.evalGrounding || {}).records || {}).filter(r => r.document_id === id && r.model === model);
+      },
+      evalEvidenceItems(record) {
+        const r = record.review || {};
+        return (r.claims || r.items || []).map(c => ({ text: c.claim || '정답 주장 ' + c.id,
+          verdict: ({ supported:'원문 지지', contradicted:'모순', unverifiable:'근거 없음', covered:'정보 보존', missing:'누락' })[c.verdict] || c.verdict,
+          evidence: c.evidence || '연결된 근거 없음' }));
+      },
       get evalMetricRows() {
         const rows = [
           ['평가 건수', 'n', 'raw'], ['등급 일치율', 'grade_accuracy'], ['등급 표본', 'grade_n', 'raw'],
           ['사유 일치', 'reason_jaccard'], ['종합 점수', 'overall'],
           ['인텐트 적중률', 'intent_hit', '', 'intent_n'], ['인텐트 F1(참고)', 'intent_f1', '', 'intent_n'], ['카테고리 F1(계층)', 'cat_hf1', '', 'cat_n'],
-          ['엔티티 F1', 'ent_f1', '', 'ent_n'], ['리드문 유사도', 'summary_sim', '', 'summary_n'],
+          ['엔티티 F1', 'ent_f1', '', 'ent_n'], ['리드문 비교(기존)', 'summary_sim', '', 'summary_n'],
           ['유해 미탐률', 'harm_miss_rate'], ['빈 결과', 'empty_rate'], ['입력 필요', 'meta_hold_rate'],
           ['비용($)', 'cost_usd', 'cost'], ['응답 속도 p50', 'latency_p50_ms', 'lat'], ['응답 속도 p95', 'latency_p95_ms', 'lat']
         ];
@@ -405,6 +486,7 @@ window.PRISM_APP_PARTS.push(() => ({
       evalMetricText(model, row) {
         const value = model[row[1]];
         if (value == null || (row[3] && !model[row[3]])) return '·';
+        if (row[1] === 'summary_sim') return Number(value).toFixed(4) + (model.summary_sim_method === 'embed_cosine' ? ' · 코사인' : ' · 문자 겹침');
         const text = row[2] === 'raw' ? String(value) : row[2] === 'cost' ? '$' + Number(value).toFixed(4) : row[2] === 'lat' ? this.latTxt(value) : this.pctTxt(value);
         return text + (row[3] ? ' · ' + model[row[3]] + '건' : '');
       },
@@ -693,7 +775,12 @@ window.PRISM_APP_PARTS.push(() => ({
           else this._err((r && r.error) || '판정 저장 실패');
         } catch (e) { this._err('판정 저장 실패'); }
       },
-      ciOf(p, n) { if (p == null || !n) return '·'; const s = Math.sqrt(Math.max(p * (1 - p), 0) / n); return this.pctTxt(Math.max(0, p - 1.96 * s)) + '~' + this.pctTxt(Math.min(1, p + 1.96 * s)); },
+      ciOf(p, n) {
+        if (p == null || !n) return '·';
+        const z2 = 1.96 * 1.96, den = 1 + z2 / n, mid = (p + z2 / (2*n)) / den;
+        const half = 1.96 * Math.sqrt(Math.max(0, p*(1-p)/n + z2/(4*n*n))) / den;
+        return this.pctTxt(Math.max(0, mid-half)) + '~' + this.pctTxt(Math.min(1, mid+half));
+      },
       latTxt(ms) { return ms == null ? '·' : ((Math.round(ms / 100) / 10) + '초'); },   // 지연 표기: ms → 0.1초 단위
       // 검수 활동 추이(일별 30일): 막대=검수량 · 툴팁에 교정·골드 정답률
       activityData: null,

@@ -1,0 +1,14 @@
+[
+  {"id":"paraphrase","source":"푸른병원은 토요일 진료 시간을 오후 1시에서 오후 3시까지로 연장한다.","reference":"푸른병원이 토요일 진료를 오후 3시까지 연장한다.","candidate":"토요일에는 푸른병원에서 오후 3시까지 진료를 받을 수 있게 된다.","supported":true,"type":"바꿔 쓰기"},
+  {"id":"number","source":"푸른병원은 토요일 진료 시간을 오후 1시에서 오후 3시까지로 연장한다.","reference":"푸른병원이 토요일 진료를 오후 3시까지 연장한다.","candidate":"푸른병원이 토요일 진료를 오후 5시까지 연장한다.","supported":false,"type":"수치 변경"},
+  {"id":"negation","source":"해솔축제는 태풍으로 취소됐다.","reference":"태풍 때문에 해솔축제가 취소됐다.","candidate":"태풍에도 해솔축제는 취소되지 않았다.","supported":false,"type":"부정 반전"},
+  {"id":"status","source":"가온시는 공공 수영장 신설을 검토하고 있으며 건립 여부는 확정하지 않았다.","reference":"가온시가 공공 수영장 신설을 검토 중이다.","candidate":"가온시가 공공 수영장 신설을 확정했다.","supported":false,"type":"검토를 확정으로 변경"},
+  {"id":"actor","source":"동해연구소가 분석 도구를 개발했고 서해연구소는 이를 검증했다.","reference":"동해연구소가 개발한 분석 도구를 서해연구소가 검증했다.","candidate":"서해연구소가 개발한 분석 도구를 동해연구소가 검증했다.","supported":false,"type":"주체·대상 교환"},
+  {"id":"date","source":"별빛전시관의 개관일은 11월 12일이다.","reference":"별빛전시관이 11월 12일 문을 연다.","candidate":"별빛전시관이 11월 21일 문을 연다.","supported":false,"type":"날짜 변경"},
+  {"id":"attribution","source":"회사 측은 배출량이 줄었다고 주장했지만 조사위원회는 이를 확인하지 못했다.","reference":"회사가 배출량 감소를 주장했으나 조사위원회는 확인하지 못했다.","candidate":"조사위원회가 회사의 배출량 감소를 확인했다.","supported":false,"type":"주장·확인 주체 변경"},
+  {"id":"purpose","source":"필자는 여행 책 '느린 길'을 읽고 경로 설명은 좋지만 지도는 불편했다고 평가했다.","reference":"글쓴이가 '느린 길'의 경로 설명과 지도에 대한 독서 소감을 정리했다.","candidate":"글쓴이가 여행서 '느린 길'을 읽고 경로 안내는 긍정적으로, 지도는 부정적으로 평가했다.","supported":true,"type":"평가 맥락 보존"},
+  {"id":"omission","source":"늘봄센터는 월요일에 문을 닫고 화요일에는 오후 8시까지 운영한다.","reference":"늘봄센터가 월요일 휴관하고 화요일에는 오후 8시까지 운영한다.","candidate":"늘봄센터는 월요일에 문을 닫는다.","supported":true,"type":"사실은 맞지만 핵심 일부 누락"},
+  {"id":"unsupported","source":"해든박물관은 새 전시를 다음 달 시작한다.","reference":"해든박물관이 다음 달 새 전시를 연다.","candidate":"해든박물관이 다음 달 무료로 새 전시를 연다.","supported":false,"type":"입력에 없는 비용 정보"},
+  {"id":"unit","source":"누리회사는 생산량을 하루 20톤에서 25톤으로 늘렸다.","reference":"누리회사가 하루 생산량을 25톤으로 늘렸다.","candidate":"누리회사가 하루 생산량을 25킬로그램으로 늘렸다.","supported":false,"type":"단위 변경"},
+  {"id":"equivalent","source":"해든박물관은 새 전시를 다음 달 시작한다.","reference":"해든박물관이 다음 달 새 전시를 연다.","candidate":"새 전시는 다음 달 해든박물관에서 시작된다.","supported":true,"type":"어순 변경"}
+]

@@ -51,13 +51,13 @@
   function stBadge(s) { return { queued: 'ds-badge--neutral', running: 'ds-badge--intent', done: 'ds-badge--success', failed: 'ds-badge--error' }[s] || 'ds-badge--neutral'; }
   function fillCls(s) { return s === 'done' ? 'ds-progress__fill--success' : s === 'failed' ? 'ds-progress__fill--error' : 'ds-progress__fill--primary'; }
   function resultTable(r) {
-    var h = '<div class="cw-res overflow-auto"><table class="ds-table"><thead><tr><th>모델</th><th>종합</th><th>게이트</th><th>등급</th><th>인텐트</th><th>카테고리</th><th>엔티티</th><th>리드문</th><th>비용($)</th><th>보통 속도</th></tr></thead><tbody>';
+    var h = '<div class="cw-res overflow-auto"><table class="ds-table"><thead><tr><th>모델</th><th>종합</th><th>게이트</th><th>등급</th><th>인텐트</th><th>카테고리</th><th>엔티티</th><th>리드문 맥락 유사도</th><th>비용($)</th><th>보통 속도</th></tr></thead><tbody>';
     (r.models || []).forEach(function (m) {
-      h += '<tr><td>' + (m.model === r.best ? '<span class="ds-badge ds-badge--success">★ best</span> ' : '') + '<b>' + esc(m.model) + '</b></td>'
-        + '<td class="tnum"><b>' + pct(m.overall) + '</b></td><td><span class="ds-badge ' + (m.passed ? 'ds-badge--success' : 'ds-badge--warning') + '">' + (m.passed ? '통과' : '미달 ' + (m.gate_fails || []).length) + '</span></td>'
+      h += '<tr><td>' + (m.model === r.best ? '<span class="ds-badge ds-badge--success">점수 1위</span> ' : '') + '<b>' + esc(m.model) + '</b></td>'
+        + '<td class="tnum"><b>' + pct(m.overall) + '</b></td><td><span class="ds-badge ' + (m.passed ? 'ds-badge--success' : 'ds-badge--warning') + '">' + (m.passed ? '통과' : '미달 ' + (m.gate_fails || []).length + ' · 미측정 ' + (m.gate_missing || []).length) + '</span></td>'
         + '<td class="tnum">' + pct(m.grade_accuracy) + '</td><td class="tnum">' + (m.intent_n ? pct(m.intent_hit) : '·') + '</td>'
         + '<td class="tnum">' + (m.cat_n ? pct(m.cat_hf1) : '·') + '</td><td class="tnum">' + (m.ent_n ? pct(m.ent_f1) : '·') + '</td>'
-        + '<td class="tnum">' + (m.summary_n ? pct(m.summary_sim) : '·') + '</td>'
+        + '<td class="tnum">' + (m.evaluation ? (((m.evaluation.metrics||{}).summary_semantic_cosine||{}).value == null ? '미측정' : Number(m.evaluation.metrics.summary_semantic_cosine.value).toFixed(4)) : (m.summary_n ? Number(m.summary_sim).toFixed(4) + ' (기존)' : '·')) + '</td>'
         + '<td class="tnum">' + (m.cost_usd != null ? ('$' + Math.round(m.cost_usd * 10000) / 10000) : '·') + '</td>'
         + '<td class="tnum">' + (m.latency_p50_ms != null ? (m.latency_p50_ms >= 1000 ? (Math.round(m.latency_p50_ms / 100) / 10) + '초' : Math.round(m.latency_p50_ms) + 'ms') : '·') + '</td></tr>';
     });
@@ -89,7 +89,7 @@
       run.history.forEach(function (r) {
         var m = r.metrics || {};
         h += '<tr><td class="tnum">' + r.round + '</td><td class="tnum">' + (r.version ? 'v' + r.version : '·') + '</td><td class="tnum"><b>' + pct(m.overall) + '</b></td>'
-          + '<td><span class="ds-badge ' + (m.passed ? 'ds-badge--success' : 'ds-badge--warning') + '">' + (m.passed ? '통과' : '미달 ' + (m.gate_fails || []).length) + '</span></td>'
+          + '<td><span class="ds-badge ' + (m.passed ? 'ds-badge--success' : 'ds-badge--warning') + '">' + (m.passed ? '통과' : '미달 ' + (m.gate_fails || []).length + ' · 미측정 ' + (m.gate_missing || []).length) + '</span></td>'
           + '<td class="tnum">' + pct(r.pre) + ' → <b>' + pct(r.accuracy) + '</b></td>'
           + '<td class="tnum">' + (m.cost_usd != null ? ('$' + Math.round(m.cost_usd * 10000) / 10000) : '·') + '</td>'
           + '<td><span class="ds-badge ' + (r.reverted ? 'ds-badge--warning' : 'ds-badge--success') + '">' + (r.reverted ? '원복' : '반영') + '</span></td></tr>';

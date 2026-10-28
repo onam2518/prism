@@ -125,11 +125,13 @@ def _bump(d: dict, keys) -> None:
 def meta_tally(acc: dict, exp: dict, out) -> None:
     """건 1개를 카테고리·엔티티·리드문 카운터에 반영. 기대값이 비어 있는 필드는 분모 제외.
     산출 None(실패)은 빈 산출로 채점(등급·인텐트 규칙과 동일)."""
+    from .eval_contract import field_status
     exp = dict(exp)
+    exp["meta_status"] = dict(exp.get("meta_status") or {})
     for field in MC.FIELDS:
-        status = (exp.get("meta_status") or {}).get(field)
-        if status not in (None, "success", "no_value"):
+        if field_status(exp, field) != "scored":
             exp.pop(field, None)
+            exp["meta_status"].pop(field, None)
     im = _im(out)
     wc = _cats(exp.get("content_category"))
     if wc or (exp.get("meta_status") or {}).get("content_category") == "no_value":
@@ -179,10 +181,12 @@ def _top(d: dict, n: int = 10) -> list:
     return sorted(d.items(), key=lambda kv: -kv[1])[:n]
 
 
-def meta_report(acc: dict) -> dict:
+def meta_report(acc: dict, read_only=False) -> dict:
+    if read_only and acc.get("saved_meta_report") is not None:
+        return dict(acc["saved_meta_report"])
     cn, en = acc.get("cat_n", 0), acc.get("ent_n", 0)
     pairs = acc.get("sum_pairs") or []
-    if acc.get("summary_sim_method") == "bigram_f1":
+    if read_only or acc.get("summary_sim_method") == "bigram_f1":
         sims, sim_method = [summary_sim(a, b) for a, b in pairs], "bigram_f1"
     else:
         sims, sim_method = summary_sims(pairs)
@@ -218,18 +222,35 @@ def overall(m: dict, grade_gate: float, meta_gate: float) -> dict:
     tot = s = 0.0
     fails = []
     for k, w in WEIGHTS.items():
-        if k != "grade_accuracy" and not (m.get(_FIELD_N[k]) or 0):
-            continue
-        v = float(m.get(k) or 0)
+        if m.get("evaluation"):
+            metric_key = {"grade_accuracy": "grade_accuracy", "intent_hit": "intent_hit",
+                          "cat_hf1": "category_hier_f1", "ent_f1": "entity_f1",
+                          "summary_sim": "summary_semantic_cosine"}[k]
+            metric = (m["evaluation"].get("metrics") or {}).get(metric_key) or {}
+            if k == "summary_sim" and metric.get("value") is None:
+                metric = (m["evaluation"].get("metrics") or {}).get("summary_no_value_exact") or {}
+            if metric.get("value") is None:
+                continue
+            v = metric["value"]
+        else:
+            if k != "grade_accuracy" and not (m.get(_FIELD_N[k]) or 0):
+                continue
+            v = float(m.get(k) or 0)
         s += w * v; tot += w
         g = grade_gate if k == "grade_accuracy" else meta_gate
         if k == "intent_hit":
             g = min(g, INTENT_HIT_GATE)
-        if k == "summary_sim" and m.get("summary_sim_method") == "bigram_f1":
+        if k == "summary_sim" and not m.get("evaluation") and m.get("summary_sim_method") == "bigram_f1":
             g = SUMMARY_FALLBACK_GATE            # 2-gram 은 어순 차이에 박하다 → 리드문만 낮은 선
         if v < g:
             fails.append(k)
-    return {"overall": round(s / tot, 4) if tot else 0, "gate_fails": fails, "passed": not fails}
+    from .evaluation import readiness
+    missing = readiness(m.get("evaluation"))
+    no_value = ((m.get("evaluation") or {}).get("metrics") or {}).get("summary_no_value_exact") or {}
+    if no_value.get("value") is not None and no_value["value"] < meta_gate:
+        fails.append("summary_no_value_exact")
+    return {"overall": round(s / tot, 4) if tot else 0, "gate_fails": fails,
+            "gate_missing": missing, "passed": not fails and not missing}
 
 
 # ── 진단(문제점 도출) · 쿡북(지시 생성) ─────────────────────────────────────

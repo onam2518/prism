@@ -329,6 +329,10 @@ class TestEvalRunCompare(unittest.TestCase):
              "jaccard_sum": 0.8 * n, "harm_miss": int(round(harm * n)), "empty": 0,
              "cost_usd": 0.01, "tok_in": 100, "tok_out": 100, "lat": [5.0],
              "yellow": 0, "auto_n": n, "auto_hit": int(round(ga * n)), "per_reason": {}}
+        from prism import evaluation as E
+        m["evaluation"] = E.report([{"hash": str(i), "source": {"body": "원문"},
+            "expected": {"finalGrade": "G"}, "got": {"result": {"finalGrade": "G" if i < round(ga*n) else "R"}}}
+            for i in range(n)], "result")
         st.eval_run_update(rid, status="done", cursor=n, metrics=m, finished=time.time())
         return rid
 

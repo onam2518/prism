@@ -321,6 +321,15 @@ def _run_loop(run_id: int, rows: list, llm, team, m: dict):
             st.eval_results_add(run_id, results, team)
             m = nm
             st.eval_run_update(run_id, team=team, cursor=m["n"], metrics=m)
+        from . import evaluation as EV
+        snapshot = st.get_report("eval_snapshot_" + str(run_id), team=team) or {}
+        frozen = {golden_hash(row): row for row in snapshot.get("rows", [])}
+        saved = st.eval_results_list(run_id, team, limit=MAX_ROWS)
+        scored_items = [{"hash": r["hash"], "source": EV.source(frozen[r["hash"]]) if r["hash"] in frozen else None,
+                         "expected": r.get("expected") or {}, "got": {"result": r.get("got")}}
+                        for r in saved]
+        m["evaluation"] = EV.report(scored_items, "result", embed=ME.EMBED_FN or EV.semantic_embed)
+        m["saved_meta_report"] = ME.meta_report(m, read_only=True)
         st.eval_run_update(run_id, team=team, status="done", cursor=m["n"],
                            metrics=m, finished=time.time())
     except Exception as e:                        # 무음 실패 방지: 상태·사유를 런 행에 남긴다
@@ -349,14 +358,19 @@ def eval_run_compare(a_id: int, b_id: int, team=None) -> dict:
     if ra.get("status") != "done" or rb.get("status") != "done":
         return {"ok": False, "error": "완주한 런끼리만 비교할 수 있습니다"}
     from . import learnops as LO
+    from .evaluation import paired
+    comparison = paired(ra.get("evaluation"), rb.get("evaluation"))
     regressions = LO._batch_regressions(ra, rb, grade_drop=LO._regress_grade_drop())
-    if regressions:                              # 부분 개선이라도 회귀 지점이 있으면 보류(보수 채택)
+    if not comparison["comparable"]:
+        verdict = "incomparable"
+    elif regressions:                              # 부분 개선이라도 회귀 지점이 있으면 보류(보수 채택)
         verdict = "regressed"
     elif (rb.get("grade_accuracy") or 0) > (ra.get("grade_accuracy") or 0) + 1e-9:
         verdict = "improved"
     else:
         verdict = "even"
-    return {"ok": True, "a": ra, "b": rb, "regressions": regressions, "verdict": verdict}
+    return {"ok": True, "a": ra, "b": rb, "regressions": regressions, "verdict": verdict,
+            "paired": comparison}
 
 
 # ── 오토파일럿(자동 개선 루프 · Atelier autopilot 이식) ─────────────────────
@@ -875,7 +889,8 @@ def eval_run_report(run_id: int, team=None) -> dict:
     else:
         harm_rate, harm_basis = (round(harm_miss / harm_n, 4) if harm_n else None), "expected_r"
     out = {**abtest.intent_report(m),             # abtest.score 와 같은 인텐트 키(순수 추가)
-           **ME.meta_report(m),                   # abtest.score 와 같은 카테고리·엔티티·리드문 키(순수 추가)
+           **ME.meta_report(m, read_only=True),
+           "evaluation": m.get("evaluation"),
            "ok": True, "id": run_id, "status": run.get("status"),
            "cursor": run.get("cursor") or 0, "total": run.get("total") or 0,
            "ts": run.get("ts"), "finished": run.get("finished"),
@@ -945,7 +960,7 @@ def _eval_run_detail(st, run_id, team) -> list:
 
 def _history_expected(items, legacy=False, recovery=None):
     """저장된 기대값만으로 채점 가능 여부를 설명한다. 현재 정답·모델 산출은 섞지 않는다."""
-    from . import abtest
+    from .eval_contract import field_status
     fields = (("intent", "intent_n"), ("content_category", "cat_n"),
               ("entities", "ent_n"), ("summary", "sum_pairs"))
     coverage = {key: 0 for key, _ in fields}
@@ -953,27 +968,11 @@ def _history_expected(items, legacy=False, recovery=None):
     for item in items:
         exp = item.get("expected") or {}
         unrecorded = legacy or set(exp).issubset({"grade", "reasons"})
-        counts, statuses = {}, {}
-        if not unrecorded:
-            # 실제 채점과 같은 정규화·재확정·no_value 규칙을 사용한다. 모델 호출 없음.
-            abtest.intent_tally(counts, exp, None)
-            ME.meta_tally(counts, exp, None)
-        for key, counter in fields:
-            if unrecorded:
-                status = "unrecorded"
-            elif key == "intent" and exp.get("intent_review") == "needed":
-                status = "pending"
-            elif counts.get(counter):
-                status = "scored"
+        statuses = {}
+        for key, _ in fields:
+            status = "unrecorded" if unrecorded else field_status(exp, key)
+            if status == "scored":
                 coverage[key] += 1
-            elif (exp.get("meta_status") or {}).get(key) not in (None, "success", "no_value"):
-                status = "excluded"
-            elif exp.get(key) is None:
-                status = "missing"
-            elif not exp.get(key):
-                status = "empty"
-            else:
-                status = "excluded"
             statuses[key] = status
         recovered = ((recovery or {}).get("items") or {}).get(item.get("hash")) or {}
         values = {k: v for k, v in (recovered.get("values") or {}).items()
@@ -1009,12 +1008,18 @@ def eval_history_detail(kind, run_id=0, round_no=0, key="", team=None):
             return missing
         model = rep["basis"]["model"] or "기록된 모델"
         judges = {d["hash"]: d for d in rep.get("detail") or []}
+        from . import evaluation as EV, execution as EX
+        from .store import golden_hash
+        snapshot = st.get_report("eval_snapshot_" + str(run_id), team=team) or {}
+        run = st.eval_run_get(run_id, team) or {}
+        valid_source = (run.get("metrics") or {}).get("basis_fingerprint") == EX.digest(snapshot)
+        sources = {golden_hash(r): EV.source(r) for r in snapshot.get("rows", [])} if valid_source else {}
         items = []
         for row in st.eval_results_list(run_id, team, limit=MAX_ROWS):
             exp, got = row.get("expected") or {}, row.get("got")
             grade = (got or {}).get("finalGrade", "")
             passed = (grade == exp["finalGrade"]) if exp.get("finalGrade") else None
-            items.append({"hash": row["hash"], "title": row.get("title") or "",
+            items.append({"hash": row["hash"], "title": row.get("title") or "", "source": sources.get(row["hash"]),
                           "expected": {**exp, "grade": exp.get("finalGrade", "")},
                           "got": {model: {**(got or {}), "grade": grade, "ok": passed,
                                           "empty": got is None, "error": row.get("error") or "",
