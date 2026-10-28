@@ -1609,3 +1609,29 @@ button.tbchip:disabled{cursor:default;opacity:.8}
   .final-history__reason{white-space:pre-wrap}
 
   .final-history__table tbody tr:last-child th{border-bottom:0}
+
+/* Evaluation only: keep the shared neutral panels, fields and table system. */
+.evaluation-screen { min-width:0; }
+.evaluation-screen .panel,.evaluation-screen .panel-bd,.evaluation-screen .content-section-stack { min-width:0; }
+.evaluation-screen .panel-hd { flex-wrap:wrap; gap:8px; }
+.evaluation-form-grid { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px; }
+.evaluation-field { display:flex;flex-direction:column;align-items:flex-start;gap:8px;min-width:0; }
+.evaluation-field>.field { width:100%;min-width:0;max-width:100%; }
+.evaluation-field>small { color:var(--ds-muted);line-height:1.6; }
+.evaluation-models { padding:16px;border:1px solid var(--ds-border-card);border-radius:8px;min-width:0; }
+.evaluation-models legend { padding:0 6px;font-weight:600; }
+.evaluation-model-row { display:flex;align-items:flex-end;gap:12px;margin-bottom:12px; }
+.evaluation-model-row .evaluation-field { flex:1; }
+.evaluation-screen .overflow-auto { max-width:100%;overflow:auto;overscroll-behavior-x:contain; }
+.evaluation-screen .overflow-auto table { min-width:560px; }
+.evaluation-screen td,.evaluation-screen dd,.evaluation-message,.evaluation-screen details p { overflow-wrap:anywhere;word-break:normal;white-space:pre-wrap; }
+.evaluation-screen pre { max-width:100%;max-height:32rem;overflow:auto;font-size:12px; }
+.evaluation-screen .evaluation-verdict { font-weight:600;line-height:1.7; }
+.evaluation-screen :is(button,input,select,textarea,summary,[tabindex]):focus-visible { outline:2px solid var(--ds-primary);outline-offset:3px; }
+.evaluation-screen .tnum { font-variant-numeric:tabular-nums; }
+@media(max-width:640px) { .evaluation-form-grid { grid-template-columns:minmax(0,1fr);gap:16px; }.evaluation-model-row { gap:8px; }.evaluation-screen .control-row { flex-wrap:wrap; }.evaluation-screen .selctl { max-width:100%;flex-wrap:wrap; }.evaluation-screen .selctl .field { min-width:0;max-width:100%; } }
+
+.evaluation-model-row .mpick { width:100%;min-width:0; }
+.evaluation-model-row .mpick__btn { min-width:0;width:100%; }
+
+.evaluation-screen .evaluation-field>.mpick { min-width:0;max-width:100%;width:100%; }

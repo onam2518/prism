@@ -115,7 +115,12 @@ class TestModelPickMarkup(unittest.TestCase):
     def test_all_placeholders_expanded(self):
         from prism import page
         self.assertNotIn("<x-modelpick", page.PAGE)                  # 미펼침 태그가 남으면 안 된다
-        self.assertEqual(page.PAGE.count('class="mpick"'), 17)  # 실패 콘텐츠 재실행 모델 포함
+        # Every source placeholder expands once, including the repeated evaluation slot.
+        from pathlib import Path
+        source = ''.join(p.read_text() for p in sorted((Path(page.__file__).parent / 'ui').glob('*.html')))
+        placeholders = len(re.findall(r'<x-modelpick\b', source))
+        self.assertGreater(placeholders, 0)
+        self.assertEqual(page.PAGE.count('class="mpick"'), placeholders)
         # 규칙: 픽커가 있는 곳엔 무조건 '모델 새로고침'(합성 단계 자동 삽입) · 개별 버튼은 두지 않는다
         self.assertEqual(page.PAGE.count('class="mpick__refresh"'), page.PAGE.count('class="mpick"'))
         self.assertNotIn('x-on:click="loadModels()">모델 새로고침</button>', page.PAGE)

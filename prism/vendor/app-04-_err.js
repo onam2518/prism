@@ -366,10 +366,11 @@ window.PRISM_APP_PARTS.push(() => ({
         this.setEvalTab(event.key === 'Home' ? 'run' : event.key === 'End' ? 'results' : this.evalTab === 'run' ? 'results' : 'run');
         event.currentTarget.querySelector('#eval-tab-' + this.evalTab).focus();
       },
-      evalKindLabel(kind) { return { eval: '일반 평가', pilot: '오토파일럿', compare: '모델 비교' }[kind] || kind; },
+      evalKindLabel(kind) { return { evaluation: '통합 평가', eval: '일반 평가', pilot: '오토파일럿', compare: '모델 비교' }[kind] || kind; },
       get evalHistoryRows() { return this.evalRuns.filter(r => this.evalHistoryFilter === 'all' || r.kind === this.evalHistoryFilter); },
       async openEvalHistory(row, refresh = false) {
         if (!row) return;
+        if (row.kind === 'evaluation') return this.openUnifiedEvalHistory(row, refresh);
         clearTimeout(this._evalDetailT);
         clearTimeout(this._evalGroundingT);
         const seq = ++this._evalDetailSeq;
@@ -407,8 +408,8 @@ window.PRISM_APP_PARTS.push(() => ({
           const r = await (await this._afetch('/eval-grounding?' + new URLSearchParams(this.evalSelector(row)), { headers: this._authHeaders() })).json();
           if (seq !== this._evalDetailSeq) return;
           if (!r.ok) throw new Error(r.error || '진단 조회 실패');
-          this.evalGrounding = r; this.evalGroundingError = ''; if (r.judge_model) this.evalJudgeModel = r.judge_model;
-          if (r.status === 'running' && !r.stalled) this._evalGroundingT = setTimeout(() => {
+          this.evalGrounding = r; this.evalGroundingError = ''; if (row.kind === 'evaluation' && r.max_calls != null) this.esMaxCalls = r.max_calls; if (r.judge_model) this.evalJudgeModel = r.judge_model;
+          if (['running', 'cancel_requested'].includes(r.status) && !r.stalled) this._evalGroundingT = setTimeout(() => {
             if (seq === this._evalDetailSeq && this.evalTab === 'results') this.loadEvalGrounding(row, seq);
           }, 3000);
         } catch (e) { if (seq === this._evalDetailSeq) this.evalGroundingError = e.message; }
@@ -419,7 +420,7 @@ window.PRISM_APP_PARTS.push(() => ({
         this.evalGroundingBusy = true;
         try {
           const r = await (await this._afetch(cancel ? '/eval-grounding-cancel' : '/eval-grounding-start', {
-            method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ ...this.evalSelector(row), model: this.evalJudgeModel })
+            method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ ...this.evalSelector(row), model: this.evalJudgeModel, ...(row.kind === 'evaluation' ? { max_calls: Number(this.esMaxCalls) } : {}) })
           })).json();
           if (!r.ok) throw new Error(r.error || '진단 실행 실패');
           if (seq === this._evalDetailSeq) await this.loadEvalGrounding(row, seq);
@@ -438,18 +439,19 @@ window.PRISM_APP_PARTS.push(() => ({
         ['category_hier_f1','카테고리 계층 F1'], ['category_exact','카테고리 전체 일치율'], ['output_state_valid','저장된 메타 상태 정상률']],
       evalAssessmentValue(m, key) {
         const metric = (this.evalAssessment(m).metrics || {})[key];
-        return !metric || metric.value == null ? '미측정' : Number(metric.value).toFixed(4) + ' · ' + metric.n + '건';
+        return !metric || metric.value == null || metric.n === 0 ? '미측정' : Number(metric.value).toFixed(4) + ' · ' + metric.n + '건';
       },
       evalEligibility(m) {
-        const e = this.evalAssessment(m).eligibility || {};
+        const e = this.evalAssessment(m).eligibility;
+        if (!e) return '유효 표본 기록 없음';
         return [['summary','리드문'],['entities','엔티티'],['intent','인텐트'],['content_category','카테고리']]
           .map(([k,v]) => v + ' 유효 ' + ((e[k]||{}).scored||0) + '건 / 재확정 ' + ((e[k]||{}).pending||0) + '건').join(' · ');
       },
       evalGroundingStatus() {
         const r = this.evalGrounding || {};
         return r.stalled ? '중단됨 · 같은 모델로 재개 가능' :
-          ({ not_started: '미실행', running: '진단 중', done: '진단 완료', partial: '일부 판정 실패 · 재개 가능',
-             cancelled: '중단됨 · 재개 가능', failed: '실패 · 재개 가능' }[r.status] || '미실행');
+          ({ not_started: '미실행', running: '진단 중', cancel_requested: '중단 요청됨 · 진행 중 호출 종료 대기', done: '진단 완료', partial: '일부 판정 실패 · 재개 가능',
+             cancelled: '중단 완료 · 재개 가능', failed: '실패 · 재개 가능' }[r.status] || '미실행');
       },
       get evalPairedComparisons() {
         return (this.evalGrounding || {}).paired_comparisons || (this.evalDetail || {}).paired_comparisons || [];
@@ -485,7 +487,8 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       evalMetricText(model, row) {
         const value = model[row[1]];
-        if (value == null || (row[3] && !model[row[3]])) return '·';
+        if (value == null || (row[3] && !model[row[3]])) return '미측정';
+        if (!row[2] && model.n === 0) return '미측정';
         if (row[1] === 'summary_sim') return Number(value).toFixed(4) + (model.summary_sim_method === 'embed_cosine' ? ' · 코사인' : ' · 문자 겹침');
         const text = row[2] === 'raw' ? String(value) : row[2] === 'cost' ? '$' + Number(value).toFixed(4) : row[2] === 'lat' ? this.latTxt(value) : this.pctTxt(value);
         return text + (row[3] ? ' · ' + model[row[3]] + '건' : '');
@@ -524,7 +527,7 @@ window.PRISM_APP_PARTS.push(() => ({
         return [{ model: '정답', expected: true, status, data: { ...values, ...(it.expected || {}) } },
           ...this.evalCols.map(m => ({ model: m.model, status: {}, data: (it.got || {})[m.model] || {} }))];
       },
-      evalCellStatus(data) { return data.empty ? '산출 실패' : data.ok === false ? '등급 불일치' : data.ok === true ? '등급 일치' : ''; },
+      evalCellStatus(data) { if (data.unprocessed) return '미처리'; return data.empty ? '산출 실패' : data.ok === false ? '등급 불일치' : data.ok === true ? '등급 일치' : ''; },
       evalModel: '', evalScope: 'all',        // 평가 기준: 기준 모델 · 대상 콘텐츠 풀(all=전체 정답셋 | eval=평가용 홀드아웃)
       // 평가 런(이력 영속 · Atelier 이식): 시작 → 백그라운드 실행 → 폴링으로 진행률·리포트
       evalRuns: [], evalRunId: null, _evalPollT: null,
@@ -566,6 +569,7 @@ window.PRISM_APP_PARTS.push(() => ({
         this.loadEvalRuns();
       },
       evalRunStatusTxt(r) {
+        if (r.kind === 'evaluation') return this.esStatus(r);
         if (r.status === 'running') return r.stalled ? '중단됨(재개 가능)' : ('실행 중 ' + (r.cursor || 0) + '/' + (r.total || 0));
         return { done: '완료', failed: '실패', cancelled: '중단' }[r.status] || r.status;
       },
@@ -585,8 +589,8 @@ window.PRISM_APP_PARTS.push(() => ({
           const av = (nf && !c.a[nf]) ? null : c.a[f], bv = (nf && !c.b[nf]) ? null : c.b[f];
           const d = (av == null || bv == null) ? null : (bv - av);
           const good = d == null || Math.abs(d) < 1e-9 ? '' : ((d > 0) !== !!inv ? 'up' : 'down');
-          const dTxt = d == null ? '·' : (Math.abs(d) < 1e-9 ? '=' : ((d > 0 ? '+' : '') + (fmt === 'raw' ? (Math.round(d * 100) / 100) : Math.round(d * 100) + '%p')));
-          return { k, a: fmt === 'raw' ? (av == null ? '·' : av) : pct(av), b: fmt === 'raw' ? (bv == null ? '·' : bv) : pct(bv), dTxt, cls: good };
+          const dTxt = d == null ? '·' : (Math.abs(d) < 1e-9 ? '=' : ((d > 0 ? '+' : '') + (fmt === 'raw' ? (Math.round(d * 100) / 100) : fmt === 'score' ? d.toFixed(4) : Math.round(d * 100) + '%p')));
+          return { k, a: fmt === 'score' ? (av == null ? '미측정' : Number(av).toFixed(4)) : fmt === 'raw' ? (av == null ? '·' : av) : pct(av), b: fmt === 'score' ? (bv == null ? '미측정' : Number(bv).toFixed(4)) : fmt === 'raw' ? (bv == null ? '·' : bv) : pct(bv), dTxt, cls: good };
         };
         const rows = [mk('등급 일치율', 'grade_accuracy'), mk('사유 일치', 'reason_jaccard'),
                       mk('유해 놓침', 'harm_miss_rate', true), mk('빈 결과', 'empty_rate', true),
@@ -596,7 +600,7 @@ window.PRISM_APP_PARTS.push(() => ({
                       mk('인텐트 F1(참고)', 'intent_f1', false, '', 'intent_n'),
                       mk('카테고리 F1(계층)', 'cat_hf1', false, '', 'cat_n'),
                       mk('엔티티 F1', 'ent_f1', false, '', 'ent_n'),
-                      mk('리드문 유사도', 'summary_sim', false, '', 'summary_n')];
+                      mk('리드문 유사도(참고)', 'summary_sim', false, 'score', 'summary_n')];
         if (c.a.rubric && c.a.rubric.n && c.b.rubric && c.b.rubric.n) {
           const ax = [['정확성', 'accuracy'], ['형식', 'format'], ['정책', 'policy'], ['간결성', 'conciseness']];
           for (const [k, f] of ax) {
@@ -637,15 +641,7 @@ window.PRISM_APP_PARTS.push(() => ({
           }
         }
       },
-      async startPilot() {
-        this.pilotBusy = true; this.pilotMsg = '';
-        try {
-          const r = await (await this._afetch('/autopilot-start', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ target: parseFloat(this.pilotTarget), meta_target: this.pilotMeta ? parseFloat(this.pilotMeta) : null, max_rounds: parseInt(this.pilotRounds, 10), model: String(this.pilotModel || '').split('|').pop() }) })).json();   // 픽커 값은 provider|model → 서버(llm_for_model)엔 model id 만
-          if (!r || !r.ok) this.pilotMsg = (r && r.error) || '시작 실패';
-          this.loadPilot();
-        } catch (e) { this.pilotMsg = '시작 실패'; }
-        this.pilotBusy = false;
-      },
+      async startPilot() { this.esFindCandidates(); },
       async stopPilot() {
         try { await (await this._afetch('/autopilot-stop', { method: 'POST', headers: this._authHeaders(), body: '{}' })).json(); } catch (e) {}
         this.loadPilot();
@@ -675,16 +671,7 @@ window.PRISM_APP_PARTS.push(() => ({
         const m = c.find((x) => x.model === this.cmpLoopModel) || c.find((x) => x.model === (this.evalDetail && this.evalDetail.best)) || c[0];
         return m.issues || [];
       },
-      async applyRecipe(it) {                  // 쿡북 지시 → 공통 스테이지 프롬프트 끝에 얹기(/cookbook-apply · 관리자)
-        if (!it || this.cookBusy) return;
-        this.cookBusy = true;
-        try {
-          const r = await (await this._afetch('/cookbook-apply', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ stage: it.stage, directive: it.directive }) })).json();
-          if (r && r.ok) { it.applied = true; this.liveToast((r.added ? '프롬프트에 반영 · ' : '이미 반영돼 있음 · ') + it.stage + ' 단계 · 다시 비교 실행으로 확인하세요'); }
-          else this._err((r && r.error) || '반영 실패');
-        } catch (e) { this._err('반영 실패'); }
-        this.cookBusy = false;
-      },
+      async applyRecipe(it) { this.esFindCandidates(it); },
       _CMP_COLORS: ['var(--ds-primary)', 'var(--ds-warning)', 'var(--ds-success)', 'var(--ds-error)', '#7c3aed', '#0891b2'],
       cmpTag(i) { return 'ABCDEF'[i] || String(i + 1); },
       cmpColor(i) { return this._CMP_COLORS[i % this._CMP_COLORS.length]; },
