@@ -275,10 +275,10 @@ def _run(store, team, identifier, frozen, dev_rows, final_rows, propose, evaluat
                      final_comparison=final_comparison, finished_at=time.time())
         _update(store, team, identifier, finish)
     except Stopped as exc:
-        _update(store, team, identifier, lambda s: s.update(status='cancelled' if s['status'] == 'cancel_requested' else 'stopped',
-                                                            phase='stopped', error=str(exc), finished_at=time.time()))
+        _update(store, team, identifier, lambda s, error=str(exc): s.update(status='cancelled' if s['status'] == 'cancel_requested' else 'stopped',
+                                                            phase='stopped', error=error, finished_at=time.time()))
     except Exception as exc:
-        _update(store, team, identifier, lambda s: s.update(status='cancelled' if s['status'] == 'cancel_requested' else 'failed', phase='failed', error=str(exc)[:300], finished_at=time.time()))
+        _update(store, team, identifier, lambda s, error=str(exc)[:300]: s.update(status='cancelled' if s['status'] == 'cancel_requested' else 'failed', phase='failed', error=error, finished_at=time.time()))
     finally:
         with _LOCK:
             _ACTIVE.discard((team, identifier))
