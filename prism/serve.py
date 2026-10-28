@@ -68,6 +68,8 @@ from . import runops as RN
 from . import ingestops as IG
 from . import boardops as BD
 from . import evalops as EVO
+from . import evalservice as EVS
+from . import evalcandidate as EVC
 from . import deployops as DEP
 from . import crewops as CRW           # 검수 인력 운영(HR) · '검수운영' 메뉴
 from . import weekops as WKO           # 주간 운영 기록(주 마감 스냅샷 적립·조회)
@@ -87,6 +89,8 @@ KL._SV = sys.modules[__name__]
 IG._SV = sys.modules[__name__]      # 인입·잡 주입(동일)
 BD._SV = sys.modules[__name__]      # 게시판 주입(동일)
 EVO._SV = sys.modules[__name__]     # 평가 런 도메인 주입(Atelier eval_runs 이식)
+EVS._SV = sys.modules[__name__]
+EVC._SV = sys.modules[__name__]
 from . import evalreview as EVR
 EVR._SV = sys.modules[__name__]
 DEP._SV = sys.modules[__name__]     # 프롬프트 배포 도메인 주입(Atelier deployments 이식)
@@ -2056,6 +2060,33 @@ def _g_eval_runs(h, q):
     return eval_runs_list(h._req_team())
 
 
+@_get_route("/evaluation-runs")
+def _g_evaluation_runs(h, q):
+    return EVS.list_runs(h._req_team())
+
+
+@_get_route("/evaluation-preview")
+def _g_evaluation_preview(h, q):
+    return EVS.preview(h._req_team(), (q.get("scope") or ["all"])[0])
+
+
+@_get_route("/evaluation-environments")
+def _g_evaluation_environments(h, q):
+    return EVS.list_environments(h._req_team())
+
+
+@_get_route("/evaluation-run")
+def _g_evaluation_run(h, q):
+    return EVS.get_run((q.get("id") or [""])[0], h._req_team())
+
+
+@_get_route("/evaluation-candidate")
+def _g_evaluation_candidate(h, q):
+    if _supa() and not h._req_team():
+        return {"ok": False, "code": "team_required", "error": "팀 소속이 필요합니다"}
+    return EVC.get_request(h._req_team(), (q.get("id") or [""])[0])
+
+
 @_get_route("/eval-history-detail")
 def _g_eval_history_detail(h, q):
     return EVO.eval_history_detail((q.get("kind") or [""])[0],
@@ -2684,6 +2715,74 @@ def _p_eval_run_start(h, body):
                           scope=(data.get("scope") or "all").strip(),
                           created_by=h._bearer_uid() or "",
                           policy_version=str(data.get("policy_version") or ""), protocol=data.get("protocol"))
+
+
+def _evaluation_body(body, allowed):
+    try:
+        data = json.loads(body or b"{}")
+        if not isinstance(data, dict) or set(data) - set(allowed):
+            raise ValueError("지원하지 않는 평가 요청 필드입니다")
+        return data, None
+    except (ValueError, TypeError) as exc:
+        return None, {"ok": False, "code": "invalid_request", "error": str(exc)[:200]}
+
+
+@_post_route("/evaluation-start", gate="admin")
+def _p_evaluation_start(h, body):
+    data, error = _evaluation_body(body, ("models", "scope", "baseline_model", "limits", "request_id", "environment_id"))
+    if error:
+        return error
+    return EVS.start(h._req_team(), created_by=h._bearer_uid() or "", **data)
+
+
+@_post_route("/evaluation-environment-save", gate="admin")
+def _p_evaluation_environment_save(h, body):
+    data, error = _evaluation_body(body, ("name", "judge_model", "max_calls"))
+    if error:
+        return error
+    return EVS.save_environment(h._req_team(), data.get("name"), data.get("judge_model"),
+                                data.get("max_calls", 1000), created_by=h._bearer_uid() or "")
+
+
+@_post_route("/evaluation-cancel", gate="admin")
+def _p_evaluation_cancel(h, body):
+    data, error = _evaluation_body(body, ("id",))
+    return error or EVS.cancel(data.get("id"), h._req_team())
+
+
+@_post_route("/evaluation-resume", gate="admin")
+def _p_evaluation_resume(h, body):
+    data, error = _evaluation_body(body, ("id",))
+    return error or EVS.resume(data.get("id"), h._req_team())
+
+
+@_post_route("/evaluation-rerun", gate="admin")
+def _p_evaluation_rerun(h, body):
+    data, error = _evaluation_body(body, ("id", "request_id"))
+    if error:
+        return error
+    return EVS.rerun(data.get("id"), h._req_team(), request_id=data.get("request_id", ""),
+                     created_by=h._bearer_uid() or "")
+
+
+@_post_route("/evaluation-candidate-start", gate="admin")
+def _p_evaluation_candidate_start(h, body):
+    data, error = _evaluation_body(body, ("source_run_id", "goal", "allowed_changes", "max_calls", "max_rounds"))
+    if error:
+        return error
+    if _supa() and not h._req_team():
+        return {"ok": False, "code": "team_required", "error": "팀 소속이 필요합니다"}
+    return EVC.start_request(h._req_team(), data, created_by=h._bearer_uid() or "")
+
+
+@_post_route("/evaluation-candidate-cancel", gate="admin")
+def _p_evaluation_candidate_cancel(h, body):
+    data, error = _evaluation_body(body, ("id",))
+    if error:
+        return error
+    if _supa() and not h._req_team():
+        return {"ok": False, "code": "team_required", "error": "팀 소속이 필요합니다"}
+    return EVC.cancel_request(h._req_team(), data.get("id"))
 
 
 @_post_route("/eval-run-resume", gate="admin")       # 중단 런 재개(남은 건만 실행)

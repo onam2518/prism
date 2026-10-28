@@ -243,8 +243,8 @@ class TestEvalModelRefresh(unittest.TestCase):
 
     def test_eval_pick_uses_full_catalog_with_refresh(self):
         src = _read("prism/ui/13-eval.html")
-        m = re.search(r'<x-modelpick[^>]*value="evalModel"[^>]*>', src)
-        self.assertIsNotNone(m, "evalModel 을 쓰는 x-modelpick 이 없습니다")
+        m = re.search(r'<x-modelpick[^>]*value="slot.model"[^>]*>', src)
+        self.assertIsNotNone(m, "공통 평가 대상의 x-modelpick 이 없습니다")
         self.assertIn('groups="textGroups"', m.group(0))        # 데이터 원천 = 공통 제공자 그룹
         self.assertNotIn('options="availableModels"', m.group(0))
         from prism import page                                  # 새로고침은 픽커 합성 단계에서 자동 삽입(개별 버튼 없음)

@@ -31,6 +31,20 @@ serve.py  ─ HTTP 계층(라우트 테이블 GET/POST · 최장 접두 우선) 
 - 백엔드 선택: `PRISM_BACKEND`(sqlite|supabase) → `serve.get_store()` 가 단일 진입점.
 - 배포: main 머지 → GitHub Actions(test → fly deploy) → `prism-item.fly.dev`.
 
+### 통합 평가 실행과 후보 탐색
+
+`evalservice.py`는 단일·다중 모델의 실행 조건, 원문·정답 스냅샷, 실제 호출 한도,
+중단·재개를 관리한다. 저장소의 `compare_report` CAS로 실행 소유권과 중복 시작을
+검증하고 성공 결과를 재사용한다. `spectrum_adapter.py`는 Spectrum의 순수 실행
+식별·호출 승인·비용 집계 함수를 이식한 연결 계층이며 외부 작업트리에 의존하지 않는다.
+
+`evalcandidate.py`는 저장 결과를 개발·최종 자료로 나눠 프롬프트 사본을 탐색한다.
+`evalreview.py`는 명시적 요청에만 원문 근거·정보 보존·의미 유사도 진단을 실행하며,
+새 통합 실행과 과거 이력을 함께 지원한다. 조회는 모델이나 임베딩을 호출하지 않는다.
+화면은 `ui/13-eval.html`, 통합 실행 동작은 `vendor/app-25-evaluation.js`에 있다.
+HTTP·저장 계약과 현재 범위는 [EVALUATION_API.md](docs/EVALUATION_API.md)를 참조한다.
+후보의 운영 적용·원복은 이 API에서 제공하지 않는다.
+
 ## serve.py 내부 지도 (도메인 클러스터)
 
 serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 있다. 수정 전 해당

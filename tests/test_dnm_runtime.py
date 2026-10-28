@@ -132,7 +132,9 @@ class DNMRuntime(unittest.TestCase):
     def test_concurrent_claim_is_single_and_budget_survives_expired_lease(self):
         self.r.begin(self.event)
         bundle = self.r._get(self.r._key('hamny-test-1'))['current']
+        ready = threading.Barrier(4)
         def claim(_):
+            ready.wait(timeout=5)  # All claims overlap; a closed worker connection is never reused.
             try: return self.r.claim('hamny-test-1', bundle, 'summary')
             finally: self.store._conn().close()
         with ThreadPoolExecutor(max_workers=4) as pool:
