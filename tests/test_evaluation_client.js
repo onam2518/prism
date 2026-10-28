@@ -36,6 +36,13 @@ async function run(){
   // The candidate branch uses frozen source and only operative prompt paths.
   a.evalDetail={kind:'evaluation',snapshot:{baseline_model:'A',executions:{A:{four_calls:true,single_system:'unused',calls:{summary:{system:'active'},entities:{error:'unavailable'}}}}}};
   assert.equal(a.esCandidateChangeOptions.length,1);assert.equal(a.esCandidateChangeOptions[0].value,'calls.summary.system');
+  a.esCandidate={allowed_changes:['calls.summary.system'],selected_round:1,final_comparison:{decision:'hold'}};
+  const promptCandidate={round:1,execution:{calls:{summary:{system:'새 프롬프트 <script>literal</script>'}}}};
+  const changes=a.esCandidatePromptChanges(promptCandidate);assert.equal(changes.length,1);assert.equal(changes[0].before,'active');assert.equal(changes[0].after,'새 프롬프트 <script>literal</script>');
+  assert.match(a.esCandidateFinalLabel(promptCandidate),/판단 보류/);assert.match(a.esCandidateFinalLabel({...promptCandidate,round:2}),/미검증/);
+  assert.equal(a.esCandidatePromptChanges({execution:{calls:{summary:{system:'active'}}}}).length,0);
+  assert.equal(a.esStage({status:'cancelled',phase:'cancelled'}),'현재 단계 · 중단 완료');
+  assert.doesNotMatch(JSON.stringify(a.esBasisRows({snapshot:{dataset_fingerprint:'SECRET_HASH',rows:[],executions:{}}})),/SECRET_HASH/);
   a.evalSelected={kind:'evaluation',id:'source'};a.esFindCandidates();a.esCandidateGoal='근거 없는 리드문 줄이기';a.esCandidate=null;
   a._afetch=async(url,options)=>{calls.push({url,options});return{json:async()=>({ok:true,candidate:{id:'c',status:'completed',candidates:[]}})};};
   await a.esStartCandidate();const candidateRequest=JSON.parse(calls.find(c=>c.url==='/evaluation-candidate-start').options.body);assert.equal(candidateRequest.source_run_id,'source');assert.deepEqual(candidateRequest.allowed_changes,['calls.summary.system']);assert.equal(candidateRequest.development_ids,undefined);

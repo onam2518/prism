@@ -14,7 +14,7 @@
                 <label class="evaluation-field"><span>평가 방식·검수 환경</span><select class="field" x-model="esEnvironmentId" x-on:change="esSelectEnvironment()" x-bind:disabled="esBusy"><option value="">기본 평가 · 정답셋 비교</option><template x-for="environment in esEnvironments" x-bind:key="environment.id"><option x-bind:value="environment.id" x-bind:selected="esEnvironmentId===environment.id" x-text="environment.name"></option></template></select><small>점수 정의는 기본 평가와 같습니다. 저장 환경의 판정 모델은 추가 진단의 기본값입니다.</small></label>
                 <label class="evaluation-field"><span>최대 호출 수</span><input type="number" class="field" min="1" max="100000" step="1" required x-model.number="esMaxCalls" x-bind:disabled="esBusy"><small>실제 모델 호출 단위로 제한합니다. 비용 추정은 미확인입니다.</small></label>
               </div>
-              <details x-show="assignAdmin"><summary>검수 환경 저장</summary><div class="evaluation-form-grid">
+              <details class="evaluation-disclosure" x-show="assignAdmin"><summary>검수 환경 저장</summary><div class="evaluation-form-grid">
                 <label class="evaluation-field"><span>환경 이름</span><input class="field" maxlength="100" x-model="esEnvironmentName" x-bind:disabled="esBusy || esEnvironmentBusy"></label>
                 <div class="evaluation-field"><span>추가 진단 판정 모델</span><x-modelpick key="evaluation-environment-judge" value="esEnvironmentJudge" set="esEnvironmentJudge=$v" groups="textGroups" first-label="판정 모델 선택" first-value="" width="0px"></x-modelpick></div>
               </div><p class="text-xs">현재 호출 한도를 함께 저장합니다. 저장만으로 모델을 호출하지 않습니다.</p><button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-bind:disabled="esBusy || esEnvironmentBusy" x-on:click="esSaveEnvironment()">검수 환경 저장</button></details>
@@ -35,7 +35,7 @@
           <section class="panel" x-show="esRun" aria-labelledby="evaluation-progress-title">
             <div class="panel-hd"><b id="evaluation-progress-title">실행 진행</b><span role="status" aria-live="polite" x-text="esStatus(esRun)"></span></div>
             <div class="panel-bd space-y-4">
-              <p x-text="esStage(esRun)"></p><p class="tnum" x-text="esCost(esRun)"></p>
+              <p class="ds-statusdot" x-text="esStage(esRun)"></p><p class="evaluation-note tnum" x-text="esCost(esRun)"></p>
               <div class="overflow-auto" tabindex="0" role="region" aria-label="대상별 평가 진행"><table class="ds-table"><thead><tr><th>평가 대상</th><th>성공</th><th>실패</th><th>미처리</th></tr></thead><tbody><template x-for="row in esProgressRows(esRun)" x-bind:key="row.model"><tr><th x-text="row.model"></th><td x-text="row.success"></td><td x-text="row.failed"></td><td x-text="row.pending"></td></tr></template></tbody></table></div>
               <p class="text-xs" x-show="esRun && esRun.status==='cancel_requested'">중단 요청됨 · 진행 중 호출이 끝날 때까지 비용이 발생할 수 있습니다.</p>
               <p role="alert" class="evaluation-message" x-text="esRun && (esRun.error || esRun.run_error) || ''"></p>
@@ -56,7 +56,7 @@
                 <div class="overflow-auto" style="max-height:300px"><table class="ds-table ds-table--compact" style="min-width:960px"><thead><tr><th style="width:64px">#</th><th style="width:104px">시각</th><th style="width:100px">종류</th><th>모델</th><th style="width:104px">범위</th><th style="width:100px">상태</th><th style="width:76px">일치율</th><th style="width:220px">작업</th></tr></thead><tbody>
                   <template x-for="r in evalHistoryRows" x-bind:key="r.kind+'|'+r.id">
                     <tr x-bind:class="evalSelected && evalSelected.kind===r.kind && evalSelected.id===r.id ? 'is-sel' : ''">
-                      <td class="tnum" x-text="r.kind==='pilot' ? ('#'+r.pilot_id+' · '+r.round+'R') : (r.kind==='compare' ? '·' : r.id)"></td>
+                      <td class="tnum" x-bind:title="String(r.id)" x-text="r.kind==='pilot' ? ('#'+r.pilot_id+' · '+r.round+'R') : (r.kind==='compare' ? '·' : r.kind==='evaluation' ? String(r.id).slice(0,8) : r.id)"></td>
                       <td class="tnum" x-text="fmtTs(r.ts)"></td>
                       <td><span class="ds-badge" x-bind:class="r.kind==='pilot' ? 'ds-badge--intent' : (r.kind==='compare' ? 'ds-badge--category' : 'ds-badge--neutral')" x-text="r.kind==='pilot' ? '오토파일럿' : (r.kind==='compare' ? '모델별 비교' : '평가 실행')"></span></td>
                       <td x-text="r.kind==='evaluation' ? (r.model_names || []).join(', ') : (r.model || '과거 기록')"></td>
@@ -119,7 +119,10 @@
                   <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="openEvalHistory(evalSelected, true)" data-tip="새로고침" data-tip-pos="bottom" aria-label="평가 상세 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
                 <div class="panel-bd space-y-4">
                   <p class="evaluation-verdict" role="status" x-text="esVerdict(evalDetail)"></p>
-                  <h3 class="text-sm">평가 기준·버전·유효 표본</h3><p class="text-xs evaluation-message" x-text="esContext(evalDetail)"></p><p class="text-xs tnum" x-text="esCost(evalDetail)"></p><template x-for="version in esPromptVersions(evalDetail)" x-bind:key="version"><p class="text-xs evaluation-message" x-text="version"></p></template>
+                  <h3 class="evaluation-subtitle">평가 기준과 처리 현황</h3>
+                  <dl class="ds-deflist evaluation-basis"><template x-for="row in esBasisRows(evalDetail)" x-bind:key="row[0]"><div class="ds-fieldrow"><dt class="ds-fieldrow__label" x-text="row[0]"></dt><dd class="ds-fieldrow__value" x-text="row[1]"></dd></div></template></dl>
+                  <p class="evaluation-note tnum" x-text="esCost(evalDetail)"></p>
+                  <details class="evaluation-disclosure"><summary>실행 버전·자료 식별자 보기</summary><p class="evaluation-note evaluation-message" x-text="esContext(evalDetail)"></p><template x-for="version in esPromptVersions(evalDetail)" x-bind:key="version"><p class="evaluation-note evaluation-message" x-text="version"></p></template></details>
                   <div class="control-row">
                     <span class="ds-badge ds-badge--neutral" x-text="evalDetail.status==='reverted' ? '원복' : evalDetail.status==='applied' ? '반영' : evalRunStatusTxt(evalDetail)"></span>
                     <span class="text-xs text-muted" x-show="evalDetail.kind!=='evaluation'" x-text="evalDetail.version ? '프롬프트 버전 ' + evalDetail.version : '프롬프트 버전 기록 없음'"></span>
@@ -231,11 +234,12 @@
                   </details></template>
                 </div>
               </section>
-              <section class="panel" aria-labelledby="evaluation-next-title"><div class="panel-hd"><b id="evaluation-next-title">개선안 찾기</b><span class="meta">운영 프롬프트와 확정 정답을 유지하고 별도 후보를 평가합니다</span></div><div class="panel-bd space-y-4">
+              <section class="panel" aria-labelledby="evaluation-next-title"><div class="panel-hd"><b id="evaluation-next-title">프롬프트 개선·다운로드</b><span class="meta">평가 결과로 개선 후보를 만들고, 운영 반영은 별도로 결정합니다</span></div><div class="panel-bd space-y-4">
                 <p class="text-xs">개발 자료와 최종 평가 자료를 분리합니다. 최종 평가 사례는 반복 탐색의 피드백에 사용하지 않습니다.</p>
                 <button type="button" class="ds-btn ds-btn--secondary" x-show="evalDetail.kind==='evaluation' && evalDetail.can_rerun!==false" x-bind:disabled="!assignAdmin || esBusy || esActionBusy" x-on:click="esRerun(evalDetail.id)">동일 조건으로 다시 평가</button>
                 <p class="text-xs text-muted" x-show="evalDetail.kind==='evaluation' && evalDetail.can_rerun!==false">저장된 원문·정답·프롬프트로 새 실행을 만듭니다. 모델 호출 비용이 다시 발생합니다.</p>
-                <button type="button" class="ds-btn ds-btn--secondary" x-bind:disabled="!assignAdmin || evalDetail.kind!=='evaluation' || evalDetail.status!=='completed'" x-on:click="esFindCandidates()">개선안 찾기 설정</button>
+                <button type="button" class="ds-btn ds-btn--secondary" x-bind:disabled="!assignAdmin || evalDetail.kind!=='evaluation' || evalDetail.status!=='completed'" x-on:click="esFindCandidates()">프롬프트 개선 설정</button>
+                <p class="evaluation-note" x-show="evalDetail.kind==='evaluation' && evalDetail.status!=='completed'">완료된 평가에서 개선 후보를 만들 수 있습니다. 중단된 평가는 실행 탭에서 같은 조건으로 재개하세요.</p>
                 <p class="text-xs text-muted" x-show="evalDetail.kind!=='evaluation'">과거 이력은 조회할 수 있습니다. 후보 탐색은 통합 평가를 새로 실행한 뒤 시작하세요.</p>
                 <form x-show="esCandidateForm" class="space-y-4" x-on:submit.prevent="esStartCandidate()">
                   <label class="evaluation-field"><span>개선 목표</span><textarea class="field" rows="3" required x-model="esCandidateGoal" x-ref="esCandidateGoal"></textarea></label>
@@ -244,7 +248,28 @@
                   <p class="text-xs">개발·최종 평가 자료는 서버가 원본 스냅샷에서 분리해 고정합니다.</p>
                   <p class="text-xs">후보 생성·평가에 호출 비용이 발생합니다. 비용 추정은 미확인입니다.</p><button type="submit" class="ds-btn ds-btn--primary" x-bind:disabled="esCandidateBusy || esIsActive(esCandidate) || !esCandidateChangeOptions.length">후보 탐색 실행</button>
                 </form>
-                <div x-show="esCandidate" role="status" aria-live="polite"><p x-text="esCandidateSummary"></p><p class="evaluation-message" x-text="esCandidate && esCandidate.error || ''"></p><button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="esIsActive(esCandidate) && esCandidate.status!=='cancel_requested'" x-bind:disabled="esCandidateBusy" x-on:click="esCancelCandidate()">후보 탐색 중단 요청</button><template x-for="(candidate,index) in (esCandidate && esCandidate.candidates || [])" x-bind:key="candidate.id || index"><details><summary x-text="'후보 '+(candidate.round || index+1)+' · 개발 자료 비교'"></summary><p x-text="esCandidateDecision(candidate.development_comparison)"></p><p class="text-xs evaluation-message" x-text="esCandidateCaseSummary(candidate.development_comparison)"></p><button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="candidate.development && candidate.development.run_id" x-on:click="esOpenRun(candidate.development.run_id)">개발 평가 사례 보기</button></details></template></div>
+                <div x-show="esCandidate" class="evaluation-candidates">
+                  <p class="evaluation-note" role="status" aria-live="polite" x-text="esCandidateSummary"></p>
+                  <p class="evaluation-message" x-text="esCandidate && esCandidate.error || ''"></p>
+                  <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="esIsActive(esCandidate) && esCandidate.status!=='cancel_requested'" x-bind:disabled="esCandidateBusy" x-on:click="esCancelCandidate()">후보 탐색 중단 요청</button>
+                  <template x-for="candidate in (esCandidate && esCandidate.candidates || [])" x-bind:key="candidate.round">
+                    <article class="evaluation-candidate">
+                      <header class="control-row"><h3 class="evaluation-subtitle" x-text="'후보 '+candidate.round"></h3><span class="ds-badge ds-badge--neutral">운영 미반영</span></header>
+                      <p class="evaluation-note" x-text="'개발 자료 · '+esCandidateDecision(candidate.development_comparison)"></p>
+                      <p class="evaluation-note" x-text="esCandidateFinalLabel(candidate)"></p>
+                      <details class="evaluation-disclosure"><summary>프롬프트 변경 전후</summary>
+                        <p class="evaluation-note" x-show="!esCandidatePromptChanges(candidate).length">원본과 달라진 프롬프트가 없습니다.</p>
+                        <template x-for="change in esCandidatePromptChanges(candidate)" x-bind:key="change.path"><section class="evaluation-prompt-change">
+                          <h4 class="evaluation-subtitle" x-text="(esCandidateChangeOptions.find(o=>o.value===change.path)||{}).label || change.path"></h4>
+                          <div class="evaluation-form-grid"><div><p class="evaluation-note">변경 전</p><pre class="evaluation-prompt" x-text="change.before"></pre></div><div><p class="evaluation-note">개선 후보</p><pre class="evaluation-prompt" x-text="change.after"></pre></div></div>
+                        </section></template>
+                      </details>
+                      <div class="control-row"><button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-bind:disabled="!assignAdmin || !esCandidatePromptChanges(candidate).length" x-on:click="downloadPrompt({candidate:esCandidate.id,round:candidate.round})">후보 프롬프트 ZIP 다운로드</button><button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="candidate.development && candidate.development.run_id" x-on:click="esOpenRun(candidate.development.run_id)">개발 평가 사례 보기</button></div>
+                      <p class="evaluation-note evaluation-message" x-text="esCandidateCaseSummary(candidate.development_comparison)"></p>
+                    </article>
+                  </template>
+                  <p class="evaluation-note" x-show="esCandidate && esCandidate.candidates && esCandidate.candidates.length">ZIP에는 변경한 프롬프트의 전체 본문, 변경 내역과 검증 상태가 담깁니다. 다운로드로 운영에 반영되지는 않습니다. 미검증·보류 후보는 검토 후 사용하세요.</p>
+                </div>
                 <div x-show="esCandidate && esCandidate.final_result"><p class="text-xs evaluation-message" x-text="esCandidateCaseSummary(esCandidate && esCandidate.final_comparison)"></p><button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="esOpenRun(esCandidate.final_result.run_id)">최종 평가 사례 보기</button></div>
                 <p role="alert" class="evaluation-message" x-text="esCandidateError"></p>
               </div></section>

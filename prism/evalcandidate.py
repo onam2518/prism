@@ -8,10 +8,13 @@ recursive.py (head 5c847b39608142a0a7c4160ac6698a0a18c5d94a); this is a
 Prism-specific implementation, not a vendored recursive controller.
 """
 import copy
+import difflib
+import io
 import json
 import threading
 import time
 import uuid
+import zipfile
 
 from . import execution
 from . import evaluation
@@ -243,15 +246,16 @@ def _run(store, team, identifier, frozen, dev_rows, final_rows, propose, evaluat
             if not isinstance(candidate, dict):
                 raise ValueError('후보 실행 명세가 올바르지 않습니다')
             _check_candidate(frozen, candidate, state['allowed_changes'])
+            entry = {'round': number, 'execution': copy.deepcopy(candidate)}
+            _update(store, team, identifier, lambda s: s['candidates'].append(copy.deepcopy(entry)))
             budget.check()
             _update(store, team, identifier, lambda s: s.update(phase='development'))
             result = evaluate(copy.deepcopy(candidate), copy.deepcopy(dev_rows), budget)
             budget.check()
             comparison = compare(dev_baseline, result)
-            entry = {'round': number, 'execution': copy.deepcopy(candidate), 'development': copy.deepcopy(result),
-                     'development_comparison': comparison}
+            entry.update(development=copy.deepcopy(result), development_comparison=comparison)
             feedback.append(entry)
-            _update(store, team, identifier, lambda s: s['candidates'].append(copy.deepcopy(entry)))
+            _update(store, team, identifier, lambda s: s['candidates'].__setitem__(number - 1, copy.deepcopy(entry)))
             if selected is None and comparison.get('decision') == 'improved':
                 selected = entry
         budget.check()
@@ -395,3 +399,53 @@ def get_request(team, identifier):
 
 def cancel_request(team, identifier):
     return cancel(_SV.get_store(), team, identifier)
+
+
+def export_request(team, identifier, round_number):
+    """Export only saved prompt changes; reads never generate or adopt a candidate."""
+    from . import evalservice
+    state = _read(_SV.get_store(), team, identifier)
+    if not state:
+        raise ValueError('후보 탐색을 찾을 수 없습니다')
+    source = evalservice.get_run(state['source_run_id'], team)
+    if not source.get('ok'):
+        raise ValueError('원본 평가 기록을 찾을 수 없습니다')
+    snapshot = source['run'].get('snapshot') or {}
+    model = snapshot.get('baseline_model') or (snapshot.get('models') or [None])[0]
+    original = (snapshot.get('executions') or {}).get(model)
+    entry = next((c for c in state['candidates'] if c['round'] == round_number), None)
+    if not original or not entry:
+        raise ValueError('저장된 후보 프롬프트를 찾을 수 없습니다')
+    plan = entry['execution']
+    _check_candidate(original, plan, state['allowed_changes'])
+    paths = _changes(original, plan)
+    if not paths:
+        raise ValueError('원본과 달라진 프롬프트가 없습니다')
+    labels = {'improved': '개선 후보 · 운영 반영 별도 결정', 'regression': '악화 발견 · 채택 보류',
+              'hold': '판단 보류', 'equal': '동등', 'incomparable': '비교 불가'}
+    final = state.get('final_comparison') if state.get('selected_round') == round_number else None
+    def verdict(comparison):
+        return labels.get((comparison or {}).get('decision'), '미검증')
+    readme = ['프리즘 프롬프트 개선 후보', '', '운영 미반영 · 다운로드는 운영 프롬프트를 변경하지 않습니다.',
+              'prompts/에는 변경한 프롬프트의 전체 본문만 들어 있습니다. 적용 여부는 별도로 결정하세요.',
+              'changes.diff는 원본 대비 변경 내용입니다. 평가 원문·정답·연결 설정은 포함하지 않습니다.', '',
+              '원본 평가: ' + str(state['source_run_id']), '후보 탐색: ' + str(identifier),
+              '후보 회차: ' + str(round_number), '개선 목표: ' + state['goal'],
+              '개발 자료: ' + verdict(entry.get('development_comparison')),
+              '최종 자료: ' + verdict(final), '', '프롬프트 파일:']
+    buf, diff = io.BytesIO(), []
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as archive:
+        for index, path in enumerate(paths, 1):
+            before, after = original, plan
+            for key in path:
+                before, after = before[key], after[key]
+            name = 'prompts/{:02d}.txt'.format(index)
+            archive.writestr(name, after)
+            label = '.'.join(path)
+            readme.append(name + ' → ' + label)
+            diff.extend(difflib.unified_diff([line + '\n' for line in before.splitlines()],
+                                             [line + '\n' for line in after.splitlines()],
+                                             fromfile='before/' + label, tofile='candidate/' + label))
+        archive.writestr('changes.diff', ''.join(diff))
+        archive.writestr('README.txt', '\n'.join(readme) + '\n')
+    return buf.getvalue()
