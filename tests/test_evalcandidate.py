@@ -1,8 +1,10 @@
 import copy
+import io
 import threading
 import time
 import tempfile
 import unittest
+import zipfile
 from unittest.mock import patch
 from types import SimpleNamespace
 
@@ -60,6 +62,56 @@ class CandidateTest(unittest.TestCase):
     def assert_unchanged(self):
         self.assertEqual(self.store.operating_prompt, {'prompt': 'original'})
         self.assertEqual(self.store.gold, self.store.rows)
+
+    def test_prompt_export_is_scoped_read_only_and_excludes_execution_data(self):
+        identifier = 'a' * 32
+        original = {'single_system': '기존 프롬프트', 'calls': {}, 'quality': {},
+                    'main': {'private_setting': 'DO_NOT_EXPORT'}}
+        plan = copy.deepcopy(original)
+        plan['single_system'] = '개선된 프롬프트\n원문 근거를 확인하세요.'
+        state = {'id': identifier, 'source_run_id': 'source', 'goal': '근거 정확성 개선',
+                 'allowed_changes': ['single_system'], 'candidates': [
+                     {'round': 1, 'execution': plan, 'development_comparison': {'decision': 'improved'}},
+                     {'round': 2, 'execution': plan}],
+                 'selected_round': 1, 'final_comparison': {'decision': 'hold'}}
+        self.store.reports[('team', candidate._key(identifier))] = copy.deepcopy(state)
+        source = {'ok': True, 'run': {'snapshot': {'baseline_model': 'model',
+                  'executions': {'model': original}, 'rows': [{'content': 'PRIVATE_SOURCE'}]}}}
+        with patch.object(candidate, '_SV', SimpleNamespace(get_store=lambda: self.store)), \
+                patch('prism.evalservice.get_run', return_value=source) as read:
+            data = candidate.export_request('team', identifier, 1)
+            read.assert_called_once_with('source', 'team')
+            with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                self.assertEqual(set(archive.namelist()), {'README.txt', 'changes.diff', 'prompts/01.txt'})
+                self.assertEqual(archive.read('prompts/01.txt').decode(), plan['single_system'])
+                text = '\n'.join(archive.read(name).decode() for name in archive.namelist())
+                self.assertIn('최종 자료: 판단 보류', text)
+                self.assertIn('운영 미반영', text)
+                self.assertIn('-기존 프롬프트\n+개선된 프롬프트', text)
+                self.assertNotIn('DO_NOT_EXPORT', text)
+                self.assertNotIn('PRIVATE_SOURCE', text)
+            with zipfile.ZipFile(io.BytesIO(candidate.export_request('team', identifier, 2))) as archive:
+                self.assertIn('최종 자료: 미검증', archive.read('README.txt').decode())
+            for team, number in [('other', 1), ('team', 99)]:
+                with self.assertRaises(ValueError):
+                    candidate.export_request(team, identifier, number)
+        self.assertEqual(self.store.get_report(candidate._key(identifier), team='team'), state)
+        self.assert_unchanged()
+
+    def test_generated_prompt_survives_evaluation_budget_exhaustion(self):
+        def propose(goal, allowed, frozen, feedback, budget):
+            budget.call(lambda: None)
+            frozen['single_system'] = 'candidate'
+            return frozen
+        def evaluate(plan, rows, budget):
+            return budget.call(lambda: {})
+        started = candidate.start(self.store, 'team', request(max_calls=2),
+                                  propose=propose, evaluate=evaluate)
+        state = wait(self.store, started['id'])
+        self.assertEqual(state['status'], 'stopped')
+        self.assertEqual(state['candidates'][0]['execution']['single_system'], 'candidate')
+        self.assertNotIn('development_comparison', state['candidates'][0])
+        self.assert_unchanged()
 
     def test_development_feedback_excludes_final_and_get_has_no_calls(self):
         observations, evaluations, calls = [], [], []

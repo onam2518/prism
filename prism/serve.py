@@ -1913,6 +1913,18 @@ def _export_name(team, ext: str, kind: str = "", model=None, version=None) -> st
 
 @_get_route("/prompt-export", admin=True)            # 프롬프트 내려받기(zip · 호출별 파일) · run=평가 런 · v=학습 버전 · 없으면 현재 합성(model 지정 가능)
 def _g_prompt_export(h, q):
+    q = parse_qs(urlparse(h.path).query, keep_blank_values=True)
+    if 'candidate' in q:
+        from . import evalcandidate
+        identifier = (q.get('candidate') or [''])[0]
+        try:
+            number = int((q.get('round') or [''])[0])
+            if number < 1 or not re.fullmatch(r'[a-f0-9]{32}', identifier):
+                raise ValueError('후보 식별자와 회차를 확인하세요')
+            body = evalcandidate.export_request(h._req_team(), identifier, number)
+        except ValueError as exc:
+            return {'ok': False, 'error': str(exc)}
+        return h._send_file(body, 'application/zip', f'prism_candidate_{identifier}_r{number}.zip')
     run = (q.get("run") or [""])[0].strip()
     v = (q.get("v") or [""])[0].strip()
     if run.isdigit() or v.isdigit():

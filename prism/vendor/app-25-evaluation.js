@@ -46,7 +46,7 @@ window.PRISM_APP_PARTS.push(() => ({
     if(run.stalled) return '실행 연결 끊김 · 재개 조건 확인';
     return ({queued:'실행 대기',running:'실행 중',cancel_requested:'중단 요청됨',cancelled:'중단 완료',completed:'실행 완료',done:'실행 완료',failed:'실행 실패',limit_reached:'호출 한도 도달',stopped:'한도 도달 · 탐색 중단',insufficient_data:'표본 부족 · 판단 보류',inconclusive:'판단 보류',found:'후보 탐색 완료'})[run.status]||run.status||'상태 기록 없음';
   },
-  esStage(run) { return run ? '현재 단계 · '+(({running:'결과 생성·기본 평가',proposal:'후보 생성',development:'개발 자료 비교',final:'최종 자료 평가',queued:'대기',generation:'결과 생성',evaluation:'평가',completed:'완료',candidate_generation:'후보 생성',candidate_evaluation:'후보 평가'})[run.phase||run.stage]||run.phase||run.stage||this.esStatus(run)) : ''; },
+  esStage(run) { return run ? '현재 단계 · '+(({running:'결과 생성·기본 평가',proposal:'후보 생성',development:'개발 자료 비교',final:'최종 자료 평가',queued:'대기',generation:'결과 생성',evaluation:'평가',completed:'완료',cancelled:'중단 완료',cancel_requested:'중단 요청됨',failed:'실패',stopped:'호출 한도 또는 중단 조건 도달',candidate_generation:'후보 생성',candidate_evaluation:'후보 평가'})[run.phase||run.stage]||this.esStatus(run)) : ''; },
   esCost(run) {
     const cost=run && run.cost;
     const coverage=cost?.coverage?.embedding_calls==='not_requested'?' · 임베딩 미실행':'';
@@ -179,6 +179,17 @@ window.PRISM_APP_PARTS.push(() => ({
   esPromptVersions(run) {
     return Object.entries((run.snapshot||{}).executions||{}).map(([model,plan])=>model+' · 메타 '+(plan.item_version||'기록 없음')+' · 품질 '+(plan.quality_version||'기록 없음')+' · 실행 코드 '+(plan.engine||'기록 없음'));
   },
+  esBasisRows(run) {
+    const s=run.snapshot||{},models=s.models||run.model_names||[],plan=(s.executions||{})[s.baseline_model]||{};
+    return [
+      ['평가 자료',Array.isArray(s.rows)?s.rows.length+'개':(run.total??'기록 없음')+'건'],
+      ['처리 현황','성공 '+(run.completed??'미확인')+' · 실패 '+(run.failed??'미확인')+' · 미처리 '+(run.pending??'미확인')],
+      ['기준 모델',s.baseline_model||models[0]||run.model||'기록 없음'],
+      ['프롬프트 기준',[plan.item_version,plan.quality_version].filter(Boolean).join(' · ')||'기록 없음'],
+      ['검수 환경',s.environment?.name||'기본 평가'],
+      ['추가 진단 모델',s.environment?.judge_model||'미지정']
+    ];
+  },
   esContext(run) {
     const s=run.snapshot||{};
     if(run.kind!=='evaluation') return '과거 저장 지표와 분모를 보존합니다. 원문·정답·판정 버전 중 기록이 없는 조건은 확인할 수 없습니다.';
@@ -195,7 +206,7 @@ window.PRISM_APP_PARTS.push(() => ({
     this.esCandidateForm=true; this.esCandidateError=''; this.esCandidateChanges=(this.esCandidateChangeOptions[0]||{}).value||''; if(issue) this.esCandidateGoal=issue.directive||issue.why||'';
     if(this.$nextTick) this.$nextTick(()=>{if(this.$refs.esCandidateGoal) this.$refs.esCandidateGoal.focus();});
   },
-  get esCandidateSummary() { const c=this.esCandidate; return c?this.esStatus(c)+' · '+(c.phase||'')+' · 호출 '+(c.calls??'미확인')+'/'+(c.max_calls??'미확인')+' · 반복 '+(c.round??'미확인')+'/'+(c.max_rounds??'미확인')+' · '+this.esCandidateDecision(c.final_comparison||{decision:c.outcome})+' · '+this.esCost(c):''; },
+  get esCandidateSummary() { const c=this.esCandidate; return c?this.esStatus(c)+' · '+this.esStage(c)+' · 호출 '+(c.calls??'미확인')+'/'+(c.max_calls??'미확인')+' · 반복 '+(c.round??'미확인')+'/'+(c.max_rounds??'미확인')+' · '+this.esCandidateDecision(c.final_comparison||{decision:c.outcome})+' · '+this.esCost(c):''; },
   esCandidateDecision(comparison) {
     if(!comparison) return '아직 비교하지 않음';
     return ({improved:'개선 후보 · 근거 검토 필요',regression:'악화 발견 · 채택 보류',equal:'동등 · 차이 확인 필요',hold:'판단 보류',incomparable:'비교 불가'})[comparison.decision]||'판단 보류';
@@ -205,6 +216,17 @@ window.PRISM_APP_PARTS.push(() => ({
     const cases=comparison.cases||[],counts={};for(const c of cases)counts[c.grade]=(counts[c.grade]||0)+1;
     return '등급 비교 · 개선 '+(counts.improved||0)+' / 악화 '+(counts.regressed||0)+' / 동등 '+(counts.equal||0)+' / 불명확 '+(counts.unknown||0)+'건 · '+((comparison.paired||{}).reason||'항목별 근거와 표본을 확인하세요');
   },
+  esCandidatePromptChanges(candidate) {
+    const snapshot=(this.evalDetail||{}).snapshot||{},original=(snapshot.executions||{})[snapshot.baseline_model]||{};
+    const value=(plan,path)=>path.split('.').reduce((node,key)=>node?.[key],plan);
+    return ((this.esCandidate||{}).allowed_changes||[]).map(path=>({path,before:value(original,path),after:value(candidate.execution,path)}))
+      .filter(item=>typeof item.before==='string'&&typeof item.after==='string'&&item.before!==item.after);
+  },
+  esCandidateFinalLabel(candidate) {
+    const state=this.esCandidate||{};
+    return state.selected_round===candidate.round&&state.final_comparison
+      ?'최종 자료 · '+this.esCandidateDecision(state.final_comparison):'최종 자료 미검증';
+  },
   esRestoreCandidate(sourceId) {
     try {const id=window.localStorage?.getItem('prism-evaluation-candidate:'+sourceId);if(id){this.esCandidate={id};this.esPollCandidate(id);}}catch(e){}
   },
@@ -212,7 +234,7 @@ window.PRISM_APP_PARTS.push(() => ({
     if(this.esCandidateBusy||this.esIsActive(this.esCandidate)) return;
     this.esCandidateError='';
     if(!this.evalSelected||this.evalSelected.kind!=='evaluation'||!this.esCandidateGoal.trim()||!this.esCandidateChangeOptions.some(o=>o.value===this.esCandidateChanges)) {this.esCandidateError='통합 평가 결과, 개선 목표와 실행 가능한 변경 범위가 필요합니다.';return;}
-    if(!Number.isInteger(Number(this.esCandidateMaxCalls))||this.esCandidateMaxCalls<1||this.esCandidateMaxCalls>100000||!Number.isInteger(Number(this.esCandidateMaxRounds))||this.esCandidateMaxRounds<1||this.esCandidateMaxRounds>20) {this.esCandidateError='호출·반복 한도를 정수로 입력하세요.';return;}
+    if(!Number.isInteger(Number(this.esCandidateMaxCalls))||this.esCandidateMaxCalls<1||this.esCandidateMaxCalls>1000||!Number.isInteger(Number(this.esCandidateMaxRounds))||this.esCandidateMaxRounds<1||this.esCandidateMaxRounds>20) {this.esCandidateError='호출·반복 한도를 정수로 입력하세요.';return;}
     this.esCandidateBusy=true; const sourceId=this.evalSelected.id;
     try {const r=await this.esPost('/evaluation-candidate-start',{source_run_id:sourceId,goal:this.esCandidateGoal.trim(),allowed_changes:[this.esCandidateChanges],max_calls:Number(this.esCandidateMaxCalls),max_rounds:Number(this.esCandidateMaxRounds)});try{window.localStorage?.setItem('prism-evaluation-candidate:'+sourceId,r.candidate.id);}catch(e){} if(this.evalSelected?.id===sourceId){this.esCandidate=r.candidate;await this.esPollCandidate(r.candidate.id);}}
     catch(e){this.esCandidateError=e.message;}finally{this.esCandidateBusy=false;}

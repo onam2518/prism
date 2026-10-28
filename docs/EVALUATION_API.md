@@ -57,6 +57,12 @@ The 13 new `spectrum/*.py` files in the authenticated PR patch were reconstructe
 
 The PR's standalone autonomous campaigns, command executors, UI server and experiment adapters are outside the Prism evaluation screen scope. They are not imported into the web process; no external checkout dependency or global module/network patch is introduced.
 
+## Candidate prompt downloads
+
+Admin `GET /prompt-export?candidate=<candidate-id>&round=<positive-integer>` exports a saved candidate from the authenticated team. The ZIP contains the full text of each changed prompt in numbered `prompts/*.txt` files, `changes.diff`, and a `README.txt` identifying the source run, candidate round, goal and separate development/final validation states. It excludes source documents, gold answers and connection settings. A missing candidate, missing source snapshot, invalid round, or unchanged prompt returns an error instead of falling back to the current operational prompt.
+
+Candidate proposals are saved before their evaluation starts. If evaluation stops or exhausts its call limit, already generated prompts remain available and are labeled unverified. Only the selected round can carry the search's final comparison; other rounds retain their own development result and an unverified final status. Downloads perform no model calls or writes and never apply a prompt to operations. The result screen shows the before/after text and offers a separate ZIP download per round.
+
 ## Backend verification (2026-10-28)
 
 Final targeted command (all passed, 177 tests):

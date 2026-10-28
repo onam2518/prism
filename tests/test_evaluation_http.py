@@ -1,11 +1,14 @@
 """Common evaluation HTTP contract: real routing, frozen reads and hosted gates."""
 import contextlib
+import copy
+import io
 import json
 import os
 import tempfile
 import threading
 import time
 import unittest
+import zipfile
 import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
@@ -110,6 +113,41 @@ class EvaluationHTTPTests(unittest.TestCase):
             self.assertTrue(preview['ok'], preview)
             self.assertEqual(preview['total'], 3)
             self.assertIsNone(preview['cost']['total_usd'])
+
+    def test_candidate_prompt_download_is_an_authenticated_read(self):
+        from prism import evalcandidate
+        run_id, run = self.complete_run()
+        identifier = 'a' * 32
+        plan = copy.deepcopy(run['snapshot']['executions'][run['snapshot']['baseline_model']])
+        plan['calls']['summary']['system'] = '원문에 명시된 사실만 요약하세요.'
+        state = {'source_run_id': run_id, 'goal': '원문 근거 개선',
+                 'allowed_changes': ['calls.summary.system'],
+                 'candidates': [{'round': 1, 'execution': plan}]}
+        self.assertTrue(self.store.compare_report(evalcandidate._key(identifier), None, state))
+        path = '/prompt-export?candidate=' + identifier + '&round=1'
+        with patch.object(self.sv, 'llm_for_model', side_effect=AssertionError('download model call')):
+            with urllib.request.urlopen(f'http://127.0.0.1:{self.server.server_port}' + path) as response:
+                self.assertEqual(response.headers.get_content_type(), 'application/zip')
+                self.assertIn('_r1.zip', response.headers['Content-Disposition'])
+                with zipfile.ZipFile(io.BytesIO(response.read())) as archive:
+                    self.assertEqual(archive.read('prompts/01.txt').decode(), '원문에 명시된 사실만 요약하세요.')
+                    self.assertIn('최종 자료: 미검증', archive.read('README.txt').decode())
+            for invalid in ('0', 'abc', '999'):
+                _, result = self.request('/prompt-export?candidate=' + identifier + '&round=' + invalid)
+                self.assertFalse(result['ok'])
+            for invalid in ('?candidate=', '?candidate=&round=1', '?candidate=' + identifier):
+                _, result = self.request('/prompt-export' + invalid)
+                self.assertFalse(result['ok'])
+        with patch.object(self.sv, '_supa', return_value=True), \
+                patch.object(self.sv, 'validate_jwt', return_value='member'), \
+                patch.object(self.sv, 'jwt_email', return_value=''), \
+                patch.object(self.sv, 'team_of', return_value='team-b'), \
+                patch.object(self.sv, 'is_admin_user', return_value=False), \
+                patch.object(self.sv, 'is_sys_admin_user', return_value=False):
+            self.assertEqual(self.request(path, token='member')[0], 403)
+            with patch.object(self.sv, 'is_admin_user', return_value=True):
+                _, denied = self.request(path, token='admin-b')
+                self.assertFalse(denied['ok'])
 
     def test_completed_resume_reuses_outputs_and_request_key(self):
         run_id, run = self.complete_run()
